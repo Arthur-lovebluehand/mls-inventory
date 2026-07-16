@@ -1,0 +1,2229 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>慢樂仙坊・進銷存系統</title>
+<style>
+:root{--bg:#f7f5f0;--sf:#fff;--sf2:#f0ede6;--bd:#e2ddd5;--tx:#1a1714;--tx2:#6b6560;--tx3:#9e9890;--ac:#5c7a5c;--acl:#edf3ed;--rd:#c0392b;--rdl:#fdf0ef;--am:#b8860b;--aml:#fef9e7;--bl:#2c5f8a;--bll:#eef4fb;--br:#8b5e3c;--brl:#f7f0ea;--r:7px;--rl:11px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,'Noto Sans TC',sans-serif;background:var(--bg);color:var(--tx);font-size:14px}
+.app{display:flex;min-height:100vh}
+.sdb{width:210px;background:var(--sf);border-right:1px solid var(--bd);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;overflow-y:auto}
+.main{margin-left:210px;min-height:100vh}
+.logo{padding:16px;border-bottom:1px solid var(--bd)}
+.logo h1{font-size:15px;font-weight:700;color:var(--ac)}
+.logo p{font-size:11px;color:var(--tx3);margin-top:2px}
+.ns{padding:10px 16px 3px;font-size:10px;font-weight:600;color:var(--tx3);letter-spacing:1px;text-transform:uppercase}
+.ni{display:flex;align-items:center;gap:9px;padding:8px 16px;cursor:pointer;color:var(--tx2);font-size:13px;border-left:3px solid transparent}
+.ni:hover{background:var(--sf2)}
+.ni.on{background:var(--acl);color:var(--ac);border-left-color:var(--ac);font-weight:500}
+.ni svg{width:15px;height:15px;flex-shrink:0;opacity:.7}.ni.on svg{opacity:1}
+/* page */
+.ph{background:var(--sf);border-bottom:1px solid var(--bd);padding:13px 22px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.pt{font-size:15px;font-weight:600}.ps{font-size:11px;color:var(--tx3);margin-top:1px}
+.ha{display:flex;gap:7px}
+.pc{padding:18px 22px}
+/* metrics */
+.mg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.mc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--rl);padding:13px}
+.ml{font-size:10px;color:var(--tx3);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px}
+.mv{font-size:22px;font-weight:700}.ms{font-size:11px;color:var(--tx3);margin-top:2px}
+.cg{color:var(--ac)}.cr{color:var(--rd)}.cb{color:var(--bl)}.cbr{color:var(--br)}
+/* table */
+.tc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--rl);overflow:hidden;margin-bottom:16px}
+.tb{padding:10px 14px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tt{font-size:13px;font-weight:600;flex:1}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:8px 12px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;background:var(--sf2);border-bottom:1px solid var(--bd);white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid var(--bd);vertical-align:middle;font-size:13px}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--sf2)}
+.pg{padding:10px 14px;border-top:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
+.pi{font-size:11px;color:var(--tx3)}
+/* badges */
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
+.bg{background:var(--acl);color:var(--ac)}.br2{background:var(--rdl);color:var(--rd)}.ba{background:var(--aml);color:var(--am)}.bb{background:var(--bll);color:var(--bl)}.bgr{background:var(--sf2);color:var(--tx2)}.bbr{background:var(--brl);color:var(--br)}
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--bd);background:var(--sf);color:var(--tx);white-space:nowrap}
+.btn:hover{background:var(--sf2)}.btn-p{background:var(--ac);color:#fff;border-color:var(--ac)}.btn-p:hover{background:#4a6b4a}
+.btn-r{background:var(--rd);color:#fff;border-color:var(--rd)}.btn-s{padding:4px 8px;font-size:12px}
+/* modal */
+.mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:flex-start;justify-content:center;padding:30px 14px;overflow-y:auto}
+.mo.open{display:flex}
+.md{background:var(--sf);border-radius:var(--rl);width:100%;max-width:680px;box-shadow:0 8px 32px rgba(0,0,0,.15);margin:auto}
+.md-lg{max-width:860px}
+.mh{padding:14px 17px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
+.mt{font-size:14px;font-weight:600}.mb{padding:17px}.mf{padding:12px 17px;border-top:1px solid var(--bd);display:flex;gap:7px;justify-content:flex-end}
+/* form */
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.fg3{grid-template-columns:1fr 1fr 1fr}
+.fw{grid-column:1/-1}
+.fl label{display:block;font-size:11px;font-weight:600;color:var(--tx2);margin-bottom:4px}
+.fl input,.fl select,.fl textarea{width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);color:var(--tx);outline:none}
+.fl input:focus,.fl select:focus,.fl textarea:focus{border-color:var(--ac)}
+.fl textarea{resize:vertical;min-height:55px}
+/* searchable select */
+.ss-wrap{position:relative}
+.ss-input{width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);color:var(--tx);outline:none}
+.ss-input:focus{border-color:var(--ac)}
+.ss-drop{position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:200px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.ss-drop.open{display:block}
+.ss-opt{padding:7px 10px;font-size:13px;cursor:pointer}
+.ss-opt:hover,.ss-opt.sel{background:var(--acl);color:var(--ac)}
+.ss-opt.no{color:var(--tx3);cursor:default}
+/* item row in forms */
+.ir{display:grid;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:8px;margin-bottom:6px}
+.ir-order{grid-template-columns:3fr 60px 90px 60px 70px 28px}
+.ir-po{grid-template-columns:3fr 70px 90px 80px 28px}
+.ir-loan{grid-template-columns:3fr 70px 70px 28px}
+.ir input,.ir select{font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);color:var(--tx);width:100%;outline:none}
+.ir input:focus{border-color:var(--ac)}
+/* loading */
+.ld{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--tx3);gap:10px}
+.sp{width:20px;height:20px;border:2px solid var(--bd);border-top-color:var(--ac);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* alert */
+.al{padding:9px 13px;border-radius:var(--r);font-size:13px;margin-bottom:13px}
+.al-s{background:var(--acl);color:var(--ac)}.al-e{background:var(--rdl);color:var(--rd)}.al-w{background:var(--aml);color:var(--am)}
+/* stock color */
+.ok{color:var(--ac);font-weight:600}.lw{color:var(--am);font-weight:600}.ze{color:var(--rd);font-weight:600}
+/* detail grid */
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dr{display:flex;flex-direction:column;gap:2px}
+.dlb{font-size:10px;color:var(--tx3);font-weight:500;text-transform:uppercase}
+.dv{font-size:13px}
+/* inner table */
+.itb{width:100%;border-collapse:collapse;margin-top:6px}
+.itb th{font-size:10px;color:var(--tx3);padding:5px 7px;text-align:left;background:var(--sf2)}
+.itb td{padding:6px 7px;border-top:1px solid var(--bd);font-size:13px}
+/* toast */
+.toast{position:fixed;bottom:20px;right:20px;background:#1e4d1e;color:#fff;padding:9px 16px;border-radius:20px;font-size:12px;font-weight:500;z-index:400;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.on{opacity:1}
+/* tabs */
+.tab-bar{display:flex;gap:2px;border-bottom:1px solid var(--bd);margin-bottom:14px}
+.tab{padding:7px 13px;font-size:13px;cursor:pointer;color:var(--tx2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--ac);border-bottom-color:var(--ac);font-weight:500}
+/* search box in toolbar */
+.si{position:relative}
+.si input{padding:6px 8px 6px 27px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;background:var(--bg);color:var(--tx);width:185px;outline:none}
+.si input:focus{border-color:var(--ac)}
+.si svg{position:absolute;left:7px;top:50%;transform:translateY(-50%);width:12px;height:12px;color:var(--tx3);pointer-events:none}
+.num{font-variant-numeric:tabular-nums}
+/* print */
+@media print{
+  .sdb,.ph .ha,.btn,.pg,.no-print{display:none!important}
+  .sdb{display:none!important}
+  .main{margin-left:0!important}
+  .ph{position:static}
+  body{font-size:12px}
+  .print-only{display:block!important}
+}
+.print-only{display:none}
+/* price grid for product */
+.pg7{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+/* section header */
+.sh{font-size:11px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 7px;padding-bottom:5px;border-bottom:1px solid var(--bd)}
+@media(max-width:700px){.sdb{width:54px}.logo h1,.logo p,.ni span,.ns{display:none}.main{margin-left:54px}.ni{justify-content:center;padding:10px}.fg,.fg3{grid-template-columns:1fr}.pc{padding:12px}.ir-order,.ir-po,.ir-loan{grid-template-columns:1fr 1fr 1fr 28px}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sdb">
+  <div class="logo"><h1>慢樂仙坊</h1><p>進銷存管理系統</p></div>
+  <div class="ns">總覽</div>
+  <div class="ni on" data-p="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><span>總覽</span></div>
+  <div class="ns">庫存</div>
+  <div class="ni" data-p="products"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg><span>商品庫存</span></div>
+  <div class="ni" data-p="purchase"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg><span>進貨管理</span></div>
+  <div class="ns">銷售</div>
+  <div class="ni" data-p="orders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg><span>銷售訂單</span></div>
+  <div class="ni" data-p="loans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/></svg><span>借貨管理</span></div>
+  <div class="ns">客戶</div>
+  <div class="ni" data-p="customers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>客戶資料</span></div>
+  <div class="ns">活動</div>
+  <div class="ni" data-p="promotions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span>活動/套組</span></div>
+  <div class="ns">財務</div>
+  <div class="ni" data-p="accounts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>對帳記錄</span></div>
+  <div class="ni" data-p="bonus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg><span>獎金/分潤</span></div>
+  <div class="ns">系統</div>
+  <div class="ni" data-p="vendors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg><span>廠商管理</span></div>
+</aside>
+<main class="main" id="main"><div class="ld"><div class="sp"></div>載入中…</div></main>
+</div>
+<div class="mo" id="modal"><div class="md" id="md"><div class="mh"><span class="mt" id="mtitle"></span><button class="btn btn-s" onclick="CM()">✕</button></div><div class="mb" id="mbody"></div><div class="mf" id="mfoot"></div></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SURL='https://tctqjjzokixjktiokvtt.supabase.co';
+const SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjdHFqanpva2l4amt0aW9rdnR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0OTQ0MjksImV4cCI6MjA5OTA3MDQyOX0.guft3uykLi7yUOakmlu9yOR3Or-3bk2gwC4Bd7zXnQ0';
+let sb, _cp;
+
+// boot
+window.addEventListener('error',e=>{
+  const m=document.getElementById('main');
+  if(m&&m.innerHTML.includes('sp')){m.innerHTML='<div class="ld" style="flex-direction:column;gap:12px"><span style="color:var(--rd)">JS錯誤：'+e.message+'</span><span style="font-size:12px;color:var(--tx3)">'+e.filename+' 行'+e.lineno+'</span></div>';}
+});
+(function(){
+  // 6秒後如果還在轉，顯示提示
+  setTimeout(()=>{const m=document.getElementById('main');if(m&&m.innerHTML.includes('sp')){m.innerHTML='<div class="ld" style="flex-direction:column;gap:10px"><span style="color:var(--am)">⚠ 連線逾時，請重新整理</span><button onclick="location.reload()" style="padding:7px 14px;border:1px solid var(--bd);border-radius:7px;cursor:pointer">重新整理</button></div>';}},6000);
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+  s.onload=()=>{
+    try{
+      sb=supabase.createClient(SURL,SKEY);
+    }catch(e){
+      document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">Supabase 初始化失敗：'+e.message+'</div>';
+      return;
+    }
+    document.querySelectorAll('.ni').forEach(el=>el.addEventListener('click',()=>go(el.dataset.p)));
+    document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')CM();});
+    try{sb.channel('rt').on('postgres_changes',{event:'*',schema:'public',table:'products'},()=>{if(_cp)_cp();}).on('postgres_changes',{event:'*',schema:'public',table:'sales_orders'},()=>{if(_cp)_cp();}).subscribe();}catch(e){}
+    loadPayMethods().then(()=>go('dashboard'));
+  };
+  s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
+  document.head.appendChild(s);
+})();
+
+// ── nav ──
+function go(p){
+  document.querySelectorAll('.ni').forEach(el=>el.classList.toggle('on',el.dataset.p===p));
+  document.getElementById('main').innerHTML='<div class="ld"><div class="sp"></div>載入中…</div>';
+  _cp=pages[p]; pages[p]?.();
+}
+
+// ── modal ──
+function CM(){document.getElementById('modal').classList.remove('open');}
+function OM(title,body,foot,lg){
+  document.getElementById('mtitle').textContent=title;
+  document.getElementById('mbody').innerHTML=body;
+  document.getElementById('mfoot').innerHTML=foot||'<button class="btn" onclick="CM()">關閉</button>';
+  const md=document.getElementById('md');
+  md.className='md'+(lg?' md-lg':'');
+  document.getElementById('modal').classList.add('open');
+}
+
+// ── toast ──
+let _tt;
+function toast(msg,t){
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.style.background=t==='e'?'var(--rd)':t==='w'?'var(--am)':'#1e4d1e';
+  el.classList.add('on');
+  clearTimeout(_tt);_tt=setTimeout(()=>el.classList.remove('on'),2800);
+}
+
+// ── helpers ──
+const $=id=>document.getElementById(id);
+const v=id=>{const el=$('f-'+id);return el?el.value.trim():'';}
+const n=id=>{const x=parseFloat($('f-'+id)?.value);return isNaN(x)?null:x;}
+const fM=x=>x==null?'—':'$'+Math.round(Number(x)||0).toLocaleString('zh-TW');
+const fN=x=>x==null?'—':Number(x).toLocaleString('zh-TW');
+const fD=x=>x?x.slice(0,10):'—';
+const today=()=>new Date().toISOString().slice(0,10);
+const ym=d=>(d||today()).slice(0,7);
+
+const LEVELS=['創始','大區','市代','經銷','VIP','零售'];
+const LEVEL_COLS={創始:'price_founder',大區:'price_region',市代:'price_city',經銷:'price_dealer',VIP:'price_vip',零售:'price_retail'};
+function lvBadge(l){
+  const cls={創始:'bbr',大區:'bbr',市代:'bb',經銷:'bg',VIP:'ba',零售:'bgr'};
+  return `<span class="badge ${cls[l]||'bgr'}">${l||'—'}</span>`;
+}
+function skCls(n){return n<=0?'ze':n<=5?'lw':'ok';}
+function fi(id,lbl,type,val,ph){return `<div class="fl"><label>${lbl}</label><input id="f-${id}" type="${type||'text'}" value="${(val||'').toString().replace(/"/g,'&quot;')}" placeholder="${ph||''}"></div>`;}
+function fs(id,lbl,opts,val){return `<div class="fl"><label>${lbl}</label><select id="f-${id}">${opts.map(o=>`<option value="${o}" ${o==val?'selected':''}>${o}</option>`).join('')}</select></div>`;}
+function fa(id,lbl,val){return `<div class="fl"><label>${lbl}</label><textarea id="f-${id}" rows="2">${val||''}</textarea></div>`;}
+
+// ── Searchable Select Component ──
+// Creates a searchable product picker
+// id: unique id, items: [{value,label,data}], onSelect: fn(value,data)
+let _ssState={};
+function createSS(id,items,placeholder,selectedVal){
+  const sel=items.find(x=>x.value===selectedVal);
+  return `<div class="ss-wrap" id="ss-${id}">
+    <input class="ss-input" id="ss-inp-${id}" placeholder="${placeholder||'搜尋…'}" value="${sel?sel.label:''}" autocomplete="off"
+      oninput="ssFilter('${id}',this.value)"
+      onfocus="ssOpen('${id}')"
+      onblur="setTimeout(()=>ssClose('${id}'),200)">
+    <input type="hidden" id="ss-val-${id}" value="${selectedVal||''}">
+    <div class="ss-drop" id="ss-drop-${id}"></div>
+  </div>`;
+}
+function ssOpen(id){
+  _ssState[id]=_ssState[id]||{};
+  ssFilter(id,$('ss-inp-'+id).value);
+  $('ss-drop-'+id).classList.add('open');
+}
+function ssClose(id){$('ss-drop-'+id)?.classList.remove('open');}
+function ssFilter(id,q){
+  const items=_ssState[id]?.items||[];
+  const filtered=q?items.filter(x=>x.label.toLowerCase().includes(q.toLowerCase())):items;
+  const drop=$('ss-drop-'+id);
+  if(!drop)return;
+  if(!filtered.length){drop.innerHTML=`<div class="ss-opt no">無符合結果</div>`;return;}
+  drop.innerHTML=filtered.slice(0,50).map(x=>`<div class="ss-opt" onmousedown="ssPick('${id}','${x.value.replace(/'/g,"\\'")}','${x.label.replace(/'/g,"\\'")}')">${x.label}</div>`).join('');
+}
+function ssPick(id,val,lbl){
+  $('ss-val-'+id).value=val;
+  $('ss-inp-'+id).value=lbl;
+  ssClose(id);
+  if(_ssState[id]?.onChange) _ssState[id].onChange(val);
+}
+function ssGet(id){return $('ss-val-'+id)?.value||'';}
+function ssInit(id,items,onChange){_ssState[id]={items,onChange};}
+
+// ── DASHBOARD ──
+async function dashboard(){
+  try{
+    const[r1,r2,r3,r4,r5,r6,r7]=await Promise.all([
+      sb.from('products').select('*',{count:'exact',head:true}).not('product_no','is',null),
+      sb.from('sales_orders').select('*',{count:'exact',head:true}),
+      sb.from('customers').select('*',{count:'exact',head:true}),
+      sb.from('products').select('name,spec,stock').lte('stock',5).gt('stock',0).order('stock').limit(8),
+      sb.from('products').select('name,spec').eq('stock',0).not('product_no','is',null).limit(8),
+      sb.from('sales_orders').select('order_no,order_date,customer_name,total,payment_done').order('order_date',{ascending:false}).limit(6),
+      sb.from('monthly_accounts').select('month,income,expense,total').order('month',{ascending:false}).limit(5),
+    ]);
+    const oos=r5.data||[],ls=r4.data||[],rec=r6.data||[],mon=r7.data||[];
+    $('main').innerHTML=`
+    <div class="ph"><div><div class="pt">總覽儀表板</div><div class="ps">即時同步中</div></div></div>
+    <div class="pc">
+      <div class="mg">
+        <div class="mc"><div class="ml">商品種類</div><div class="mv cg">${r1.count||0}</div><div class="ms">項</div></div>
+        <div class="mc"><div class="ml">歷史訂單</div><div class="mv cb">${r2.count||0}</div><div class="ms">張</div></div>
+        <div class="mc"><div class="ml">客戶數</div><div class="mv cbr">${r3.count||0}</div><div class="ms">位</div></div>
+        <div class="mc"><div class="ml">需補貨</div><div class="mv cr">${oos.length+ls.length}</div><div class="ms">項</div></div>
+      </div>
+      ${oos.length?`<div class="al al-e"><b>庫存歸零（${oos.length}）：</b>${oos.map(p=>p.name+(p.spec?` (${p.spec})`:'')).join('、')}</div>`:''}
+      ${ls.length?`<div class="al al-w"><b>低庫存（${ls.length}）：</b>${ls.map(p=>`${p.name} <b>${p.stock}</b>件`).join('、')}</div>`:''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="tc"><div class="tb"><span class="tt">最近訂單</span><button class="btn btn-s" onclick="go('orders')">全部</button></div>
+          <div class="tw"><table><tr><th>訂單號</th><th>客戶</th><th>金額</th><th>收款</th></tr>
+          ${rec.map(o=>`<tr style="cursor:pointer" onclick="showOrder('${o.order_no}')"><td style="font-size:11px;color:var(--tx2)">${o.order_no}</td><td>${o.customer_name||'—'}</td><td class="num">${fM(o.total)}</td><td><span class="badge ${o.payment_done?'bg':'br2'}">${o.payment_done?'已收':'未收'}</span></td></tr>`).join('')}
+          </table></div></div>
+        <div class="tc"><div class="tb"><span class="tt">月度收支</span><button class="btn btn-s" onclick="go('accounts')">全部</button></div>
+          <div class="tw"><table><tr><th>月份</th><th>收入</th><th>支出</th><th>結餘</th></tr>
+          ${mon.map(m=>`<tr><td>${m.month}</td><td class="num ok">${fM(m.income)}</td><td class="num cr">${fM(m.expense)}</td><td class="num" style="font-weight:600">${fM(m.total)}</td></tr>`).join('')}
+          </table></div></div>
+      </div>
+    </div>`;
+  }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
+}
+
+// ── PRODUCTS ──
+let pS='',pP=1;
+async function products(){
+  try{
+    let q=sb.from('products').select('product_no,name,spec,category,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail,cost',{count:'exact'}).not('product_no','is',null).order('product_no');
+    if(pS) q=q.or(`name.ilike.%${pS}%,product_no.ilike.%${pS}%,category.ilike.%${pS}%`);
+    const{data,count}=await q.range((pP-1)*30,pP*30-1);
+    const tp=Math.ceil((count||0)/30);
+    $('main').innerHTML=`
+    <div class="ph"><div><div class="pt">商品庫存</div><div class="ps">${count||0} 項</div></div>
+      <div class="ha">
+      <button class="btn btn-s" onclick="printStockTake()">🖨 列印盤點單</button>
+      <button class="btn btn-s" style="background:var(--aml);color:var(--am);border-color:var(--am)" onclick="openSplitBag()">📦 拆袋作業</button>
+      <button class="btn btn-p btn-s" onclick="addProd()">＋ 新增商品</button>
+    </div></div>
+    <div class="pc"><div class="tc">
+      <div class="tb"><span class="tt">商品清單</span>
+        <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input placeholder="名稱/編號/類別…" value="${pS}" oninput="pS=this.value;pP=1;products()"></div>
+      </div>
+      <div class="tw"><table>
+        <tr><th>編號</th><th>商品名稱</th><th>規格</th><th>類別</th><th>庫存</th><th>創始</th><th>大區</th><th>市代</th><th>經銷</th><th>VIP</th><th>零售</th><th>進貨價</th><th>操作</th></tr>
+        ${(data||[]).map(p=>`<tr>
+          <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${p.product_no}</td>
+          <td style="font-weight:500;white-space:nowrap">${p.name}</td>
+          <td style="font-size:12px;color:var(--tx2)">${p.spec||'—'}</td>
+          <td>${p.category?`<span class="badge bgr">${p.category}</span>`:'—'}</td>
+          <td class="num ${skCls(p.stock)}">${fN(p.stock)}</td>
+          <td class="num">${fM(p.price_founder)}</td>
+          <td class="num">${fM(p.price_region)}</td>
+          <td class="num">${fM(p.price_city)}</td>
+          <td class="num">${fM(p.price_dealer)}</td>
+          <td class="num">${fM(p.price_vip)}</td>
+          <td class="num">${fM(p.price_retail)}</td>
+          <td class="num">${fM(p.cost)}</td>
+          <td><div style="display:flex;gap:3px">
+            <button class="btn btn-s" onclick='eProd(${JSON.stringify(p)})'>編輯</button>
+            <button class="btn btn-s" onclick="adjStk('${p.product_no}','${p.name.replace(/'/g,"\\'")}',${p.stock})">調庫存</button>
+            <button class="btn btn-s btn-r" onclick="dProd('${p.product_no}','${p.name.replace(/'/g,"\\'")}')">刪</button>
+          </div></td>
+        </tr>`).join('')}
+      </table></div>
+      <div class="pg"><span class="pi">第${pP}/${tp}頁，共${count}筆</span>
+        <div style="display:flex;gap:5px">
+          ${pP>1?`<button class="btn btn-s" onclick="pP--;products()">上一頁</button>`:''}
+          ${pP<tp?`<button class="btn btn-s" onclick="pP++;products()">下一頁</button>`:''}
+        </div></div>
+    </div></div>`;
+  }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
+}
+
+function prodForm(p){
+  p=p||{};
+  return `<div class="fg">
+    ${fi('pno','商品編號 *','text',p.product_no)} ${fi('pname','商品名稱 *','text',p.name)}
+    ${fi('pspec','規格','text',p.spec)} ${fs('pcat','類別',['保養品','保健食品','洗面乳','髮品','精油','外泌體','化妝品','輔消品','輔助設備','贈品','其他'],p.category)}
+    ${fi('punit','單位','text',p.unit||'個')} ${fi('pstock','現有庫存','number',p.stock||0)}
+  </div>
+  <div class="sh">各位階售價</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    ${fi('pf','創始','number',p.price_founder)} ${fi('prg','大區','number',p.price_region)} ${fi('pct','市代','number',p.price_city)}
+    ${fi('pdr','經銷','number',p.price_dealer)} ${fi('pvp','VIP','number',p.price_vip)} ${fi('prl','零售','number',p.price_retail)}
+    ${fi('pcost','進貨價','number',p.cost)}
+  </div>
+  <div class="sh">其他</div>
+  <div class="fg"><div class="fl fw">${fa('pdesc','說明',p.description)}</div></div>`;
+}
+
+function addProd(){OM('新增商品',prodForm(),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveProd(false)">儲存</button>`);}
+function eProd(p){
+  OM('編輯商品',`<div class="fl" style="margin-bottom:12px"><label>商品編號</label><input value="${p.product_no}" disabled style="opacity:.6;width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px"></div>`+prodForm(p).replace(`id="f-pno"`,`id="f-pno-disabled"`),
+  `<button class="btn" onclick="CM()">取消</button><button class="btn" onclick="showPriceLog('${p.product_no}','${p.name.replace(/'/g,"\'")}')">價格記錄</button><button class="btn btn-p" onclick="saveProd('${p.product_no}')">儲存</button>`);
+}
+
+async function showPriceLog(no,name){
+  const{data:logs}=await sb.from('product_price_logs').select('*').eq('product_no',no).order('created_at',{ascending:false}).limit(50);
+  OM(`${name}・價格異動記錄`,`
+  <div class="al al-w" style="font-size:12px">儲存商品編輯後，價格變動會自動記錄在這裡。歷史訂單的售價不受影響（已固定在訂單明細中）。</div>
+  ${!logs||!logs.length?'<div style="color:var(--tx3);padding:20px 0;text-align:center">尚無異動記錄</div>':`
+  <table class="itb"><tr><th>位階</th><th>舊價格</th><th>新價格</th><th>異動日期</th><th>備註</th></tr>
+  ${logs.map(l=>`<tr>
+    <td><span class="badge bgr">${l.price_type}</span></td>
+    <td class="num" style="color:var(--tx2)">${fM(l.old_price)}</td>
+    <td class="num" style="font-weight:600;color:${(l.new_price||0)>(l.old_price||0)?'var(--rd)':'var(--ac)'}">${fM(l.new_price)}</td>
+    <td style="font-size:12px">${fD(l.change_date)}</td>
+    <td style="font-size:12px;color:var(--tx2)">${l.note||'—'}</td>
+  </tr>`).join('')}
+  </table>`}`);
+}
+
+async function saveProd(existingNo){
+  const no=existingNo||v('pno'), nm=v('pname');
+  if(!nm){toast('請填寫商品名稱','e');return;}
+  const priceFields={price_founder:n('pf'),price_region:n('prg'),price_city:n('pct'),price_dealer:n('pdr'),price_vip:n('pvp'),price_retail:n('prl'),cost:n('pcost')};
+  const obj={name:nm,spec:v('pspec')||null,category:v('pcat')||null,unit:v('punit')||'個',stock:n('pstock')||0,...priceFields,description:v('pdesc')||null};
+  let err;
+  if(existingNo){
+    // 比對舊價格，有變動則記錄
+    const{data:old}=await sb.from('products').select('price_founder,price_region,price_city,price_dealer,price_vip,price_retail,cost').eq('product_no',existingNo).single();
+    if(old){
+      const priceNames={price_founder:'創始',price_region:'大區',price_city:'市代',price_dealer:'經銷',price_vip:'VIP',price_retail:'零售',cost:'進貨價'};
+      const logs=[];
+      for(const[col,label] of Object.entries(priceNames)){
+        const ov=old[col],nv=priceFields[col];
+        if(ov!==nv&&(ov!=null||nv!=null)) logs.push({product_no:existingNo,price_type:label,old_price:ov,new_price:nv,change_date:today(),note:'編輯更新'});
+      }
+      if(logs.length) await sb.from('product_price_logs').insert(logs);
+    }
+    ({error:err}=await sb.from('products').update(obj).eq('product_no',existingNo));
+  } else {
+    if(!no){toast('請填寫商品編號','e');return;}
+    obj.product_no=no;
+    ({error:err}=await sb.from('products').insert(obj));
+  }
+  if(err){toast('儲存失敗：'+err.message,'e');return;}
+  toast(existingNo?'商品已更新':'商品新增成功！');CM();products();
+}
+
+function adjStk(no,name,cur){
+  OM(`調整庫存：${name}`,`
+    <p style="margin-bottom:13px">目前庫存：<strong class="${skCls(cur)}" style="font-size:20px">${cur}</strong></p>
+    <div class="fg">
+      ${fs('adjt','調整方式',['設定為','增加','減少'],'設定為')}
+      ${fi('adjq','數量','number','0')}
+    </div>
+    <div style="margin-top:10px">${fi('adjn','備註（調整原因）')}</div>`,
+  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="doAdj('${no}',${cur})">確認</button>`);
+}
+async function doAdj(no,cur){
+  const t=v('adjt'),q=n('adjq')||0;
+  const ns=t==='設定為'?q:t==='增加'?cur+q:Math.max(0,cur-q);
+  const{error}=await sb.from('products').update({stock:ns}).eq('product_no',no);
+  if(error){toast('調整失敗','e');return;}
+  toast(`庫存已調整為 ${ns}`);CM();products();
+}
+async function dProd(no,name){
+  if(!confirm(`確定刪除「${name}」？`))return;
+  await sb.from('products').delete().eq('product_no',no);
+  toast('商品已刪除');products();
+}
+
+// ── ORDERS ──
+let oS='',oP=1,oF='all';
+async function orders(){
+  try{
+    let q=sb.from('sales_orders').select('order_no,order_date,customer_name,agent_level,subtotal,total,payment_done,is_return,status,ship_status',{count:'exact'}).order('order_date',{ascending:false});
+    if(oS) q=q.or(`order_no.ilike.%${oS}%,customer_name.ilike.%${oS}%`);
+    if(oF==='unpaid') q=q.eq('payment_done',false);
+    if(oF==='return') q=q.eq('is_return',true);
+    const{data,count}=await q.range((oP-1)*30,oP*30-1);
+    const tp=Math.ceil((count||0)/30);
+    $('main').innerHTML=`
+    <div class="ph"><div><div class="pt">銷售訂單</div><div class="ps">${count||0} 張</div></div>
+      <div class="ha"><button class="btn btn-p btn-s" onclick="addOrder()">＋ 新增訂單</button></div></div>
+    <div class="pc">
+      <div class="tab-bar">
+        <div class="tab ${oF==='all'?'on':''}" onclick="oF='all';oP=1;orders()">全部</div>
+        <div class="tab ${oF==='unpaid'?'on':''}" onclick="oF='unpaid';oP=1;orders()">未收款</div>
+        <div class="tab ${oF==='return'?'on':''}" onclick="oF='return';oP=1;orders()">退貨</div>
+      </div>
+      <div class="tc">
+        <div class="tb"><span class="tt">訂單列表</span>
+          <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input placeholder="訂單號/客戶名稱…" value="${oS}" oninput="oS=this.value;oP=1;orders()"></div>
+        </div>
+        <div class="tw"><table>
+          <tr><th>訂單號</th><th>日期</th><th>客戶</th><th>位階</th><th>小計</th><th>總金額</th><th>收款</th><th>操作</th></tr>
+          ${(data||[]).map(o=>`<tr>
+            <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${o.order_no}</td>
+            <td style="font-size:12px">${fD(o.order_date)}</td>
+            <td style="font-weight:500">${o.customer_name||'—'}</td>
+            <td>${lvBadge(o.agent_level)}</td>
+            <td class="num">${fM(o.subtotal)}</td>
+            <td class="num" style="font-weight:600">${fM(o.total)}</td>
+            <td><span class="badge ${o.payment_done?'bg':'br2'}">${o.payment_done?'已收':'未收'}</span></td>
+            <td><span class="badge ${o.ship_status==='全部出貨'?'bg':o.ship_status==='部分出貨'?'ba':'br2'}">${o.ship_status||'待出貨'}</span></td>
+            <td><div style="display:flex;gap:3px">
+              <button class="btn btn-s" onclick="showOrder('${o.order_no}')">明細</button>
+              <button class="btn btn-s" onclick="editOrder('${o.order_no}')">修改</button>
+              <button class="btn btn-s" onclick="recordShipment('${o.order_no}')">出貨記錄</button>
+              <button class="btn btn-s" onclick="printOrder('${o.order_no}')">列印</button>
+              <button class="btn btn-s" onclick="togglePay('${o.order_no}',${o.payment_done})">${o.payment_done?'取消收款':'標記收款'}</button>
+            </div></td>
+          </tr>`).join('')}
+        </table></div>
+        <div class="pg"><span class="pi">第${oP}/${tp}頁</span>
+          <div style="display:flex;gap:5px">
+            ${oP>1?`<button class="btn btn-s" onclick="oP--;orders()">上一頁</button>`:''}
+            ${oP<tp?`<button class="btn btn-s" onclick="oP++;orders()">下一頁</button>`:''}
+          </div></div>
+      </div>
+    </div>`;
+  }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
+}
+
+async function showOrder(no){
+  const[{data:o},{data:its}]=await Promise.all([
+    sb.from('sales_orders').select('*').eq('order_no',no).single(),
+    sb.from('sales_order_items').select('*').eq('order_no',no),
+  ]);
+  OM(`訂單：${no}`,`
+  <div class="dg" style="margin-bottom:13px">
+    <div class="dr"><span class="dlb">日期</span><span class="dv">${fD(o?.order_date)}</span></div>
+    <div class="dr"><span class="dlb">客戶</span><span class="dv">${o?.customer_name||'—'}</span></div>
+    <div class="dr"><span class="dlb">位階</span><span class="dv">${lvBadge(o?.agent_level)}</span></div>
+    <div class="dr"><span class="dlb">手機</span><span class="dv">${o?.phone||'—'}</span></div>
+    <div class="dr"><span class="dlb">寄送方式</span><span class="dv">${o?.shipping_method||'—'}</span></div>
+    <div class="dr"><span class="dlb">付款方式</span><span class="dv">${o?.payment_method||'—'}</span></div>
+    <div class="dr"><span class="dlb">收款</span><span class="dv"><span class="badge ${o?.payment_done?'bg':'br2'}">${o?.payment_done?'已收款':'未收款'}</span></span></div>
+    <div class="dr"><span class="dlb">促銷</span><span class="dv">${o?.promo_name||'—'}</span></div>
+    <div class="dr"><span class="dlb">發票號碼</span><span class="dv" style="font-family:monospace">${o?.invoice_no||'—'}</span></div>
+    <div class="dr" style="grid-column:1/-1"><span class="dlb">送貨地址</span><span class="dv">${o?.ship_address||'—'}</span></div>
+    <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${o?.note||'—'}</span></div>
+  </div>
+  <table class="itb"><tr><th>商品</th><th>單價</th><th>銷售數</th><th style="color:var(--am)">贈品數</th><th>實出數</th><th>金額</th></tr>
+  ${(its||[]).map(i=>`<tr>
+    <td>${i.product_name||'—'}</td>
+    <td class="num">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString('zh-TW'):'贈品'}</td>
+    <td class="num">${fN(i.qty)}</td>
+    <td class="num" style="color:var(--am);font-weight:600">${i.gift_qty?fN(i.gift_qty):'—'}</td>
+    <td class="num" style="font-weight:600">${fN((i.qty||0)+(i.gift_qty||0))}</td>
+    <td class="num">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString('zh-TW'):'—'}</td>
+  </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
+  </table>
+  <div style="background:var(--sf2);border-radius:var(--r);padding:10px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:13px">
+    <span>小計（稅前參考）</span><span class="num" style="text-align:right">${fM(o?.subtotal)}</span>
+    <span>運費</span><span class="num" style="text-align:right">${fM(o?.shipping_fee)}</span>
+    <span>稅（已含，拆算參考）</span><span class="num" style="text-align:right">${o?.tax?'$'+Math.round(Number(o.tax)).toLocaleString('zh-TW'):'—'}</span>
+    <span style="font-weight:700">總金額</span><span class="num" style="text-align:right;font-weight:700;color:var(--ac)">${o?.total?'$'+Math.round(Number(o.total)).toLocaleString('zh-TW'):'—'}</span>
+    <span>淨利</span><span class="num" style="text-align:right">${o?.total_profit?'$'+Math.round(Number(o.total_profit)).toLocaleString('zh-TW'):'—'}</span>
+  </div>`,
+  `<button class="btn" onclick="CM()">關閉</button><button class="btn" onclick="printOrder('${no}')">🖨 列印出貨單</button><button class="btn btn-r" onclick="dOrder('${no}')">刪除訂單</button>`);
+}
+
+// 列印出貨單
+async function printOrder(no){
+  const[{data:o},{data:its}]=await Promise.all([
+    sb.from('sales_orders').select('*').eq('order_no',no).single(),
+    sb.from('sales_order_items').select('*').eq('order_no',no),
+  ]);
+  const win=window.open('','_blank','width=800,height=600');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>出貨單 ${no}</title>
+  <style>
+  body{font-family:'Noto Sans TC',system-ui,sans-serif;padding:24px;color:#111;font-size:13px;max-width:600px;margin:0 auto}
+  h1{font-size:20px;font-weight:700;margin-bottom:4px}
+  .sub{color:#666;font-size:12px;margin-bottom:20px}
+  .row{display:flex;justify-content:space-between;margin-bottom:6px}
+  .lbl{color:#666;font-size:11px;font-weight:600;text-transform:uppercase}
+  table{width:100%;border-collapse:collapse;margin:16px 0}
+  th{border-bottom:2px solid #111;padding:6px 8px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase}
+  td{border-bottom:1px solid #ddd;padding:6px 8px;font-size:13px}
+  .tot{border-top:2px solid #111;padding-top:8px;margin-top:4px}
+  .footer{margin-top:30px;padding-top:14px;border-top:1px solid #ddd;font-size:11px;color:#888;text-align:center}
+  @media print{button{display:none}}
+  </style></head><body>
+  <button onclick="window.print()" style="float:right;padding:6px 14px;cursor:pointer;margin-bottom:10px">🖨 列印</button>
+  <h1>出 貨 單</h1>
+  <div class="sub">慢樂仙坊</div>
+  <div class="row"><div><div class="lbl">訂單編號</div><div>${no}</div></div><div><div class="lbl">出貨日期</div><div>${fD(o?.actual_ship_date||o?.order_date)}</div></div></div>
+  <div class="row"><div><div class="lbl">客戶</div><div>${o?.customer_name||'—'}</div></div><div><div class="lbl">手機</div><div>${o?.phone||'—'}</div></div></div>
+  <div class="row"><div class="lbl">送貨地址</div></div><div>${o?.ship_address||'—'}</div>
+  <div class="row"><div><div class="lbl">寄送方式</div><div>${o?.shipping_method||'—'}</div></div><div><div class="lbl">付款方式</div><div>${o?.payment_method||'—'}</div></div></div>
+  <table>
+    <tr><th>商品名稱</th><th style="text-align:right">單價</th><th style="text-align:right">數量</th><th style="text-align:right">金額</th></tr>
+    ${(its||[]).map(i=>`<tr><td>${i.product_name||'—'}${i.gift_qty&&i.gift_qty>0?` <span style="background:#fef9e7;color:#b8860b;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">含贈品×${i.gift_qty}</span>`:''}</td><td style="text-align:right">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString():''}</td><td style="text-align:right">${(i.qty||0)+(i.gift_qty||0)}${i.gift_qty&&i.gift_qty>0?`<span style="font-size:10px;color:#b8860b;display:block">（贈${i.gift_qty}）</span>`:''}</td><td style="text-align:right">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString():'贈品'}</td></tr>`).join('')}
+  </table>
+  <div class="tot">
+    <div class="row"><span>小計</span><span>${o?.subtotal?'$'+Number(o.subtotal).toLocaleString():''}</span></div>
+    ${o?.shipping_fee?`<div class="row"><span>運費</span><span>$${Number(o.shipping_fee).toLocaleString()}</span></div>`:''}
+    ${o?.tax?`<div class="row"><span>營業稅</span><span>$${Number(o.tax).toLocaleString()}</span></div>`:''}
+    <div class="row" style="font-weight:700;font-size:16px;margin-top:6px"><span>總金額</span><span>${o?.total?'$'+Number(o.total).toLocaleString():''}</span></div>
+  </div>
+  ${o?.note?`<div style="margin-top:14px;padding:10px;background:#f9f9f9;border-radius:6px"><div class="lbl">備註</div><div>${o.note}</div></div>`:''}
+  <div class="footer">感謝您的訂購・如有問題請聯繫我們</div>
+  </body></html>`);
+  win.document.close();
+}
+
+// 新增訂單
+let _items=[], _allProds=[], _allCusts=[];
+async function addOrder(){
+  const[{data:pr},{data:cu}]=await Promise.all([
+    sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).order('name'),
+    sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address').order('name'),
+  ]);
+  _allProds=pr||[]; _allCusts=cu||[];
+  _items=[{id:1,pno:'',qty:1,price:0,giftQty:0,amt:0}];
+  const td=today(), no='SO-'+td.replace(/-/g,'')+'-'+String(Date.now()).slice(-3);
+  const custOpts=_allCusts.map(c=>({value:c.customer_no,label:`${c.name} (${c.agent_level||'—'})`,data:c}));
+  OM('新增銷售訂單',`
+  <div class="fg" style="margin-bottom:13px">
+    ${fi('ono','訂單編號','text',no)} ${fi('odate','日期','date',td)}
+    <div class="fl"><label>選擇客戶</label>
+      <div class="ss-wrap" id="ss-cust">
+        <input class="ss-input" id="ss-inp-cust" placeholder="輸入姓名搜尋…" autocomplete="off" oninput="ssFilterCust(this.value)" onfocus="ssFilterCust(this.value)" onblur="setTimeout(()=>$('ss-drop-cust')?.classList.remove('open'),200)">
+        <input type="hidden" id="ss-val-cust">
+        <div class="ss-drop" id="ss-drop-cust"></div>
+      </div>
+    </div>
+    ${fi('oname','客戶名稱 *')} ${fi('ophone','手機')}
+    ${fs('oshp','寄送方式',['郵寄','超商取貨','親送','自取'],'郵寄')}
+    ${fi('oaddr','送貨地址')}
+    ${payMethodSel('opay','')}
+    ${fi('ofee','運費','number','0')}
+    ${fi('oinv','發票號碼','text')}
+    <div class="fl"><label>位階（決定商品自動售價）</label><select id="f-oalv" onchange="updateItemPricesByLevel(this.value)">${LEVELS.map(l=>`<option>${l}</option>`).join('')}</select></div>
+  </div>
+  <div style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+      <span style="font-size:12px;font-weight:600;color:var(--tx3)">訂購品項</span>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-s" style="background:var(--bll);color:var(--bl);border-color:var(--bl)" onclick="openBundlePicker('order')">＋ 加入套組</button>
+        <button class="btn btn-s" onclick="addItem()">＋ 單品</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:3fr 60px 90px 60px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
+      <span>商品</span><span>銷售數</span><span>單價</span><span style="color:var(--am)">贈品數</span><span>金額</span><span></span>
+    </div>
+    <div id="itemsArea"></div>
+    <div id="oAmt" style="text-align:right;font-weight:600;padding-top:8px;border-top:1px solid var(--bd);margin-top:6px;font-size:13px"></div>
+  </div>
+  ${fa('onote','備註','')}`,
+  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveOrder(false)">建立訂單</button>`,true);
+  // init customer search
+  window.ssFilterCust=q=>{
+    const fil=q?_allCusts.filter(c=>c.name.includes(q)||(c.phone||'').includes(q)):_allCusts;
+    const drop=$('ss-drop-cust'); if(!drop)return;
+    drop.classList.add('open');
+    drop.innerHTML=fil.slice(0,30).map(c=>`<div class="ss-opt" onmousedown="pickCust('${c.customer_no}')">${c.name} · ${c.agent_level||'—'} · ${c.phone||'—'}</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
+  };
+  window.pickCust=cno=>{
+    const c=_allCusts.find(x=>x.customer_no===cno);
+    if(!c)return;
+    $('ss-inp-cust').value=c.name;
+    $('ss-val-cust').value=cno;
+    $('f-oname').value=c.name;
+    $('f-ophone').value=c.phone||'';
+    $('f-oaddr').value=c.ship_full_address||'';
+    if(c.agent_level) $('f-oalv').value=c.agent_level;
+    $('ss-drop-cust')?.classList.remove('open');
+    updateItemPricesByLevel(c.agent_level||'零售');
+  };
+  renderItems();
+}
+
+function updateItemPricesByLevel(lv){
+  const col=LEVEL_COLS[lv]||'price_retail';
+  _items.forEach(item=>{
+    if(item.pno){const p=_allProds.find(x=>x.product_no===item.pno);if(p&&p[col])item.price=p[col];item.amt=item.qty*item.price;}
+  });
+  renderItems();
+}
+
+function getItemProdOpts(selPno){
+  return `<option value="">搜尋商品…</option>`+_allProds.map(p=>`<option value="${p.product_no}" ${p.product_no===selPno?'selected':''}>${p.name}${p.spec?` (${p.spec})`:''} [庫${p.stock}]</option>`).join('');
+}
+
+function renderItems(){
+  const area=$('itemsArea');if(!area)return;
+  area.innerHTML=_items.map(item=>`
+  <div class="ir ir-order">
+    <div style="position:relative">
+      <input type="text" value="${item.pno?(_allProds.find(p=>p.product_no===item.pno)?.name||item.pno):''}" placeholder="輸入關鍵字搜尋商品…"
+        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
+        oninput="filterItemDrop(${item.id},this.value)" onfocus="filterItemDrop(${item.id},this.value)"
+        onblur="setTimeout(()=>closeItemDrop(${item.id}),200)">
+      <div id="idrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+    </div>
+    <input type="number" value="${item.qty}" min="0" onchange="setIQ(${item.id},this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none" title="銷售數量">
+    <input type="number" value="${item.price||''}" placeholder="單價" onchange="setIV(${item.id},this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="number" value="${item.giftQty||0}" min="0" onchange="setIG(${item.id},this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none;background:var(--aml);color:var(--am)" title="贈品數量（免費）">
+    <span style="font-size:13px;font-weight:500">${fM(item.amt)}</span>
+    <button onclick="rmItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
+  </div>`).join('');
+  updAmt();
+}
+
+window.filterItemDrop=(id,q)=>{
+  const drop=$('idrop-'+id);if(!drop)return;
+  const fil=q?_allProds.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)||(p.spec||'').includes(q)):_allProds;
+  drop.style.display='block';
+  drop.innerHTML=fil.slice(0,30).map(p=>`<div style="padding:6px 9px;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''" onmousedown="pickItem(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}')">
+    ${p.name}${p.spec?` (${p.spec})`:''} <span style="color:var(--tx3)">庫存:${p.stock}</span>
+  </div>`).join('')||'<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';
+};
+window.closeItemDrop=id=>{const d=$('idrop-'+id);if(d)d.style.display='none';};
+window.pickItem=(id,pno,name)=>{
+  const it=_items.find(x=>x.id===id);if(!it)return;
+  it.pno=pno;
+  const p=_allProds.find(x=>x.product_no===pno);
+  if(p){
+    const lv=v('oalv')||'零售';
+    const col=LEVEL_COLS[lv]||'price_retail';
+    it.price=p[col]||p.price_retail||0;
+  }
+  it.amt=it.qty*(it.price||0);
+  renderItems();
+  // set input text
+  const inp=document.querySelector(`#idrop-${id}`)?.previousElementSibling;
+  if(inp) inp.value=name;
+  closeItemDrop(id);
+};
+window.addItem=()=>{_items.push({id:Date.now(),pno:'',qty:1,price:0,giftQty:0,amt:0});renderItems();};
+window.rmItem=id=>{_items=_items.filter(x=>x.id!==id);renderItems();};
+window.setIQ=(id,val)=>{const it=_items.find(x=>x.id===id);if(it){it.qty=Math.max(1,+val||1);it.amt=it.qty*it.price;}renderItems();};
+window.setIV=(id,val)=>{const it=_items.find(x=>x.id===id);if(it){it.price=+val||0;it.amt=it.qty*it.price;}renderItems();};
+window.setIG=(id,val)=>{const it=_items.find(x=>x.id===id);if(it)it.giftQty=Math.max(0,+val||0);};
+function updAmt(){
+  const el=$('oAmt');if(!el)return;
+  const sub=_items.reduce((s,i)=>s+i.amt,0);
+  const fee=parseFloat($('f-ofee')?.value)||0;
+  el.innerHTML=`商品小計 ${fM(sub)} + 運費 ${fM(fee)} = <span style="color:var(--ac)">${fM(sub+fee)}</span>（已含稅）`;
+}
+
+async function saveOrder(editNo){
+  const no=editNo||v('ono'), nm=v('oname'), dt=v('odate');
+  if(!no||!nm){toast('請填寫訂單號和客戶名稱','e');return;}
+  const its=_items.filter(i=>i.pno&&i.qty>0);
+  if(!its.length){toast('請至少選一項商品','e');return;}
+  const sub=its.reduce((s,i)=>s+i.amt,0),fee=n('ofee')||0,tax=0,total=sub+fee;
+  const payload={order_date:dt,customer_name:nm,phone:v('ophone'),ship_address:v('oaddr'),payment_method:v('opay'),shipping_method:v('oshp'),shipping_fee:fee,note:v('onote'),agent_level:v('oalv'),invoice_no:v('oinv')||null,subtotal:sub,tax,total,payment_done:editNo?undefined:false,products_summary:its.map(i=>(_allProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、')};
+  if(editNo){
+    await sb.from('sales_order_items').delete().eq('order_no',editNo);
+    const{error}=await sb.from('sales_orders').update(payload).eq('order_no',editNo);
+    if(error){toast('修改失敗：'+error.message,'e');return;}
+  } else {
+    payload.order_no=no;payload.payment_done=false;
+    const{error}=await sb.from('sales_orders').insert(payload);
+    if(error){toast('建立失敗：'+error.message,'e');return;}
+  }
+  const rows=its.map(i=>{const p=_allProds.find(x=>x.product_no===i.pno);return{order_no:no,product_no:i.pno,product_name:i._pname||p?.name||i.pno,unit_price:i.price,qty:i.qty,gift_qty:i.giftQty||0,actual_qty:(i.qty||0)+(i.giftQty||0),amount:i.amt,year_month:ym(dt),promo_code:i.promo_code||null,bundle_group:i.bundle_group||null,is_bundle_item:!!(i.promo_code)};});
+  await sb.from('sales_order_items').insert(rows);
+  if(!editNo){
+    for(const i of its){const{data:p}=await sb.from('products').select('stock').eq('product_no',i.pno).single();if(p)await sb.from('products').update({stock:Math.max(0,p.stock-i.qty)}).eq('product_no',i.pno);}
+  }
+  toast(editNo?'訂單已修改！':'訂單建立成功！庫存已自動扣除');CM();orders();
+}
+
+async function editOrder(no){
+  const[{data:o},{data:its},{data:pr},{data:cu}]=await Promise.all([
+    sb.from('sales_orders').select('*').eq('order_no',no).single(),
+    sb.from('sales_order_items').select('*').eq('order_no',no),
+    sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).order('name'),
+    sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address').order('name'),
+  ]);
+  _allProds=pr||[]; _allCusts=cu||[];
+  _items=(its||[]).map((i,idx)=>({id:idx+1,pno:i.product_no,qty:i.qty,price:i.unit_price,amt:i.amount}));
+  const custOpts=_allCusts.map(c=>({value:c.customer_no,label:`${c.name} (${c.agent_level||'—'})`,data:c}));
+  OM(`修改訂單：${no}`,`
+  <div class="fg" style="margin-bottom:13px">
+    ${fi('ono','訂單編號','text',no)} ${fi('odate','日期','date',fD(o?.order_date))}
+    ${fi('oname','客戶名稱 *','text',o?.customer_name)} ${fi('ophone','手機','text',o?.phone)}
+    ${fs('oshp','寄送方式',['郵寄','超商取貨','親送','自取'],o?.shipping_method)}
+    ${fi('oaddr','送貨地址','text',o?.ship_address)}
+    ${fs('opay','付款方式',['付款交單 (D/P)','匯款','信用卡','現金'],o?.payment_method)}
+    ${fi('ofee','運費','number',o?.shipping_fee||0)}
+    ${fi('oinv','發票號碼','text',o?.invoice_no||'')}
+    <div class="fl"><label>位階</label><select id="f-oalv" onchange="updateItemPricesByLevel(this.value)">${LEVELS.map(l=>`<option ${l===o?.agent_level?'selected':''}>${l}</option>`).join('')}</select></div>
+  </div>
+  <div style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+      <span style="font-size:12px;font-weight:600;color:var(--tx3)">訂購品項</span>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-s" style="background:var(--bll);color:var(--bl);border-color:var(--bl)" onclick="openBundlePicker('order')">＋ 加入套組</button>
+        <button class="btn btn-s" onclick="addItem()">＋ 單品</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:3fr 60px 90px 60px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
+      <span>商品</span><span>銷售數</span><span>單價</span><span style="color:var(--am)">贈品數</span><span>金額</span><span></span>
+    </div>
+    <div id="itemsArea"></div>
+    <div id="oAmt" style="text-align:right;font-weight:600;padding-top:8px;border-top:1px solid var(--bd);margin-top:6px;font-size:13px"></div>
+  </div>
+  ${fa('onote','備註',o?.note||'')}`,
+  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveOrder('${no}')">儲存修改</button>`,true);
+  renderItems();
+}
+
+async function togglePay(no,done){
+  await sb.from('sales_orders').update({payment_done:!done,payment_date:!done?today():null}).eq('order_no',no);
+  toast(!done?'已標記收款完成':'已取消收款');orders();
+}
+async function dOrder(no){
+  if(!confirm(`確定刪除訂單 ${no}？`))return;
+  await sb.from('sales_order_items').delete().eq('order_no',no);
+  await sb.from('sales_orders').delete().eq('order_no',no);
+  toast('訂單已刪除');CM();orders();
+}
+async function recordShipment(no){
+  const[{data:o},{data:its}]=await Promise.all([
+    sb.from('sales_orders').select('ship_status').eq('order_no',no).single(),
+    sb.from('sales_order_items').select('*').eq('order_no',no),
+  ]);
+  const td=today();
+  const rows=(its||[]).map(i=>{
+    const total=(i.qty||0)+(i.gift_qty||0), shipped=i.shipped_qty||0, pending=total-shipped;
+    return '<tr>'
+      +'<td style="font-size:12px">'+( i.product_name||'—')+'</td>'
+      +'<td class="num">'+fN(i.qty)+'</td>'
+      +'<td class="num" style="color:var(--am)">'+(i.gift_qty?fN(i.gift_qty):'—')+'</td>'
+      +'<td class="num ok">'+fN(shipped)+'</td>'
+      +'<td><input type="number" id="f-ship-'+i.id+'" value="'+pending+'" min="0" max="'+pending+'"'
+      +(pending<=0?' disabled':'')+' style="width:65px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none'+(pending<=0?';opacity:.4':'')+'">'+'</td>'
+      +'<td class="num '+(pending>0?'cr':'')+'" >'+fN(pending)+'</td>'
+      +'</tr>';
+  }).join('');
+  const itsJson=JSON.stringify(its);
+  OM('記錄出貨：'+no,
+    '<div class="al al-w" style="font-size:12px">填入本次實際出貨的數量（含贈品），可分批記錄。</div>'
+    +'<div class="fl" style="margin-bottom:12px"><label>出貨日期</label><input id="f-sdt" type="date" value="'+td+'" style="width:180px;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>'
+    +'<table class="itb"><tr><th>商品</th><th>訂購</th><th>贈品</th><th>已出</th><th>本次出貨</th><th>未出</th></tr>'
+    +rows+'</table>',
+    '<button class="btn" onclick="CM()">取消</button>'
+    +'<button class="btn btn-p" onclick="doShipment()">確認出貨</button>');
+  window._shipNo=no; window._shipIts=its;
+}
+
+async function doShipment(no,its){
+  no=no||window._shipNo; its=its||window._shipIts;
+  const sdt=v('sdt')||today();
+  let allShipped=true, anyShipped=false;
+  for(const i of its){
+    const shipQty=parseFloat($('f-ship-'+i.id)?.value)||0;
+    if(shipQty<=0) continue;
+    anyShipped=true;
+    const newShipped=Math.min((i.qty||0)+(i.gift_qty||0),(i.shipped_qty||0)+shipQty);
+    await sb.from('sales_order_items').update({shipped_qty:newShipped}).eq('id',i.id);
+    // 再查一次確認是否全部出完
+    if(newShipped<(i.qty||0)+(i.gift_qty||0)) allShipped=false;
+  }
+  // 重新確認所有 items
+  const{data:updatedIts}=await sb.from('sales_order_items').select('qty,gift_qty,shipped_qty').eq('order_no',no);
+  const allDone=(updatedIts||[]).every(i=>(i.shipped_qty||0)>=(i.qty||0)+(i.gift_qty||0));
+  const partDone=(updatedIts||[]).some(i=>(i.shipped_qty||0)>0);
+  const status=allDone?'全部出貨':partDone?'部分出貨':'待出貨';
+  await sb.from('sales_orders').update({ship_status:status,actual_ship_date:allDone?sdt:null}).eq('order_no',no);
+  toast('出貨記錄已更新！');CM();orders();
+}
+
+async function recordReceipt(no){
+  const{data:its}=await sb.from('purchase_order_items').select('*').eq('po_no',no);
+  const td=today();
+  const rows=(its||[]).map(i=>{
+    const total=(i.qty||0)+(i.gift_qty||0), recv=i.received_qty||0, pending=total-recv;
+    return '<tr>'
+      +'<td style="font-size:12px">'+(i.product_name||'—')+'</td>'
+      +'<td class="num">'+fN(i.qty)+'</td>'
+      +'<td class="num" style="color:var(--am)">'+(i.gift_qty?fN(i.gift_qty):'—')+'</td>'
+      +'<td class="num ok">'+fN(recv)+'</td>'
+      +'<td><input type="number" id="f-recv-'+i.id+'" value="'+pending+'" min="0" max="'+pending+'"'
+      +(pending<=0?' disabled':'')+' style="width:65px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none'+(pending<=0?';opacity:.4':'')+'">'+'</td>'
+      +'<td class="num '+(pending>0?'cr':'')+'">'+fN(pending)+'</td>'
+      +'</tr>';
+  }).join('');
+  const itsJson=JSON.stringify(its);
+  OM('記錄收貨：'+no,
+    '<div class="al al-w" style="font-size:12px">填入本次實際收到的數量（含贈品），可分批記錄。庫存將自動增加。</div>'
+    +'<div class="fl" style="margin-bottom:12px"><label>收貨日期</label><input id="f-rdt2" type="date" value="'+td+'" style="width:180px;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>'
+    +'<table class="itb"><tr><th>商品</th><th>訂購</th><th>贈品</th><th>已收</th><th>本次收貨</th><th>未收</th></tr>'
+    +rows+'</table>',
+    '<button class="btn" onclick="CM()">取消</button>'
+    +'<button class="btn btn-p" onclick="doReceipt()">確認收貨</button>');
+  window._recvNo=no; window._recvIts=its;
+}
+
+async function doReceipt(no,its){
+  no=no||window._recvNo; its=its||window._recvIts;
+  for(const i of its){
+    const recvQty=parseFloat($('f-recv-'+i.id)?.value)||0;
+    if(recvQty<=0) continue;
+    const newRecv=Math.min((i.qty||0)+(i.gift_qty||0),(i.received_qty||0)+recvQty);
+    await sb.from('purchase_order_items').update({received_qty:newRecv}).eq('id',i.id);
+    // 增加庫存（已收貨部分）
+    const{data:p}=await sb.from('products').select('stock').eq('product_no',i.product_no).single();
+    if(p) await sb.from('products').update({stock:p.stock+recvQty}).eq('product_no',i.product_no);
+  }
+  const{data:updIts}=await sb.from('purchase_order_items').select('qty,gift_qty,received_qty').eq('po_no',no);
+  const allDone=(updIts||[]).every(i=>(i.received_qty||0)>=(i.qty||0)+(i.gift_qty||0));
+  const partDone=(updIts||[]).some(i=>(i.received_qty||0)>0);
+  const status=allDone?'全部收貨':partDone?'部分收貨':'待收貨';
+  await sb.from('purchase_orders').update({receipt_status:status,done:allDone}).eq('po_no',no);
+  toast('收貨記錄已更新！庫存已增加');CM();purchase();
+}
+
+
+// ── PURCHASE ──
+let puP=1, _poItems=[], _poProds=[], _vends2=[];
+async function purchase(){
+  try{
+    const{data,count}=await sb.from('purchase_orders').select('po_no,po_date,vendor_name,products_summary,total,done,receipt_status',{count:'exact'}).order('po_date',{ascending:false}).range((puP-1)*25,puP*25-1);
+    const tp=Math.ceil((count||0)/25);
+    $('main').innerHTML=`
+    <div class="ph"><div><div class="pt">進貨管理</div><div class="ps">${count||0} 張</div></div>
+      <div class="ha"><button class="btn btn-p btn-s" onclick="addPO()">＋ 新增進貨單</button></div></div>
+    <div class="pc"><div class="tc">
+      <div class="tb"><span class="tt">進貨單列表</span></div>
+      <div class="tw"><table>
+        <tr><th>進貨單號</th><th>日期</th><th>廠商</th><th>商品摘要</th><th>合計</th><th>進貨</th><th>收貨</th><th>操作</th></tr>
+        ${(data||[]).map(p=>`<tr>
+          <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${p.po_no}</td>
+          <td style="font-size:12px">${fD(p.po_date)}</td>
+          <td style="font-weight:500">${p.vendor_name||'—'}</td>
+          <td style="font-size:12px;color:var(--tx2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.products_summary||'—'}</td>
+          <td class="num" style="font-weight:600">${fM(p.total)}</td>
+          <td><span class="badge ${p.done?'bg':'ba'}">${p.done?'完成':'進行中'}</span></td>
+          <td><span class="badge ${p.receipt_status==='全部收貨'?'bg':p.receipt_status==='部分收貨'?'ba':'br2'}">${p.receipt_status||'待收貨'}</span></td>
+          <td><div style="display:flex;gap:3px">
+            <button class="btn btn-s" onclick="showPO('${p.po_no}')">明細</button>
+            <button class="btn btn-s" onclick="editPO('${p.po_no}')">修改</button>
+            <button class="btn btn-s" onclick="recordReceipt('${p.po_no}')">收貨記錄</button>
+            <button class="btn btn-s" onclick="togglePO('${p.po_no}',${p.done})">${p.done?'取消完成':'標記完成'}</button>
+          </div></td>
+        </tr>`).join('')}
+      </table></div>
+      <div class="pg"><span class="pi">第${puP}/${tp}頁</span>
+        <div style="display:flex;gap:5px">
+          ${puP>1?`<button class="btn btn-s" onclick="puP--;purchase()">上一頁</button>`:''}
+          ${puP<tp?`<button class="btn btn-s" onclick="puP++;purchase()">下一頁</button>`:''}
+        </div></div>
+    </div></div>`;
+  }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
+}
+
+async function showPO(no){
+  const[{data:po},{data:its}]=await Promise.all([
+    sb.from('purchase_orders').select('*').eq('po_no',no).single(),
+    sb.from('purchase_order_items').select('*').eq('po_no',no),
+  ]);
+  OM(`進貨單：${no}`,`
+  <div class="dg" style="margin-bottom:13px">
+    <div class="dr"><span class="dlb">日期</span><span class="dv">${po?.po_date||'—'}</span></div>
+    <div class="dr"><span class="dlb">廠商</span><span class="dv">${po?.vendor_name||'—'}</span></div>
+    <div class="dr"><span class="dlb">付款方式</span><span class="dv">${po?.payment_method||'—'}</span></div>
+    <div class="dr"><span class="dlb">狀態</span><span class="dv"><span class="badge ${po?.done?'bg':'ba'}">${po?.done?'完成':'進行中'}</span></span></div>
+    <div class="dr"><span class="dlb">發票號碼</span><span class="dv" style="font-family:monospace">${po?.invoice_no||'—'}</span></div>
+  </div>
+  <table class="itb"><tr><th>商品</th><th>規格</th><th>單價</th><th>數量</th><th>金額</th></tr>
+  ${(its||[]).map(i=>`<tr><td>${i.product_name||'—'}</td><td>${i.spec||'—'}</td><td class="num">${fM(i.unit_price)}</td><td class="num">${fN(i.qty)}</td><td class="num">${fM(i.amount)}</td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
+  </table>
+  <div style="background:var(--sf2);border-radius:var(--r);padding:10px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:13px">
+    <span>小計（稅前參考）</span><span class="num" style="text-align:right">${fM(po?.subtotal)}</span>
+    <span>稅（含稅，拆算參考）</span><span class="num" style="text-align:right">${fM(po?.tax)}</span>
+    <span style="font-weight:700">合計</span><span class="num" style="text-align:right;font-weight:700;color:var(--br)">${fM(po?.total)}</span>
+  </div>`);
+}
+
+async function loadPOForm(poData,itsData){
+  const[{data:pr},{data:vn}]=await Promise.all([
+    sb.from('products').select('product_no,name,spec,cost').order('name'),
+    sb.from('vendors').select('vendor_no,name').order('name'),
+  ]);
+  _poProds=pr||[]; _vends2=vn||[];
+  if(itsData) _poItems=itsData.map((i,idx)=>({id:idx+1,pno:i.product_no,qty:i.qty,price:i.unit_price,amt:i.amount}));
+  else _poItems=[{id:1,pno:'',qty:1,price:0,amt:0}];
+  const vOpts=_vends2.map(v=>`<option value="${v.vendor_no}">${v.name}</option>`).join('');
+  const td=today(), no=poData?.po_no||('PO-'+td.replace(/-/g,'')+'-'+String(Date.now()).slice(-3));
+  return `
+  <div class="fg" style="margin-bottom:13px">
+    ${fi('pono','進貨單號','text',no)} ${fi('podt','日期','date',poData?.po_date||td)}
+    <div class="fl"><label>選擇廠商</label><select id="f-povend" onchange="pickVend(this.value)"><option value="">選擇廠商…</option>${vOpts}</select></div>
+    ${fi('povname','廠商名稱 *','text',poData?.vendor_name)} ${payMethodSel('popay',poData?.payment_method||'交貨付現')}
+    ${fi('poinv','發票號碼','text',poData?.invoice_no||'')}
+  </div>
+  <div style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+      <span style="font-size:12px;font-weight:600;color:var(--tx3)">進貨品項</span>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-s" style="background:var(--bll);color:var(--bl);border-color:var(--bl)" onclick="openBundlePicker('po')">＋ 加入套組</button>
+        <button class="btn btn-s" onclick="addPOItem()">＋ 單品</button>
+      </div>
+    </div>
+    <div id="poArea"></div>
+    <div id="poAmt" style="text-align:right;font-weight:600;padding-top:8px;border-top:1px solid var(--bd);margin-top:6px;font-size:13px"></div>
+  </div>
+  ${fa('ponote','備註',poData?.note||'')}`;
+}
+
+async function addPO(){
+  const html=await loadPOForm(null,null);
+  OM('新增進貨單',html,`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="savePO(false)">建立進貨單</button>`,true);
+  renderPOItems();
+}
+async function editPO(no){
+  const[{data:po},{data:its}]=await Promise.all([
+    sb.from('purchase_orders').select('*').eq('po_no',no).single(),
+    sb.from('purchase_order_items').select('*').eq('po_no',no),
+  ]);
+  const html=await loadPOForm(po,its);
+  OM(`修改進貨單：${no}`,html,`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="savePO('${no}')">儲存修改</button>`,true);
+  renderPOItems();
+}
+
+window.pickVend=vno=>{const v=_vends2.find(x=>x.vendor_no===vno);if(v)$('f-povname').value=v.name;};
+
+function renderPOItems(){
+  const area=$('poArea');if(!area)return;
+  area.innerHTML=_poItems.map(item=>`
+  <div class="ir ir-po">
+    <div style="position:relative">
+      <input type="text" value="${item.pno?(_poProds.find(p=>p.product_no===item.pno)?.name||item.pno):''}" placeholder="輸入關鍵字搜尋商品…"
+        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
+        oninput="filterPODrop(${item.id},this.value)" onfocus="filterPODrop(${item.id},this.value)"
+        onblur="setTimeout(()=>closePODrop(${item.id}),200)">
+      <div id="podrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+    </div>
+    <input type="number" value="${item.qty}" min="1" onchange="setPOIQ(${item.id},this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="number" value="${item.price||''}" placeholder="進貨價" onchange="setPOIV(${item.id},this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <span style="font-size:13px;font-weight:500">${fM(item.amt)}</span>
+    <button onclick="rmPOItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
+  </div>`).join('');
+  updPOAmt();
+}
+window.filterPODrop=(id,q)=>{const drop=$('podrop-'+id);if(!drop)return;drop.style.display='block';const fil=q?_poProds.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)):_poProds;drop.innerHTML=fil.slice(0,30).map(p=>`<div style="padding:6px 9px;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''" onmousedown="pickPOItem(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}',${p.cost||0})">${p.name}${p.spec?` (${p.spec})`:''}</div>`).join('')||'<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';};
+window.closePODrop=id=>{const d=$('podrop-'+id);if(d)d.style.display='none';};
+window.pickPOItem=(id,pno,name,cost)=>{const it=_poItems.find(x=>x.id===id);if(!it)return;it.pno=pno;it.price=cost||0;it.amt=it.qty*it.price;renderPOItems();const inp=document.querySelector(`#podrop-${id}`)?.previousElementSibling;if(inp)inp.value=name;closePODrop(id);};
+window.addPOItem=()=>{_poItems.push({id:Date.now(),pno:'',qty:1,price:0,amt:0});renderPOItems();};
+window.rmPOItem=id=>{_poItems=_poItems.filter(x=>x.id!==id);renderPOItems();};
+window.setPOIQ=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.qty=Math.max(1,+val||1);it.amt=it.qty*it.price;}renderPOItems();};
+window.setPOIV=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.price=+val||0;it.amt=it.qty*it.price;}renderPOItems();};
+function updPOAmt(){const el=$('poAmt');if(!el)return;const sub=_poItems.reduce((s,i)=>s+i.amt,0);const tax=Math.round(sub*0.05);el.innerHTML=`合計：<span style="color:var(--br)">${fM(sub+tax)}</span>`;}
+
+async function savePO(editNo){
+  const no=editNo||v('pono'), vn=v('povname'), dt=v('podt');
+  if(!no||!vn){toast('請填寫進貨單號和廠商名稱','e');return;}
+  const its=_poItems.filter(i=>i.pno&&i.qty>0);
+  const sub=its.reduce((s,i)=>s+i.amt,0),tax=Math.round(sub*0.05),total=sub+tax;
+  const payload={po_date:dt,vendor_name:vn,payment_method:v('popay'),invoice_no:v('poinv')||null,note:v('ponote'),subtotal:sub,tax,total,products_summary:its.map(i=>(_poProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、')};
+  if(editNo){
+    await sb.from('purchase_order_items').delete().eq('po_no',editNo);
+    await sb.from('purchase_orders').update(payload).eq('po_no',editNo);
+  } else {
+    payload.po_no=no;payload.done=false;
+    const{error}=await sb.from('purchase_orders').insert(payload);
+    if(error){toast('建立失敗：'+error.message,'e');return;}
+  }
+  if(its.length){
+    await sb.from('purchase_order_items').insert(its.map(i=>{const p=_poProds.find(x=>x.product_no===i.pno);return{po_no:no,product_no:i.pno,product_name:p?.name||i.pno,spec:p?.spec,unit_price:i.price,qty:i.qty,amount:i.amt,po_date:dt};}));
+    if(!editNo){for(const i of its){const{data:p}=await sb.from('products').select('stock').eq('product_no',i.pno).single();if(p)await sb.from('products').update({stock:p.stock+i.qty}).eq('product_no',i.pno);}}
+  }
+  toast(editNo?'進貨單已修改！':'進貨單建立成功！庫存已自動增加');CM();purchase();
+}
+async function togglePO(no,done){await sb.from('purchase_orders').update({done:!done}).eq('po_no',no);toast(!done?'已標記完成':'已取消完成');purchase();}
+
+// ── CUSTOMERS ──
+let cS='',cP=1;
+async function customers(){
+  try{
+    let q=sb.from('customers').select('customer_no,name,agent_level,phone,email,ship_full_address,store_credit',{count:'exact'}).order('customer_no');
+    if(cS) q=q.or(`name.ilike.%${cS}%,phone.ilike.%${cS}%,customer_no.ilike.%${cS}%`);
+    const{data,count}=await q.range((cP-1)*30,cP*30-1);
+    const tp=Math.ceil((count||0)/30);
+    $('main').innerHTML=`
+    <div class="ph"><div><div class="pt">客戶資料</div><div class="ps">${count||0} 位</div></div>
+      <div class="ha"><button class="btn btn-p btn-s" onclick="addCust()">＋ 新增客戶</button></div></div>
+    <div class="pc"><div class="tc">
+      <div class="tb"><span class="tt">客戶列表</span>
+        <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input placeholder="姓名/電話/編號…" value="${cS}" oninput="cS=this.value;cP=1;customers()"></div>
+      </div>
+      <div class="tw"><table>
+        <tr><th>編號</th><th>姓名</th><th>位階</th><th>手機</th><th>Email</th><th>送貨地址</th><th>儲值金</th><th>操作</th></tr>
+        ${(data||[]).map(c=>`<tr>
+          <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${c.customer_no}</td>
+          <td style="font-weight:500">${c.name}</td>
+          <td>${lvBadge(c.agent_level)}</td>
+          <td>${c.phone||'—'}</td>
+          <td style="font-size:12px">${c.email||'—'}</td>
+          <td style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.ship_full_address||'—'}</td>
+          <td class="num">${c.store_credit?fM(c.store_credit):'—'}</td>
+          <td><div style="display:flex;gap:3px">
+            <button class="btn btn-s" onclick="showCust('${c.customer_no}')">查看</button>
+            <button class="btn btn-s" onclick="eCust('${c.customer_no}')">編輯</button>
+          </div></td>
+        </tr>`).join('')}
+      </table></div>
+      <div class="pg"><span class="pi">第${cP}/${tp}頁</span>
+        <div style="display:flex;gap:5px">
+          ${cP>1?`<button class="btn btn-s" onclick="cP--;customers()">上一頁</button>`:''}
+          ${cP<tp?`<button class="btn btn-s" onclick="cP++;customers()">下一頁</button>`:''}
+        </div></div>
+    </div></div>`;
+  }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
+}
+
+async function showCust(no){
+  const[{data:c},{data:os}]=await Promise.all([
+    sb.from('customers').select('*').eq('customer_no',no).single(),
+    sb.from('sales_orders').select('order_no,order_date,total,payment_done').eq('customer_no',no).order('order_date',{ascending:false}).limit(30),
+  ]);
+  OM(`客戶：${c?.name}`,`
+  <div class="dg" style="margin-bottom:13px">
+    <div class="dr"><span class="dlb">客戶編號</span><span class="dv">${c?.customer_no}</span></div>
+    <div class="dr"><span class="dlb">位階</span><span class="dv">${lvBadge(c?.agent_level)}</span></div>
+    <div class="dr"><span class="dlb">手機</span><span class="dv">${c?.phone||'—'}</span></div>
+    <div class="dr"><span class="dlb">Email</span><span class="dv">${c?.email||'—'}</span></div>
+    <div class="dr"><span class="dlb">生日</span><span class="dv">${c?.birthday||'—'}</span></div>
+    <div class="dr"><span class="dlb">13月亮印記</span><span class="dv">${c?.lunar_mark||'—'}</span></div>
+    <div class="dr"><span class="dlb">愛閃耀會員編號</span><span class="dv" style="font-family:monospace">${c?.member_no||'—'}</span></div>
+    <div class="dr"><span class="dlb">儲值金</span><span class="dv ok" style="font-weight:600">${fM(c?.store_credit)}</span></div>
+    <div class="dr"><span class="dlb">付款方式</span><span class="dv">${c?.payment_method||'—'}</span></div>
+    <div class="dr" style="grid-column:1/-1"><span class="dlb">送貨地址</span><span class="dv">${c?.ship_full_address||c?.ship_address||'—'}</span></div>
+    <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${c?.note||'—'}</span></div>
+  </div>
+  <div class="sh">購買紀錄（點訂單號查看明細）</div>
+  <table class="itb"><tr><th>訂單號</th><th>日期</th><th>金額</th><th>收款</th></tr>
+  ${(os||[]).map(o=>`<tr>
+    <td><a href="#" onclick="event.preventDefault();CM();setTimeout(()=>showOrder('${o.order_no}'),100)" style="color:var(--ac);font-family:monospace;font-size:12px">${o.order_no}</a></td>
+    <td style="font-size:12px">${fD(o.order_date)}</td>
+    <td class="num" style="font-weight:600">${fM(o.total)}</td>
+    <td><span class="badge ${o.payment_done?'bg':'br2'}">${o.payment_done?'已收':'未收'}</span></td>
+  </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--tx3)">暫無購買紀錄</td></tr>'}
+  </table>`,
+  `<button class="btn" onclick="CM()">關閉</button><button class="btn" onclick="eCust('${no}')">編輯資料</button>`,true);
+}
+
+function custForm(c){
+  c=c||{};
+  return `<div class="fg">
+    ${fi('cno','客戶編號','text',c.customer_no)} ${fi('cname','姓名 *','text',c.name)}
+    ${fs('clv','位階',LEVELS,c.agent_level||'零售')}
+    ${fi('cmno','愛閃耀會員編號','text',c.member_no)}
+    ${fi('cph','手機','text',c.phone)} ${fi('ceml','Email','text',c.email)}
+    ${fi('cbday','生日','text',c.birthday)} ${fi('clmk','13月亮印記','text',c.lunar_mark)}
+    ${fi('cpay','付款方式','text',c.payment_method||'付款交單 (D/P)')}
+    ${fi('cshp','寄送方式','text',c.shipping_method)}
+    <div class="fl fw">${fi('caddr','送貨地址','text',c.ship_full_address||c.ship_address)}</div>
+    <div class="fl fw">${fa('cnote','備註',c.note)}</div>
+  </div>`;
+}
+
+async function addCust(){
+  // 自動產生下一個客戶編號
+  // 只抓 C-00001 ~ C-09999 格式，排除特殊號碼
+  const{data:last}=await sb.from('customers').select('customer_no').like('customer_no','C-0____').order('customer_no',{ascending:false}).limit(5);
+  let nextNo='C-00001';
+  if(last&&last.length){
+    const nums=last.map(r=>{const m=r.customer_no?.match(/^C-0(\d{4})$/);return m?parseInt('0'+m[1]):0;}).filter(n=>n>0&&n<10000);
+    if(nums.length){const mx=Math.max(...nums);nextNo='C-'+String(mx+1).padStart(5,'0');}
+  }
+  OM('新增客戶',custForm({customer_no:nextNo}),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveCust(false)">新增</button>`);
+}
+async function eCust(no){
+  const{data:c}=await sb.from('customers').select('*').eq('customer_no',no).single();
+  OM('編輯客戶',custForm(c),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveCust('${no}')">儲存</button>`);
+}
+async function saveCust(existingNo){
+  const nm=v('cname');if(!nm){toast('請填寫姓名','e');return;}
+  const obj={name:nm,agent_level:v('clv'),member_no:v('cmno')||null,phone:v('cph'),email:v('ceml'),birthday:v('cbday')||null,lunar_mark:v('clmk')||null,payment_method:v('cpay'),shipping_method:v('cshp')||null,ship_address:v('caddr'),ship_full_address:v('caddr'),note:v('cnote')||null};
+  if(existingNo){
+    const{error}=await sb.from('customers').update(obj).eq('customer_no',existingNo);
+    if(error){toast('儲存失敗：'+error.message,'e');return;}
+  } else {
+    const no=v('cno');obj.customer_no=no||null;obj.store_credit=0;
+    const{error}=await sb.from('customers').insert(obj);
+    if(error){toast('新增失敗：'+error.message,'e');return;}
+  }
+  toast(existingNo?'客戶資料已更新':'客戶新增成功');CM();customers();
+}
+
+// ── VENDORS ──
+async function vendors(){
+  const{data}=await sb.from('vendors').select('*').order('vendor_no');
+  $('main').innerHTML=`
+  <div class="ph"><div><div class="pt">廠商管理</div><div class="ps">${data?.length||0} 家</div></div>
+    <div class="ha"><button class="btn btn-p btn-s" onclick="addVend()">＋ 新增廠商</button></div></div>
+  <div class="pc"><div class="tc">
+    <div class="tb"><span class="tt">廠商列表</span></div>
+    <div class="tw"><table>
+      <tr><th>廠商編號</th><th>廠商名稱</th><th>聯絡人</th><th>電話</th><th>統一編號</th><th>付款方式</th><th>操作</th></tr>
+      ${(data||[]).map(vd=>`<tr>
+        <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${vd.vendor_no}</td>
+        <td style="font-weight:500">${vd.name}</td>
+        <td>${vd.contact||'—'}</td>
+        <td>${vd.phone||vd.mobile||'—'}</td>
+        <td>${vd.tax_no||'—'}</td>
+        <td>${vd.payment_method||'—'}</td>
+        <td><div style="display:flex;gap:3px">
+          <button class="btn btn-s" onclick="showVend('${vd.vendor_no}')">明細</button>
+          <button class="btn btn-s" onclick="eVend('${vd.vendor_no}')">編輯</button>
+        </div></td>
+      </tr>`).join('')}
+    </table></div>
+  </div></div>`;
+}
+
+function vendForm(vd){
+  vd=vd||{};
+  return `<div class="fg">
+    ${fi('vno','廠商編號','text',vd.vendor_no)} ${fi('vname','廠商名稱 *','text',vd.name)}
+    ${fi('vcont','聯絡窗口','text',vd.contact)} ${fi('vph','電話','text',vd.phone)}
+    ${fi('vmob','手機','text',vd.mobile)} ${fi('veml','Email','text',vd.email)}
+    ${fi('vtax','統一編號','text',vd.tax_no)} ${fi('vfax','傳真','text',vd.fax)}
+    ${fi('vpay','付款方式','text',vd.payment_method)} ${fi('vterm','付款條件','text',vd.payment_terms)}
+    ${fi('vbank','銀行名稱','text',vd.bank_name)} ${fi('vbacc','帳號','text',vd.bank_account)}
+    ${fi('vbhld','戶名','text',vd.bank_holder)}
+    <div class="fl fw">${fi('vaddr','地址','text',vd.full_address)}</div>
+    <div class="fl fw">${fa('vnote','備註',vd.note)}</div>
+  </div>`;
+}
+
+function addVend(){OM('新增廠商',vendForm(),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveVend(false)">新增</button>`);}
+async function eVend(no){const{data:vd}=await sb.from('vendors').select('*').eq('vendor_no',no).single();OM('編輯廠商',vendForm(vd),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveVend('${no}')">儲存</button>`);}
+async function showVend(no){
+  const{data:vd}=await sb.from('vendors').select('*').eq('vendor_no',no).single();
+  OM(`廠商：${vd?.name}`,`
+  <div class="dg">
+    <div class="dr"><span class="dlb">廠商編號</span><span class="dv">${vd?.vendor_no}</span></div>
+    <div class="dr"><span class="dlb">聯絡人</span><span class="dv">${vd?.contact||'—'}</span></div>
+    <div class="dr"><span class="dlb">電話</span><span class="dv">${vd?.phone||vd?.mobile||'—'}</span></div>
+    <div class="dr"><span class="dlb">Email</span><span class="dv">${vd?.email||'—'}</span></div>
+    <div class="dr"><span class="dlb">統一編號</span><span class="dv">${vd?.tax_no||'—'}</span></div>
+    <div class="dr"><span class="dlb">付款方式</span><span class="dv">${vd?.payment_method||'—'}</span></div>
+    <div class="dr"><span class="dlb">付款條件</span><span class="dv">${vd?.payment_terms||'—'}</span></div>
+    <div class="dr"><span class="dlb">銀行帳號</span><span class="dv">${[vd?.bank_name,vd?.bank_account,vd?.bank_holder].filter(Boolean).join(' / ')||'—'}</span></div>
+    <div class="dr" style="grid-column:1/-1"><span class="dlb">地址</span><span class="dv">${vd?.full_address||'—'}</span></div>
+  </div>`);
+}
+async function saveVend(existingNo){
+  const nm=v('vname');if(!nm){toast('請填寫廠商名稱','e');return;}
+  const obj={name:nm,contact:v('vcont')||null,phone:v('vph')||null,mobile:v('vmob')||null,email:v('veml')||null,tax_no:v('vtax')||null,fax:v('vfax')||null,payment_method:v('vpay')||null,payment_terms:v('vterm')||null,bank_name:v('vbank')||null,bank_account:v('vbacc')||null,bank_holder:v('vbhld')||null,full_address:v('vaddr')||null,note:v('vnote')||null};
+  if(existingNo){await sb.from('vendors').update(obj).eq('vendor_no',existingNo);}
+  else{obj.vendor_no=v('vno')||null;await sb.from('vendors').insert(obj);}
+  toast(existingNo?'廠商已更新':'廠商新增成功');CM();vendors();
+}
+
+// ── LOANS ──
+let _loanItems=[], _loanProds=[];
+async function loans(){
+  const{data,count}=await sb.from('loan_orders').select('loan_no,loan_date,direction,customer_name,agent_level,products_summary,total,return_status,returned',{count:'exact'}).order('loan_date',{ascending:false}).limit(60);
+  $('main').innerHTML=`
+  <div class="ph"><div><div class="pt">借貨管理</div><div class="ps">${count||0} 張</div></div>
+    <div class="ha"><button class="btn btn-p btn-s" onclick="addLoan()">＋ 新增借貨單</button></div></div>
+  <div class="pc"><div class="tc">
+    <div class="tb"><span class="tt">借貨單列表</span></div>
+    <div class="tw"><table>
+      <tr><th>借貨單號</th><th>日期</th><th>方向</th><th>客戶</th><th>位階</th><th>商品</th><th>歸還狀態</th><th>操作</th></tr>
+      ${(data||[]).map(l=>`<tr>
+        <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${l.loan_no}</td>
+        <td style="font-size:12px">${fD(l.loan_date)}</td>
+        <td><span class="badge ${l.direction==='借出'?'bb':'bbr'}">${l.direction||'借出'}</span></td>
+        <td style="font-weight:500">${l.customer_name||'—'}</td>
+        <td>${lvBadge(l.agent_level)}</td>
+        <td style="font-size:12px;color:var(--tx2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.products_summary||'—'}</td>
+        <td><span class="badge ${l.return_status==='全部歸還'||l.returned?'bg':l.return_status==='部分歸還'?'ba':'br2'}">${l.return_status||'未歸還'}</span></td>
+        <td><div style="display:flex;gap:3px">
+          <button class="btn btn-s" onclick="showLoan('${l.loan_no}')">明細</button>
+          <button class="btn btn-s" onclick="returnLoan('${l.loan_no}')">記錄歸還</button>
+        </div></td>
+      </tr>`).join('')}
+    </table></div>
+  </div></div>`;
+}
+
+async function addLoan(){
+  const{data:pr}=await sb.from('products').select('product_no,name,spec,stock').order('name');
+  _loanProds=pr||[];
+  _loanItems=[{id:1,pno:'',qty:1}];
+  const td=today(), no='LO-'+td.replace(/-/g,'')+'-'+String(Date.now()).slice(-3);
+  const{data:cu}=await sb.from('customers').select('customer_no,name,agent_level,phone').order('name');
+  const custOpts=(cu||[]).map(c=>`<option value="${c.customer_no}">${c.name} (${c.agent_level||'—'})</option>`).join('');
+  OM('新增借貨單',`
+  <div class="fg" style="margin-bottom:13px">
+    ${fi('lno','借貨單號','text',no)} ${fi('ldt','日期','date',td)}
+    ${fs('ldir','方向',['借出','借入'],'借出')}
+    <div class="fl"><label>選擇客戶</label><select id="f-lcust" onchange="pickLoanCust(this.value)"><option value="">選擇客戶…</option>${custOpts}</select></div>
+    ${fi('lname','客戶名稱 *')} ${fi('lph','手機')}
+    ${fs('llv','位階',LEVELS,'零售')}
+    ${fs('lshp','寄送方式',['郵寄','超商取貨','親送','自取'])}
+    ${fi('laddr','地址')}
+  </div>
+  <div style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+      <span style="font-size:12px;font-weight:600;color:var(--tx3)">借貨品項</span>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-s" style="background:var(--bll);color:var(--bl);border-color:var(--bl)" onclick="openBundlePicker('loan')">＋ 加入套組</button>
+        <button class="btn btn-s" onclick="addLoanItem()">＋ 單品</button>
+      </div>
+    </div>
+    <div id="loanArea"></div>
+  </div>
+  ${fa('lnote','備註','')}`,
+  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveLoan()">建立借貨單</button>`,true);
+  window.pickLoanCust=cno=>{const c=(cu||[]).find(x=>x.customer_no===cno);if(c){$('f-lname').value=c.name;$('f-lph').value=c.phone||'';if(c.agent_level)$('f-llv').value=c.agent_level;}};
+  renderLoanItems();
+}
+
+function renderLoanItems(){
+  const area=$('loanArea');if(!area)return;
+  area.innerHTML=_loanItems.map(item=>`
+  <div class="ir ir-loan">
+    <div style="position:relative">
+      <input type="text" value="${item.pno?(_loanProds.find(p=>p.product_no===item.pno)?.name||item.pno):''}" placeholder="輸入關鍵字搜尋商品…"
+        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
+        oninput="filterLoanDrop(${item.id},this.value)" onfocus="filterLoanDrop(${item.id},this.value)"
+        onblur="setTimeout(()=>closeLoanDrop(${item.id}),200)">
+      <div id="ldrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+    </div>
+    <input type="number" value="${item.qty}" min="1" onchange="setLoanIQ(${item.id},this.value)" placeholder="數量" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <span style="font-size:12px;color:var(--tx3)">已借${item.pno?(_loanProds.find(p=>p.product_no===item.pno)?.stock||0):'—'}件庫存</span>
+    <button onclick="rmLoanItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
+  </div>`).join('');
+}
+window.filterLoanDrop=(id,q)=>{const drop=$('ldrop-'+id);if(!drop)return;drop.style.display='block';const fil=q?_loanProds.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)):_loanProds;drop.innerHTML=fil.slice(0,30).map(p=>`<div style="padding:6px 9px;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''" onmousedown="pickLoanItem(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}')">
+  ${p.name}${p.spec?` (${p.spec})`:''} <span style="color:var(--tx3)">庫存:${p.stock}</span></div>`).join('')||'<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';};
+window.closeLoanDrop=id=>{const d=$('ldrop-'+id);if(d)d.style.display='none';};
+window.pickLoanItem=(id,pno,name)=>{const it=_loanItems.find(x=>x.id===id);if(it){it.pno=pno;}renderLoanItems();const inp=document.querySelector(`#ldrop-${id}`)?.previousElementSibling;if(inp)inp.value=name;closeLoanDrop(id);};
+window.addLoanItem=()=>{_loanItems.push({id:Date.now(),pno:'',qty:1});renderLoanItems();};
+window.rmLoanItem=id=>{_loanItems=_loanItems.filter(x=>x.id!==id);renderLoanItems();};
+window.setLoanIQ=(id,val)=>{const it=_loanItems.find(x=>x.id===id);if(it)it.qty=Math.max(1,+val||1);};
+
+async function saveLoan(){
+  const no=v('lno'),nm=v('lname'),dt=v('ldt'),dir=v('ldir');
+  if(!no||!nm){toast('請填寫單號和客戶名稱','e');return;}
+  const its=_loanItems.filter(i=>i.pno&&i.qty>0);
+  if(!its.length){toast('請至少選一項商品','e');return;}
+  await sb.from('loan_orders').insert({loan_no:no,loan_date:dt,direction:dir,customer_name:nm,phone:v('lph'),agent_level:v('llv'),address:v('laddr'),shipping_method:v('lshp'),note:v('lnote'),return_status:'未歸還',returned:false,products_summary:its.map(i=>(_loanProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、'),year_month:ym(dt)});
+  await sb.from('loan_order_items').insert(its.map(i=>{const p=_loanProds.find(x=>x.product_no===i.pno);return{loan_no:no,product_no:i.pno,product_name:p?.name||i.pno,spec:p?.spec,qty:i.qty,returned_qty:0};}));
+  // 連動庫存
+  for(const i of its){
+    const{data:p}=await sb.from('products').select('stock').eq('product_no',i.pno).single();
+    if(p){const ns=dir==='借出'?Math.max(0,p.stock-i.qty):p.stock+i.qty;await sb.from('products').update({stock:ns}).eq('product_no',i.pno);}
+  }
+  toast('借貨單建立成功！庫存已更新');CM();loans();
+}
+
+async function showLoan(no){
+  const[{data:l},{data:its}]=await Promise.all([
+    sb.from('loan_orders').select('*').eq('loan_no',no).single(),
+    sb.from('loan_order_items').select('*').eq('loan_no',no),
+  ]);
+  OM(`借貨單：${no}`,`
+  <div class="dg" style="margin-bottom:13px">
+    <div class="dr"><span class="dlb">日期</span><span class="dv">${fD(l?.loan_date)}</span></div>
+    <div class="dr"><span class="dlb">方向</span><span class="dv"><span class="badge ${l?.direction==='借出'?'bb':'bbr'}">${l?.direction||'借出'}</span></span></div>
+    <div class="dr"><span class="dlb">客戶</span><span class="dv">${l?.customer_name||'—'}</span></div>
+    <div class="dr"><span class="dlb">位階</span><span class="dv">${lvBadge(l?.agent_level)}</span></div>
+    <div class="dr"><span class="dlb">歸還狀態</span><span class="dv"><span class="badge ${l?.return_status==='全部歸還'||l?.returned?'bg':l?.return_status==='部分歸還'?'ba':'br2'}">${l?.return_status||'未歸還'}</span></span></div>
+    <div class="dr"><span class="dlb">地址</span><span class="dv">${l?.address||'—'}</span></div>
+  </div>
+  <table class="itb"><tr><th>商品</th><th>借貨數</th><th>已歸還</th><th>未歸還</th><th>歸還日</th></tr>
+  ${(its||[]).map(i=>`<tr>
+    <td>${i.product_name||'—'}${i.spec?` (${i.spec})`:''}</td>
+    <td class="num">${fN(i.qty)}</td>
+    <td class="num ok">${fN(i.returned_qty||0)}</td>
+    <td class="num ${(i.qty-(i.returned_qty||0))>0?'cr':''}">${fN(i.qty-(i.returned_qty||0))}</td>
+    <td style="font-size:12px">${i.return_date||'—'}</td>
+  </tr>`).join('')}
+  </table>`,
+  `<button class="btn" onclick="CM()">關閉</button><button class="btn btn-p" onclick="returnLoan('${no}')">記錄歸還</button>`);
+}
+
+async function returnLoan(no){
+  const[{data:l},{data:its}]=await Promise.all([
+    sb.from('loan_orders').select('*').eq('loan_no',no).single(),
+    sb.from('loan_order_items').select('*').eq('loan_no',no),
+  ]);
+  const td=today();
+  OM(`記錄歸還：${no}`,`
+  <div style="margin-bottom:12px">
+    <div class="fl"><label>歸還日期</label><input id="f-rdt" type="date" value="${td}" style="width:200px;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
+  </div>
+  <table class="itb"><tr><th>商品</th><th>借出數</th><th>已歸還</th><th>本次歸還數</th></tr>
+  ${(its||[]).map(i=>`<tr>
+    <td>${i.product_name||'—'}</td>
+    <td class="num">${fN(i.qty)}</td>
+    <td class="num">${fN(i.returned_qty||0)}</td>
+    <td><input type="number" id="f-ret-${i.id}" value="${i.qty-(i.returned_qty||0)}" min="0" max="${i.qty-(i.returned_qty||0)}" style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></td>
+  </tr>`).join('')}
+  </table>`,
+  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="doReturn('${no}',${JSON.stringify(its)})">確認歸還</button>`);
+}
+async function doReturn(no,its){
+  const rdt=v('rdt')||today();
+  let allReturned=true, anyReturned=false;
+  for(const i of its){
+    const retQty=parseFloat($('f-ret-'+i.id)?.value)||0;
+    const newRet=Math.min(i.qty,(i.returned_qty||0)+retQty);
+    if(newRet<i.qty) allReturned=false;
+    if(retQty>0){
+      anyReturned=true;
+      await sb.from('loan_order_items').update({returned_qty:newRet,return_date:rdt}).eq('id',i.id);
+      // 連動庫存（歸還則補回庫存）
+      const{data:p}=await sb.from('products').select('stock').eq('product_no',i.product_no).single();
+      if(p) await sb.from('products').update({stock:p.stock+retQty}).eq('product_no',i.product_no);
+    }
+  }
+  const status=allReturned?'全部歸還':anyReturned?'部分歸還':'未歸還';
+  await sb.from('loan_orders').update({return_status:status,returned:allReturned,return_date:allReturned?rdt:null}).eq('loan_no',no);
+  toast('歸還記錄已更新！庫存已連動');CM();loans();
+}
+
+// ── BONUS ──
+let bnP=1;
+async function bonus(){
+  const{data,count}=await sb.from('bonus_records').select('*',{count:'exact'}).order('record_date',{ascending:false}).range((bnP-1)*30,bnP*30-1);
+  const tp=Math.ceil((count||0)/30);
+  const totals=await sb.from('bonus_records').select('amount,payment_done,direction');
+  const outRows=(totals.data||[]).filter(x=>x.direction!=='收入');
+  const inRows=(totals.data||[]).filter(x=>x.direction==='收入');
+  const paid=outRows.filter(x=>x.payment_done).reduce((s,x)=>s+(x.amount||0),0);
+  const unpaid=outRows.filter(x=>!x.payment_done).reduce((s,x)=>s+(x.amount||0),0);
+  const recvPaid=inRows.filter(x=>x.payment_done).reduce((s,x)=>s+(x.amount||0),0);
+  const recvUnpaid=inRows.filter(x=>!x.payment_done).reduce((s,x)=>s+(x.amount||0),0);
+  $('main').innerHTML=`
+  <div class="ph"><div><div class="pt">獎金/分潤</div><div class="ps">共 ${count||0} 筆</div></div>
+    <div class="ha"><button class="btn btn-p btn-s" onclick="addBonus()">＋ 新增記錄</button></div></div>
+  <div class="pc">
+    <div class="mg">
+      <div class="mc"><div class="ml">已支出（分潤給人）</div><div class="mv cr">${fM(paid)}</div></div>
+      <div class="mc"><div class="ml">待支出</div><div class="mv cr">${fM(unpaid)}</div></div>
+      <div class="mc"><div class="ml">已收入（上游分潤）</div><div class="mv cg">${fM(recvPaid)}</div></div>
+      <div class="mc"><div class="ml">待收入</div><div class="mv cg">${fM(recvUnpaid)}</div></div>
+    </div>
+    <div class="al al-w" style="font-size:12px">
+      <b>獎金/分潤記帳建議：</b>每次收到獎金或需發放分潤時，在此新增一筆記錄，填寫對象、金額、類型（分潤/推薦獎金/層碰獎金/其他）。
+      發放完成後勾選「已發放」，財務月結算時此處合計即為當月獎金支出。
+    </div>
+    <div class="tc">
+      <div class="tb"><span class="tt">獎金/分潤記錄</span></div>
+      <div class="tw"><table>
+        <tr><th>記錄號</th><th>日期</th><th>方向</th><th>對象</th><th>類型</th><th>金額</th><th>發票</th><th>狀態</th><th>操作</th></tr>
+        ${(data||[]).map(b=>`<tr>
+          <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${b.record_no}</td>
+          <td style="font-size:12px">${fD(b.record_date)}</td>
+          <td><span class="badge ${b.direction==='收入'?'bg':'br2'}">${b.direction==='收入'?'↙收入':'↗支出'}</span></td>
+          <td style="font-weight:500">${b.recipient||'—'}</td>
+          <td><span class="badge bgr">${b.type||'—'}</span></td>
+          <td class="num" style="font-weight:600;color:${b.direction==='收入'?'var(--ac)':'var(--rd)'}">${fM(b.amount)}</td>
+          <td style="font-size:11px;color:var(--tx2)">${b.invoice_no||'—'}</td>
+          <td><span class="badge ${b.payment_done?'bg':'br2'}">${b.payment_done?'已完成':'待處理'}</span></td>
+          <td><div style="display:flex;gap:3px">
+            <button class="btn btn-s" onclick="toggleBonus('${b.id}',${b.payment_done})">${b.payment_done?'取消':'標記已發'}</button>
+            <button class="btn btn-s btn-r" onclick="dBonus('${b.id}')">刪</button>
+          </div></td>
+        </tr>`).join('')}
+      </table></div>
+      <div class="pg"><span class="pi">第${bnP}/${tp}頁</span>
+        <div style="display:flex;gap:5px">
+          ${bnP>1?`<button class="btn btn-s" onclick="bnP--;bonus()">上一頁</button>`:''}
+          ${bnP<tp?`<button class="btn btn-s" onclick="bnP++;bonus()">下一頁</button>`:''}
+        </div></div>
+    </div>
+  </div>`;
+}
+
+function addBonus(){
+  const td=today(), no='BN-'+td.replace(/-/g,'')+'-'+String(Date.now()).slice(-3);
+  OM('新增獎金/分潤記錄',`<div class="fg">
+    ${fi('bno','記錄號','text',no)} ${fi('bdt','日期','date',td)}
+    ${fs('bdir','方向',['支出（我分潤給人）','收入（上游分潤給我）'],'支出（我分潤給人）')}
+    ${fi('brec','對象（人名）')} ${fs('btype','類型',['分潤','推薦獎金','層碰獎金','對碰獎金','業績獎金','其他'])}
+    ${fi('bamt','金額','number')} ${payMethodSel('bpay','')}
+    ${fi('binv','發票號碼','text')} ${fi('bpdt','發放/收款日期','date')}
+    <div class="fl fw">${fa('bnote','備註')}</div>
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveBonus()">儲存</button>`);
+}
+async function saveBonus(){
+  const no=v('bno'),rec=v('brec'),amt=n('bamt');
+  if(!rec||!amt){toast('請填寫對象和金額','e');return;}
+  const dir=v('bdir').startsWith('收入')?'收入':'支出';
+  const{error}=await sb.from('bonus_records').insert({record_no:no,record_date:v('bdt'),direction:dir,recipient:rec,type:v('btype'),amount:amt,payment_method:v('bpay'),invoice_no:v('binv')||null,payment_date:v('bpdt')||null,note:v('bnote')||null,payment_done:false,year_month:ym(v('bdt'))});
+  if(error){toast('新增失敗：'+error.message,'e');return;}
+  toast('記錄已新增');CM();bonus();
+}
+async function toggleBonus(id,done){await sb.from('bonus_records').update({payment_done:!done,payment_date:!done?today():null}).eq('id',id);toast(!done?'已標記發放':'已取消');bonus();}
+async function dBonus(id){if(!confirm('確定刪除此記錄？'))return;await sb.from('bonus_records').delete().eq('id',id);toast('已刪除');bonus();}
+
+// ── ACCOUNTS ──
+async function accounts(){
+  const[{data:mon},{data:yr},{data:orders_m},{data:po_m},{data:bn_m}]=await Promise.all([
+    sb.from('monthly_accounts').select('*').order('month',{ascending:false}),
+    sb.from('yearly_accounts').select('*').order('year',{ascending:false}),
+    sb.from('sales_orders').select('year_month,total,payment_done'),
+    sb.from('purchase_orders').select('year_month,total'),
+    sb.from('bonus_records').select('year_month,amount,payment_done'),
+  ]);
+  // compute monthly from orders
+  const byMonth={};
+  (orders_m||[]).forEach(o=>{const k=o.year_month||'未知';byMonth[k]=byMonth[k]||{in:0,out:0,bn:0};if(o.payment_done)byMonth[k].in+=Number(o.total||0);});
+  (po_m||[]).forEach(p=>{const k=p.year_month||'未知';byMonth[k]=byMonth[k]||{in:0,out:0,bn:0};byMonth[k].out+=Number(p.total||0);});
+  (bn_m||[]).forEach(b=>{const k=b.year_month||'未知';byMonth[k]=byMonth[k]||{in:0,out:0,bn:0};if(b.payment_done)byMonth[k].bn+=Number(b.amount||0);});
+  const monthKeys=Object.keys(byMonth).sort().reverse().slice(0,12);
+  $('main').innerHTML=`
+  <div class="ph"><div><div class="pt">對帳記錄</div><div class="ps">依訂單自動彙整</div></div></div>
+  <div class="pc">
+    <div class="tc" style="margin-bottom:14px"><div class="tb"><span class="tt">年度對帳（Ragic匯入）</span></div>
+    <div class="tw"><table><tr><th>年份</th><th>收入</th><th>支出</th><th>結餘</th></tr>
+    ${(yr||[]).map(y=>`<tr><td style="font-weight:600">${y.year}</td><td class="num ok">${fM(y.income)}</td><td class="num cr">${fM(y.expense)}</td><td class="num" style="font-weight:700">${fM(y.total)}</td></tr>`).join('')}
+    </table></div></div>
+    <div class="tc" style="margin-bottom:14px"><div class="tb"><span class="tt">月度自動彙整（依訂單計算）</span></div>
+    <div class="tw"><table><tr><th>月份</th><th>銷售收入（已收款）</th><th>進貨支出</th><th>獎金支出</th><th>淨利</th></tr>
+    ${monthKeys.map(k=>{const d=byMonth[k];const net=d.in-d.out-d.bn;return `<tr><td style="font-weight:500">${k}</td><td class="num ok">${fM(d.in)}</td><td class="num cr">${fM(d.out)}</td><td class="num cr">${fM(d.bn)}</td><td class="num" style="font-weight:600;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td></tr>`;}).join('')}
+    </table></div></div>
+    <div class="tc"><div class="tb"><span class="tt">月度對帳（Ragic匯入）</span></div>
+    <div class="tw"><table><tr><th>月份</th><th>收入</th><th>支出</th><th>結餘</th></tr>
+    ${(mon||[]).map(m=>`<tr><td style="font-weight:500">${m.month}</td><td class="num ok">${fM(m.income)}</td><td class="num cr">${fM(m.expense)}</td><td class="num" style="font-weight:600">${fM(m.total)}</td></tr>`).join('')}
+    </table></div></div>
+  </div>`;
+}
+
+const pages={dashboard,products,orders,purchase,customers,loans,accounts,bonus,vendors,
+  promotions:function(){return window.promotions();}
+};
+// 全域付款方式（從DB載入）
+let _payMethods=['付款交單 (D/P)','匯款','信用卡','現金','Line Pay','轉帳'];
+async function loadPayMethods(){
+  const{data}=await sb.from('payment_methods').select('name').eq('is_active',true).order('sort_order');
+  if(data&&data.length) _payMethods=data.map(x=>x.name);
+}
+
+function payMethodSel(id,val){
+  return `<div class="fl"><label>付款方式</label><select id="f-${id}">${_payMethods.map(m=>`<option value="${m}" ${m===val?'selected':''}>${m}</option>`).join('')}</select></div>`;
+}
+
+// expose for inline
+Object.assign(window,{showOrder,showPO,showCust,showVend,showLoan,addProd,eProd,dProd,adjStk,saveProd,doAdj,addOrder,editOrder,saveOrder,togglePay,dOrder,printOrder,addPO,editPO,savePO,togglePO,addCust,eCust,saveCust,addVend,eVend,saveVend,addLoan,returnLoan,doReturn,addBonus,saveBonus,toggleBonus,dBonus,CM});
+</script>
+</body>
+</html><script>
+// ════════════════════════════════════════
+//  套組/活動系統 (Promotions Module)
+// ════════════════════════════════════════
+
+// ── 套組管理頁面 ──
+async function promotions() {
+  const { data, count } = await sb.from('promotions').select('*', { count: 'exact' }).order('is_active', { ascending: false }).order('end_date', { ascending: true });
+  const today_s = today();
+  const fmt_date = d => d ? d : '—';
+  const typeColor = { '固定套組': 'bb', '買幾送幾': 'bg', '折扣金額': 'ba', '百分比折扣': 'bbr' };
+
+  $('main').innerHTML = `
+  <div class="ph"><div><div class="pt">活動/套組管理</div><div class="ps">${count || 0} 個</div></div>
+    <div class="ha"><button class="btn btn-p btn-s" onclick="addPromo()">＋ 新增活動/套組</button></div></div>
+  <div class="pc">
+    <div class="al al-w" style="font-size:12px">
+      <b>設計說明：</b>建立套組後，在新增訂單/進貨/借貨時點「加入套組」，系統自動展開所有商品品項（含贈品），不需逐一手動輸入。
+      套組有時效性，過期後無法選用。
+    </div>
+    <div class="tc">
+      <div class="tb"><span class="tt">活動/套組列表</span></div>
+      <div class="tw"><table>
+        <tr><th>代碼</th><th>名稱</th><th>類型</th><th>有效期間</th><th>套組內容</th><th>狀態</th><th>操作</th></tr>
+        ${(data || []).map(p => {
+          const expired = p.end_date && p.end_date < today_s;
+          const active = p.is_active && !expired;
+          return `<tr>
+            <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${p.promo_code}</td>
+            <td style="font-weight:500">${p.name}</td>
+            <td><span class="badge ${typeColor[p.type] || 'bgr'}">${p.type}</span></td>
+            <td style="font-size:12px">${fmt_date(p.start_date)} ～ ${fmt_date(p.end_date)}</td>
+            <td style="font-size:12px;color:var(--tx2)">${p.description || '—'}</td>
+            <td><span class="badge ${active ? 'bg' : 'br2'}">${expired ? '已過期' : p.is_active ? '使用中' : '停用'}</span></td>
+            <td><div style="display:flex;gap:3px">
+              <button class="btn btn-s" onclick="showPromo('${p.promo_code}')">查看</button>
+              <button class="btn btn-s" onclick="editPromo('${p.promo_code}')">編輯</button>
+              <button class="btn btn-s" onclick="togglePromo('${p.promo_code}',${p.is_active})">
+                ${p.is_active ? '停用' : '啟用'}
+              </button>
+            </div></td>
+          </tr>`;
+        }).join('')}
+      </table></div>
+    </div>
+  </div>`;
+}
+
+// ── 新增/編輯套組 ──
+let _promoItems = [], _allProdsForPromo = [];
+
+async function addPromo() {
+  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock').order('name');
+  _allProdsForPromo = prods || [];
+  _promoItems = [];
+  const td = today();
+  const code = 'PRO-' + td.replace(/-/g, '').slice(2) + '-' + String(Date.now()).slice(-3);
+  OM('新增活動/套組', promoForm({ promo_code: code }), promoFoot(false), true);
+  renderPromoItems();
+}
+
+async function editPromo(code) {
+  const [{ data: p }, { data: its }, { data: prods }] = await Promise.all([
+    sb.from('promotions').select('*').eq('promo_code', code).single(),
+    sb.from('promotion_items').select('*').eq('promo_code', code).order('id'),
+    sb.from('products').select('product_no,name,spec,stock').order('name'),
+  ]);
+  _allProdsForPromo = prods || [];
+  _promoItems = (its || []).map((i, idx) => ({ id: idx + 1, pno: i.product_no, name: i.product_name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override }));
+  OM('編輯活動/套組', promoForm(p), promoFoot(code), true);
+  renderPromoItems();
+}
+
+function promoFoot(editCode) {
+  return `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="savePromo(${editCode ? "'" + editCode + "'" : 'false'})">儲存</button>`;
+}
+
+function promoForm(p) {
+  p = p || {};
+  return `<div class="fg" style="margin-bottom:12px">
+    <div class="fl"><label>代碼</label><input id="f-pcode" value="${p.promo_code || ''}" ${p.promo_code && !p.promo_code.startsWith('PRO-') ? 'disabled style="opacity:.6"' : ''}></div>
+    <div class="fl"><label>名稱 *</label><input id="f-pname" value="${p.name || ''}"></div>
+    <div class="fl"><label>類型</label>
+      <select id="f-ptype" onchange="updatePromoFields()">
+        ${['固定套組', '買幾送幾', '折扣金額', '百分比折扣'].map(t => `<option ${t === p.type ? 'selected' : ''}>${t}</option>`).join('')}
+      </select></div>
+    <div class="fl"><label>生效日期</label><input id="f-pstart" type="date" value="${p.start_date || ''}"></div>
+    <div class="fl"><label>到期日（空白=永久）</label><input id="f-pend" type="date" value="${p.end_date || ''}"></div>
+    <div class="fl fw" id="promo-extra-fields">
+      ${promoExtraFields(p)}
+    </div>
+    <div class="fl fw"><label>說明（顯示在訂單上）</label><input id="f-pdesc" value="${p.description || ''}"></div>
+    <div class="fl fw"><label>備註</label><input id="f-pnote" value="${p.note || ''}"></div>
+  </div>
+  <div class="sh">套組/活動商品</div>
+  <div style="display:grid;grid-template-columns:3fr 60px 80px 60px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
+    <span>商品</span><span>數量</span><span>套組價</span><span style="color:var(--am)">贈品</span><span></span>
+  </div>
+  <div id="promoItemsArea"></div>
+  <button class="btn btn-s" onclick="addPromoItem()" style="margin-top:6px">＋ 加商品</button>`;
+}
+
+function promoExtraFields(p) {
+  const type = p.type || '固定套組';
+  if (type === '固定套組') return `<label>套組售價（空白=各商品加總）</label><input id="f-pbprice" type="number" value="${p.bundle_price || ''}">`;
+  if (type === '買幾送幾') return `<div style="display:flex;gap:8px;align-items:center"><div style="flex:1"><label>購買數量</label><input id="f-pbuy" type="number" value="${p.buy_qty || ''}"></div><div style="flex:1"><label>贈送數量</label><input id="f-pget" type="number" value="${p.get_qty || ''}"></div></div>`;
+  if (type === '折扣金額') return `<label>折扣金額（NT$）</label><input id="f-pdamt" type="number" value="${p.discount_amount || ''}">`;
+  if (type === '百分比折扣') return `<label>折扣百分比（0-100）</label><input id="f-pdpct" type="number" min="0" max="100" value="${p.discount_pct || ''}">`;
+  return '';
+}
+
+window.updatePromoFields = () => {
+  const t = $('f-ptype')?.value || '固定套組';
+  const ef = $('promo-extra-fields');
+  if (ef) ef.innerHTML = promoExtraFields({ type: t });
+};
+
+function renderPromoItems() {
+  const area = $('promoItemsArea'); if (!area) return;
+  area.innerHTML = _promoItems.map(item => `
+  <div style="display:grid;grid-template-columns:3fr 60px 80px 60px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+    <div style="position:relative">
+      <input type="text" value="${item.pno ? (item.name || item.pno) : ''}" placeholder="輸入關鍵字搜尋商品…"
+        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
+        oninput="filterPromoDrop(${item.id},this.value)" onfocus="filterPromoDrop(${item.id},this.value)"
+        onblur="setTimeout(()=>closePromoDrop(${item.id}),200)">
+      <div id="prodrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:140px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+    </div>
+    <input type="number" value="${item.qty || 1}" min="1" onchange="setPromoIQ(${item.id},this.value)"
+      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="number" value="${item.price_override || ''}" placeholder="套組價" onchange="setPromoIV(${item.id},this.value)"
+      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="checkbox" ${item.is_gift ? 'checked' : ''} onchange="setPromoIG(${item.id},this.checked)"
+      style="width:16px;height:16px;cursor:pointer" title="勾選=贈品（免費）">
+    <button onclick="rmPromoItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
+  </div>`).join('');
+}
+
+window.filterPromoDrop = (id, q) => {
+  const drop = $('prodrop-' + id); if (!drop) return;
+  const fil = q ? _allProdsForPromo.filter(p => p.name.includes(q) || (p.product_no || '').includes(q)) : _allProdsForPromo;
+  drop.style.display = 'block';
+  drop.innerHTML = fil.slice(0, 30).map(p =>
+    `<div style="padding:6px 9px;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''"
+      onmousedown="pickPromoItem(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}')">
+      ${p.name}${p.spec ? ` (${p.spec})` : ''} <span style="color:var(--tx3)">庫存:${p.stock}</span>
+    </div>`).join('') || '<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';
+};
+window.closePromoDrop = id => { const d = $('prodrop-' + id); if (d) d.style.display = 'none'; };
+window.pickPromoItem = (id, pno, name) => {
+  const it = _promoItems.find(x => x.id === id); if (!it) return;
+  it.pno = pno; it.name = name;
+  renderPromoItems();
+  closePromoDrop(id);
+};
+window.addPromoItem = () => { _promoItems.push({ id: Date.now(), pno: '', name: '', qty: 1, is_gift: false, price_override: null }); renderPromoItems(); };
+window.rmPromoItem = id => { _promoItems = _promoItems.filter(x => x.id !== id); renderPromoItems(); };
+window.setPromoIQ = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.qty = Math.max(1, +val || 1); };
+window.setPromoIV = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.price_override = +val || null; };
+window.setPromoIG = (id, checked) => { const it = _promoItems.find(x => x.id === id); if (it) it.is_gift = checked; };
+
+async function savePromo(editCode) {
+  const code = v('pcode'), name = v('pname'), type = v('ptype');
+  if (!code || !name) { toast('請填寫代碼和名稱', 'e'); return; }
+  const payload = {
+    promo_code: code, name, type,
+    start_date: v('pstart') || null, end_date: v('pend') || null,
+    description: v('pdesc') || null, note: v('pnote') || null,
+    bundle_price: null, discount_amount: null, discount_pct: null, buy_qty: null, get_qty: null,
+  };
+  if (type === '固定套組') payload.bundle_price = parseFloat($('f-pbprice')?.value) || null;
+  if (type === '買幾送幾') { payload.buy_qty = parseFloat($('f-pbuy')?.value) || null; payload.get_qty = parseFloat($('f-pget')?.value) || null; }
+  if (type === '折扣金額') payload.discount_amount = parseFloat($('f-pdamt')?.value) || null;
+  if (type === '百分比折扣') payload.discount_pct = parseFloat($('f-pdpct')?.value) || null;
+
+  if (editCode) {
+    await sb.from('promotions').update(payload).eq('promo_code', editCode);
+    await sb.from('promotion_items').delete().eq('promo_code', editCode);
+  } else {
+    payload.is_active = true;
+    const { error } = await sb.from('promotions').insert(payload);
+    if (error) { toast('新增失敗：' + error.message, 'e'); return; }
+  }
+  const items = _promoItems.filter(i => i.pno).map(i => ({
+    promo_code: code, product_no: i.pno, product_name: i.name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override || null
+  }));
+  if (items.length) await sb.from('promotion_items').insert(items);
+  toast(editCode ? '套組已更新' : '套組新增成功！'); CM(); promotions();
+}
+
+async function showPromo(code) {
+  const [{ data: p }, { data: its }] = await Promise.all([
+    sb.from('promotions').select('*').eq('promo_code', code).single(),
+    sb.from('promotion_items').select('*').eq('promo_code', code).order('is_gift'),
+  ]);
+  const today_s = today();
+  const expired = p?.end_date && p.end_date < today_s;
+  OM(`套組：${p?.name}`, `
+  <div class="dg" style="margin-bottom:13px">
+    <div class="dr"><span class="dlb">代碼</span><span class="dv" style="font-family:monospace">${p?.promo_code}</span></div>
+    <div class="dr"><span class="dlb">類型</span><span class="dv">${p?.type}</span></div>
+    <div class="dr"><span class="dlb">有效期間</span><span class="dv">${p?.start_date || '即日起'} ～ ${p?.end_date || '永久'}</span></div>
+    <div class="dr"><span class="dlb">狀態</span><span class="dv"><span class="badge ${!expired && p?.is_active ? 'bg' : 'br2'}">${expired ? '已過期' : p?.is_active ? '使用中' : '停用'}</span></span></div>
+    ${p?.bundle_price ? `<div class="dr"><span class="dlb">套組售價</span><span class="dv" style="font-weight:600;color:var(--ac)">${fM(p.bundle_price)}</span></div>` : ''}
+    ${p?.buy_qty ? `<div class="dr"><span class="dlb">買幾送幾</span><span class="dv">買 ${p.buy_qty} 送 ${p.get_qty}</span></div>` : ''}
+    ${p?.discount_amount ? `<div class="dr"><span class="dlb">折扣金額</span><span class="dv">折 ${fM(p.discount_amount)}</span></div>` : ''}
+    ${p?.discount_pct ? `<div class="dr"><span class="dlb">折扣比例</span><span class="dv">${p.discount_pct}% off</span></div>` : ''}
+    ${p?.description ? `<div class="dr" style="grid-column:1/-1"><span class="dlb">說明</span><span class="dv">${p.description}</span></div>` : ''}
+  </div>
+  <div class="sh">套組包含商品</div>
+  <table class="itb">
+    <tr><th>商品</th><th>數量</th><th>套組價</th><th>性質</th></tr>
+    ${(its || []).map(i => `<tr>
+      <td>${i.product_name || '—'}</td>
+      <td class="num">${fN(i.qty)}</td>
+      <td class="num">${i.price_override ? fM(i.price_override) : '依位階定價'}</td>
+      <td><span class="badge ${i.is_gift ? 'ba' : 'bg'}">${i.is_gift ? '贈品' : '商品'}</span></td>
+    </tr>`).join('')}
+  </table>`);
+}
+
+async function togglePromo(code, active) {
+  await sb.from('promotions').update({ is_active: !active }).eq('promo_code', code);
+  toast(!active ? '已啟用' : '已停用'); promotions();
+}
+
+// ── 在訂單/進貨/借貨新增表單中：選用套組 ──
+async function openBundlePicker(mode) {
+  // mode: 'order' | 'po' | 'loan'
+  const today_s = today();
+  const { data: promos } = await sb.from('promotions').select('*')
+    .eq('is_active', true)
+    .or(`end_date.is.null,end_date.gte.${today_s}`)
+    .order('name');
+  OM('選用套組/活動', `
+  <div class="al al-w" style="font-size:12px">選擇後，套組內的所有商品會自動展開加入品項清單（贈品以橙色標示）。</div>
+  ${(promos || []).length === 0 ? '<div style="color:var(--tx3);padding:20px;text-align:center">目前無有效套組</div>' :
+    (promos || []).map(p => `
+    <div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:background .1s"
+      onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''"
+      onclick="applyPromo('${p.promo_code}','${mode}')">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:500">${p.name}</span>
+        <span class="badge ${p.type === '固定套組' ? 'bb' : p.type === '買幾送幾' ? 'bg' : 'ba'}">${p.type}</span>
+      </div>
+      <div style="font-size:12px;color:var(--tx2);margin-top:4px">
+        ${p.description || ''} ${p.bundle_price ? `・套組價 ${fM(p.bundle_price)}` : ''} 
+        ${p.end_date ? `・有效至 ${p.end_date}` : ''}
+      </div>
+    </div>`).join('')}`, '');
+}
+
+async function applyPromo(code, mode) {
+  const [{ data: p }, { data: its }] = await Promise.all([
+    sb.from('promotions').select('*').eq('promo_code', code).single(),
+    sb.from('promotion_items').select('*').eq('promo_code', code).order('is_gift'),
+  ]);
+  if (!its || !its.length) { toast('此套組尚無商品設定', 'w'); return; }
+
+  const today_s = today();
+  if (p.end_date && p.end_date < today_s) { toast('此套組已過有效期！', 'e'); return; }
+
+  const bundleGroup = 'BG-' + Date.now();
+
+  if (mode === 'order') {
+    // 取得客戶位階決定售價
+    const lv = $('f-oalv')?.value || '零售';
+    const col = LEVEL_COLS[lv] || 'price_retail';
+
+    for (const i of its) {
+      const { data: prod } = await sb.from('products').select('product_no,name,spec,stock,' + col).eq('product_no', i.product_no).single();
+      const unitPrice = i.is_gift ? 0 : (i.price_override || prod?.[col] || 0);
+      const newItem = {
+        id: Date.now() + Math.random(),
+        pno: i.product_no,
+        qty: i.qty,
+        price: unitPrice,
+        giftQty: 0,
+        amt: i.is_gift ? 0 : (i.qty * unitPrice),
+        is_gift: i.is_gift,
+        promo_code: code,
+        bundle_group: bundleGroup,
+        _pname: i.product_name || prod?.name || i.product_no,
+      };
+      _items.push(newItem);
+    }
+    // 套組折扣
+    if (p.discount_amount) {
+      _items.push({ id: Date.now(), pno: 'DISCOUNT', qty: 1, price: -p.discount_amount, giftQty: 0, amt: -p.discount_amount, _pname: `套組折扣 (${p.name})`, promo_code: code, bundle_group: bundleGroup });
+    }
+    CM();
+    renderItems();
+    toast('套組已展開，請確認品項', 's');
+  } else if (mode === 'po') {
+    for (const i of its) {
+      _poItems.push({ id: Date.now() + Math.random(), pno: i.product_no, qty: i.qty, price: i.price_override || 0, giftQty: i.is_gift ? i.qty : 0, amt: i.is_gift ? 0 : i.qty * (i.price_override || 0), _pname: i.product_name || i.product_no, promo_code: code, bundle_group: bundleGroup });
+    }
+    CM();
+    renderPOItems();
+    toast('套組已展開至進貨品項', 's');
+  } else if (mode === 'loan') {
+    for (const i of its) {
+      _loanItems.push({ id: Date.now() + Math.random(), pno: i.product_no, qty: i.qty, _pname: i.product_name || i.product_no, promo_code: code, bundle_group: bundleGroup, is_gift: i.is_gift });
+    }
+    CM();
+    renderLoanItems();
+    toast('套組已展開至借貨品項', 's');
+  }
+}
+
+window.openBundlePicker = openBundlePicker;
+window.applyPromo = applyPromo;
+window.promotions = promotions;
+window.addPromo = addPromo;
+window.editPromo = editPromo;
+window.savePromo = savePromo;
+window.showPromo = showPromo;
+window.togglePromo = togglePromo;
+window.addPromoItem = addPromoItem;
+window.updatePromoFields = updatePromoFields;
+</script>
+<script>
+// ════════════════════════
+//  盤點單列印功能
+// ════════════════════════
+async function printStockTake() {
+  // 先載入所有來源和類別供篩選
+  const { data: allProds } = await sb.from('products')
+    .select('source,category').not('product_no','is',null);
+  const sources = [...new Set((allProds||[]).map(p=>p.source).filter(Boolean))].sort();
+  const cats = [...new Set((allProds||[]).map(p=>p.category).filter(Boolean))].sort();
+
+  OM('盤點單篩選', `
+  <div style="margin-bottom:14px">
+    <div class="sh">依主要來源篩選</div>
+    <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:13px">
+      <input type="checkbox" id="src-all" checked onchange="toggleSrcAll(this.checked)" style="width:15px;height:15px"> 全部來源
+    </label>
+    <div id="src-list" style="display:grid;grid-template-columns:1fr 1fr;gap:5px;padding-left:8px">
+      ${sources.map(s=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px">
+        <input type="checkbox" class="src-cb" value="${s}" checked style="width:13px;height:13px"> ${s}
+      </label>`).join('')}
+    </div>
+  </div>
+  <div style="margin-bottom:14px">
+    <div class="sh">依類別篩選</div>
+    <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:13px">
+      <input type="checkbox" id="cat-all" checked onchange="toggleCatAll(this.checked)" style="width:15px;height:15px"> 全部類別
+    </label>
+    <div id="cat-list" style="display:grid;grid-template-columns:1fr 1fr;gap:5px;padding-left:8px">
+      ${cats.map(c=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px">
+        <input type="checkbox" class="cat-cb" value="${c}" checked style="width:13px;height:13px"> ${c}
+      </label>`).join('')}
+    </div>
+  </div>
+  <div style="margin-bottom:6px">
+    <div class="sh">其他選項</div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+      <input type="checkbox" id="hide-zero" style="width:15px;height:15px"> 隱藏零庫存商品
+    </label>
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="doPrintStockTake()">產生盤點單</button>`);
+
+  window.toggleSrcAll = checked => {
+    document.querySelectorAll('.src-cb').forEach(cb => cb.checked = checked);
+  };
+  window.toggleCatAll = checked => {
+    document.querySelectorAll('.cat-cb').forEach(cb => cb.checked = checked);
+  };
+  // 監聽個別勾選變更全選狀態
+  setTimeout(()=>{
+    document.querySelectorAll('.src-cb').forEach(cb=>cb.addEventListener('change',()=>{
+      const all=document.querySelectorAll('.src-cb');
+      document.getElementById('src-all').checked=[...all].every(c=>c.checked);
+    }));
+    document.querySelectorAll('.cat-cb').forEach(cb=>cb.addEventListener('change',()=>{
+      const all=document.querySelectorAll('.cat-cb');
+      document.getElementById('cat-all').checked=[...all].every(c=>c.checked);
+    }));
+  },100);
+
+  window._stockTakeAllProds = allProds;
+}
+
+async function doPrintStockTake() {
+  const selSrcs = [...document.querySelectorAll('.src-cb:checked')].map(c=>c.value);
+  const selCats = [...document.querySelectorAll('.cat-cb:checked')].map(c=>c.value);
+  const hideZero = document.getElementById('hide-zero')?.checked;
+  CM();
+
+  // 載入商品（套用篩選）
+  let q = sb.from('products')
+    .select('product_no,name,spec,category,unit,stock,source')
+    .not('product_no','is',null);
+  // 來源篩選
+  if(selSrcs.length > 0) q = q.in('source', selSrcs);
+  // 類別篩選
+  if(selCats.length > 0) q = q.in('category', selCats);
+  if(hideZero) q = q.gt('stock', 0);
+
+  const { data: prods } = await q.order('category').order('product_no');
+
+  if (!prods || !prods.length) { toast('無商品資料', 'w'); return; }
+
+  const today_str = new Date().toLocaleDateString('zh-TW', { year:'numeric', month:'2-digit', day:'2-digit' });
+  const today_iso = today();
+
+  // 依類別分組
+  const groups = {};
+  prods.forEach(p => {
+    const cat = p.category || '其他';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(p);
+  });
+
+  const totalItems = prods.length;
+  const totalStock = prods.reduce((s, p) => s + (p.stock || 0), 0);
+  const lowStock = prods.filter(p => p.stock <= 5 && p.stock > 0).length;
+  const zeroStock = prods.filter(p => p.stock <= 0).length;
+
+  let tableRows = '';
+  let rowNum = 0;
+  Object.entries(groups).forEach(([cat, items]) => {
+    tableRows += `<tr class="cat-header"><td colspan="8">${cat}</td></tr>`;
+    items.forEach(p => {
+      rowNum++;
+      const stockClass = p.stock <= 0 ? 'zero' : p.stock <= 5 ? 'low' : '';
+      tableRows += `
+      <tr class="${stockClass}">
+        <td class="center">${rowNum}</td>
+        <td class="mono">${p.product_no}</td>
+        <td>${p.name}${p.spec ? `<span class="spec"> ${p.spec}</span>` : ''}</td>
+        <td class="center">${p.unit || '個'}</td>
+        <td class="right sys-stock ${stockClass}">${p.stock || 0}</td>
+        <td class="right actual-stock"></td>
+        <td class="right diff"></td>
+        <td class="note-col"></td>
+      </tr>`;
+    });
+  });
+
+  const win = window.open('', '_blank', 'width=1000,height=700');
+  win.document.write(`<!DOCTYPE html>
+<html lang="zh-TW"><head><meta charset="UTF-8">
+<title>慢樂仙坊・庫存盤點單 ${today_iso}</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Noto Sans TC', system-ui, sans-serif; font-size: 12px; color: #111; padding: 20px; }
+.header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #111; }
+.header h1 { font-size: 20px; font-weight: 700; }
+.header .meta { text-align: right; font-size: 11px; color: #555; line-height: 1.8; }
+.summary { display: flex; gap: 20px; margin-bottom: 14px; }
+.summary-box { border: 1px solid #ddd; border-radius: 6px; padding: 8px 14px; min-width: 100px; text-align: center; }
+.summary-box .label { font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
+.summary-box .val { font-size: 18px; font-weight: 700; }
+.val.red { color: #c0392b; } .val.amber { color: #b8860b; } .val.green { color: #2d6a2d; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+th { background: #1a1714; color: #fff; padding: 7px 8px; text-align: left; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+tr:hover td { background: #f9f9f9; }
+.cat-header td { background: #f0ede6; font-weight: 700; font-size: 11px; color: #5c7a5c; padding: 5px 8px; border-bottom: 1px solid #c8c2b8; letter-spacing: .5px; }
+tr.zero td { color: #c0392b; }
+tr.low td { color: #b8860b; }
+.center { text-align: center; }
+.right { text-align: right; }
+.mono { font-family: monospace; font-size: 11px; color: #666; }
+.spec { color: #888; font-size: 11px; }
+.sys-stock { font-weight: 700; }
+tr.zero .sys-stock { color: #c0392b; }
+tr.low .sys-stock { color: #b8860b; }
+.actual-stock { background: #fffde7; min-width: 60px; border-left: 1px dashed #ccc; }
+.diff { background: #f0f4ff; min-width: 50px; border-left: 1px dashed #ccc; }
+.note-col { min-width: 80px; background: #fafafa; border-left: 1px dashed #ccc; }
+.col-sys { color: #2d6a2d; }
+.col-actual { color: #b8860b; }
+.col-diff { color: #2c5f8a; }
+.footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #ddd; display: flex; justify-content: space-between; font-size: 11px; color: #888; }
+.sign-area { display: flex; gap: 40px; margin-top: 20px; }
+.sign-box { flex: 1; border-top: 1px solid #999; padding-top: 4px; text-align: center; font-size: 11px; color: #666; }
+.legend { font-size: 10px; color: #888; margin-bottom: 8px; }
+.legend span { margin-right: 12px; }
+.legend .z { color: #c0392b; font-weight: 600; }
+.legend .l { color: #b8860b; font-weight: 600; }
+@media print {
+  button { display: none !important; }
+  body { padding: 10px; }
+  .actual-stock, .diff, .note-col { min-height: 22px; }
+}
+</style>
+</head><body>
+<div class="no-print" style="margin-bottom:12px;display:flex;gap:8px">
+  <button onclick="window.print()" style="padding:8px 18px;background:#5c7a5c;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:600">🖨 列印盤點單</button>
+  <button onclick="window.close()" style="padding:8px 14px;border:1px solid #ccc;background:#fff;border-radius:6px;font-size:13px;cursor:pointer">關閉</button>
+  <span style="font-size:11px;color:#888;line-height:36px">列印後，在「實際數量」欄手寫填入盤點結果，「差異」欄填入系統數-實際數</span>
+</div>
+<div class="header">
+  <div>
+    <h1>慢樂仙坊・庫存盤點單</h1>
+    <div style="font-size:12px;color:#666;margin-top:4px">盤點日期：${today_str} &nbsp;|&nbsp; 列印時間：${new Date().toLocaleTimeString('zh-TW')}</div>
+  </div>
+  <div class="meta">
+    商品種類：${totalItems} 項<br>
+    系統總庫存：${totalStock.toLocaleString('zh-TW')} 件<br>
+    零庫存：${zeroStock} 項 &nbsp; 低庫存（≤5）：${lowStock} 項
+  </div>
+</div>
+<div class="summary">
+  <div class="summary-box"><div class="label">商品種類</div><div class="val">${totalItems}</div></div>
+  <div class="summary-box"><div class="label">系統總庫存</div><div class="val green">${totalStock.toLocaleString('zh-TW')}</div></div>
+  <div class="summary-box"><div class="label">零庫存</div><div class="val red">${zeroStock}</div></div>
+  <div class="summary-box"><div class="label">低庫存(≤5)</div><div class="val amber">${lowStock}</div></div>
+</div>
+<div class="legend">
+  <span class="z">■ 紅色 = 庫存歸零</span>
+  <span class="l">■ 橙色 = 低庫存（≤5）</span>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width:30px">#</th>
+      <th style="width:90px">商品編號</th>
+      <th>商品名稱</th>
+      <th style="width:40px">單位</th>
+      <th style="width:65px" class="col-sys">系統數量</th>
+      <th style="width:65px" class="col-actual">實際數量</th>
+      <th style="width:55px" class="col-diff">差異</th>
+      <th style="width:100px">備註</th>
+    </tr>
+  </thead>
+  <tbody>${tableRows}</tbody>
+</table>
+<div class="sign-area">
+  <div class="sign-box">盤點人員</div>
+  <div class="sign-box">複核人員</div>
+  <div class="sign-box">主管簽核</div>
+  <div class="sign-box">盤點完成日期</div>
+</div>
+<div class="footer">
+  <span>慢樂仙坊進銷存系統・自動產生</span>
+  <span>第 1 頁，共 1 頁</span>
+</div>
+</body></html>`);
+  win.document.close();
+}
+
+window.printStockTake = printStockTake;
+window.doPrintStockTake = doPrintStockTake;
+</script>
+<script>
+// ════════════════════════════
+//  拆袋/拆箱作業
+// ════════════════════════════
+let _splitItems = [], _splitProds = [];
+
+async function openSplitBag() {
+  const { data: prods } = await sb.from('products')
+    .select('product_no,name,spec,stock,category')
+    .not('product_no','is',null)
+    .order('name');
+  _splitProds = prods || [];
+  _splitItems = [];
+
+  OM('拆袋/拆箱作業', `
+  <div class="al al-w" style="font-size:12px">
+    <b>使用說明：</b>選擇要拆解的商品（如福袋），填入要拆出的數量，再填入拆解後各品項及數量。
+    完成後系統自動扣除原品項庫存、增加各拆出品項庫存，並記錄備註。
+  </div>
+  <div class="sh">來源商品（要拆解的）</div>
+  <div style="display:grid;grid-template-columns:3fr 80px;gap:8px;margin-bottom:4px;align-items:end">
+    <div class="fl"><label>商品</label>
+      <div style="position:relative">
+        <input type="text" id="split-src-inp" placeholder="輸入關鍵字搜尋…"
+          style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"
+          oninput="filterSplitSrc(this.value)" onfocus="filterSplitSrc(this.value)"
+          onblur="setTimeout(()=>$('split-src-drop')?.classList.remove('open'),200)">
+        <input type="hidden" id="split-src-pno">
+        <div id="split-src-drop" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+      </div>
+    </div>
+    <div class="fl"><label>拆解數量</label>
+      <input type="number" id="split-src-qty" value="1" min="1"
+        style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
+    </div>
+  </div>
+  <div id="split-src-info" style="font-size:12px;color:var(--tx2);margin-bottom:10px;padding:5px 8px;background:var(--sf2);border-radius:var(--r)">
+    選擇商品後顯示目前庫存
+  </div>
+  <div class="sh">拆出品項</div>
+  <div style="display:grid;grid-template-columns:3fr 80px 28px;gap:6px;padding:3px 6px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">
+    <span>商品</span><span>數量</span><span></span>
+  </div>
+  <div id="splitItemsArea"></div>
+  <button class="btn btn-s" onclick="addSplitItem()" style="margin-top:6px">＋ 加品項</button>
+  <div style="margin-top:12px">
+    <div class="fl"><label>備註</label>
+      <input id="split-note" placeholder="例：愛閃耀福袋 2026/05 批次"
+        style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
+    </div>
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="doSplitBag()">確認拆袋（更新庫存）</button>`);
+
+  window.filterSplitSrc = q => {
+    const drop = $('split-src-drop'); if(!drop) return;
+    const fil = q ? _splitProds.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)) : _splitProds;
+    drop.style.display = 'block';
+    drop.innerHTML = fil.slice(0,30).map(p=>
+      `<div style="padding:6px 9px;font-size:12px;cursor:pointer"
+        onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''"
+        onmousedown="pickSplitSrc('${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}',${p.stock})">
+        ${p.name}${p.spec?` (${p.spec})`:''} <span style="color:var(--tx3)">庫存:${p.stock}</span>
+      </div>`
+    ).join('') || '<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';
+  };
+  window.pickSplitSrc = (pno, name, stock) => {
+    $('split-src-pno').value = pno;
+    $('split-src-inp').value = name;
+    $('split-src-drop').style.display = 'none';
+    $('split-src-info').innerHTML = `<span style="font-weight:600">${name}</span> 目前庫存：<span style="font-weight:700;color:var(--ac)">${stock}</span>`;
+  };
+  renderSplitItems();
+}
+
+function renderSplitItems() {
+  const area = $('splitItemsArea'); if(!area) return;
+  area.innerHTML = _splitItems.map(item => `
+  <div style="display:grid;grid-template-columns:3fr 80px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+    <div style="position:relative">
+      <input type="text" value="${item.name||''}" placeholder="輸入關鍵字搜尋商品…"
+        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
+        oninput="filterSplitDrop(${item.id},this.value)" onfocus="filterSplitDrop(${item.id},this.value)"
+        onblur="setTimeout(()=>closeSplitDrop(${item.id}),200)">
+      <div id="sdrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:140px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+    </div>
+    <input type="number" value="${item.qty||1}" min="1" onchange="setSplitIQ(${item.id},this.value)"
+      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <button onclick="rmSplitItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
+  </div>`).join('');
+}
+
+window.filterSplitDrop = (id, q) => {
+  const drop = $('sdrop-'+id); if(!drop) return;
+  const fil = q ? _splitProds.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)) : _splitProds;
+  drop.style.display = 'block';
+  drop.innerHTML = fil.slice(0,30).map(p=>
+    `<div style="padding:6px 9px;font-size:12px;cursor:pointer"
+      onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''"
+      onmousedown="pickSplitItem(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}')">
+      ${p.name}${p.spec?` (${p.spec})`:''} <span style="color:var(--tx3)">庫存:${p.stock}</span>
+    </div>`
+  ).join('') || '<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';
+};
+window.closeSplitDrop = id => { const d=$('sdrop-'+id); if(d) d.style.display='none'; };
+window.pickSplitItem = (id, pno, name) => {
+  const it = _splitItems.find(x=>x.id===id); if(!it) return;
+  it.pno = pno; it.name = name;
+  renderSplitItems();
+  closeSplitDrop(id);
+};
+window.addSplitItem = () => { _splitItems.push({id:Date.now(),pno:'',name:'',qty:1}); renderSplitItems(); };
+window.rmSplitItem = id => { _splitItems=_splitItems.filter(x=>x.id!==id); renderSplitItems(); };
+window.setSplitIQ = (id, val) => { const it=_splitItems.find(x=>x.id===id); if(it) it.qty=Math.max(1,+val||1); };
+
+async function doSplitBag() {
+  const srcPno = $('split-src-pno')?.value;
+  const srcQty = parseInt($('split-src-qty')?.value) || 1;
+  const note = $('split-note')?.value || '拆袋作業';
+  const outItems = _splitItems.filter(i=>i.pno && i.qty>0);
+
+  if(!srcPno) { toast('請選擇來源商品（要拆解的）', 'e'); return; }
+  if(!outItems.length) { toast('請至少新增一項拆出品項', 'e'); return; }
+
+  // 確認來源庫存夠
+  const {data:src} = await sb.from('products').select('name,stock').eq('product_no',srcPno).single();
+  if(!src) { toast('找不到來源商品', 'e'); return; }
+  if(src.stock < srcQty) {
+    if(!confirm(`來源商品「${src.name}」庫存僅剩 ${src.stock}，確定要拆 ${srcQty} 個？`)) return;
+  }
+
+  // 扣除來源
+  const newSrcStock = Math.max(0, src.stock - srcQty);
+  await sb.from('products').update({stock: newSrcStock}).eq('product_no', srcPno);
+
+  // 增加各拆出品項
+  for(const item of outItems) {
+    const {data:p} = await sb.from('products').select('stock').eq('product_no',item.pno).single();
+    if(p) await sb.from('products').update({stock: p.stock + item.qty}).eq('product_no',item.pno);
+  }
+
+  // 記錄在庫存調整（用 products 備註或直接用 toast 告知）
+  toast(`✅ 拆袋完成！「${src.name}」庫存 ${src.stock} → ${newSrcStock}，已增加 ${outItems.length} 項拆出品項`);
+  CM();
+  products(); // 刷新商品頁
+}
+
+window.openSplitBag = openSplitBag;
+window.doSplitBag = doSplitBag;
+</script>
