@@ -2098,7 +2098,7 @@ async function accounts(){
   $('main').innerHTML=`
   <div class="ph"><div><div class="pt">對帳記錄</div><div class="ps">依訂單自動彙整</div></div></div>
   <div class="pc">
-    ${(yr&&yr.length)?`<div class="tc" style="margin-bottom:14px"><div class="tb"><span class="tt">年度對帳（Ragic匯入）</span></div>
+    ${(yr&&yr.length)?`<div class="tc" style="margin-bottom:14px"><div class="tb"><span class="tt">年度對帳</span></div>
     <div class="tw"><table><tr><th>年份</th><th>收入</th><th>支出</th><th>結餘</th></tr>
     ${(yr||[]).map(y=>`<tr><td style="font-weight:600">${y.year}</td><td class="num ok">${fM(y.income)}</td><td class="num cr">${fM(y.expense)}</td><td class="num" style="font-weight:700;color:${y.total>=0?'var(--ac)':'var(--rd)'}">${fM(y.total)}</td></tr>`).join('')}
     </table></div></div>`:''}
