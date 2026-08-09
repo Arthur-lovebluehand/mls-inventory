@@ -404,8 +404,8 @@ window.setPromoIG = (id, checked) => { const it = _promoItems.find(x => x.id ===
 // ── 在訂單/進貨/借貨新增表單中：選用套組 ──
 
 
-window.addPromoItem = addPromoItem;
-window.updatePromoFields = updatePromoFields;
+// window.addPromoItem — 已在 promotions.js expose
+// window.updatePromoFields — 已在 promotions.js expose
 
 
 // ════════════════════════
