@@ -339,6 +339,7 @@ async function doSplitBag() {
 window.openSplitBag = openSplitBag;
 window.doSplitBag = doSplitBag;
 async function auditLogs() {
+  if(typeof alP === 'undefined' || isNaN(alP)) alP = 1;
   try {
   const { data, count } = await sb.from('audit_logs')
     .select('*', { count: 'exact' })
