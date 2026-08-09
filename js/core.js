@@ -1665,7 +1665,6 @@ function renderLoanItems(){
       <div id="ldrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
     </div>
     <input type="number" value="${item.qty}" min="1" onchange="setLoanIQ(${item.id},this.value)" placeholder="數量" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
-    <span style="font-size:12px;color:var(--tx3)">已借${item.pno?(_loanProds.find(p=>p.product_no===item.pno)?.stock||0):'—'}件庫存</span>
     <button onclick="rmLoanItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
   </div>`).join('');
 }
