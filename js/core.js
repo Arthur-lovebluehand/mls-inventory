@@ -578,7 +578,7 @@ window.saveOpName = saveOpName;
 // ═══════════════════════════
 
 
-window._createRestockPO = createRestockPO;
+// window._createRestockPO — 已在 restock.js expose
 
 
 // ════════════════════════════
