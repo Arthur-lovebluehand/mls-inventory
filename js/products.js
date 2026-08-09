@@ -1,3 +1,14 @@
+// Tab 切換（商品詳情 Modal）
+function switchProdTab(tab){
+  ['s','p','l','a'].forEach(t=>{
+    const btn=document.getElementById('ptab-'+t);
+    const con=document.getElementById('ptab-'+t+'-con');
+    if(btn) btn.className='tab'+(t===tab?' on':'');
+    if(con) con.style.display=t===tab?'block':'none';
+  });
+}
+window.switchProdTab = switchProdTab;
+
 // ═══════════════════════════════════════
 // products.js
 // ═══════════════════════════════════════

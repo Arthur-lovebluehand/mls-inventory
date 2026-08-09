@@ -477,14 +477,7 @@ window.closeSidebar=closeSidebar;
 // 手機版獨立頁面（直接 fetch + 渲染）
 
 
-window.switchProdTab = function(tab){
-  ['s','p','l','a'].forEach(t=>{
-    const btn=document.getElementById('ptab-'+t);
-    const con=document.getElementById('ptab-'+t+'-con');
-    if(btn) btn.className='tab'+(t===tab?' on':'');
-    if(con) con.style.display=t===tab?'block':'none';
-  });
-};
+// switchProdTab 已移至 products.js
 
 
 // ════════════════════════════
@@ -626,3 +619,5 @@ window.makeCatSelect = (currentVal) => {
 
 
 // 進貨廠商排序設定
+
+
