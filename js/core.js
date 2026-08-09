@@ -288,12 +288,12 @@ window._getPoItems=()=>_poItems;
 window._setPoItems=(v)=>{_poItems=v;};
 window._renderPOItems=()=>renderPOItems();
 // expose vendor management
-if(typeof addVend!=='undefined') window.addVend=addVend;
-if(typeof eVend!=='undefined') window.eVend=eVend;
-if(typeof saveVend!=='undefined') window.saveVend=saveVend;
-if(typeof setVendorSort!=='undefined') window.setVendorSort=setVendorSort;
-if(typeof toggleVendor!=='undefined') window.toggleVendor=toggleVendor;
-if(typeof deleteVendor!=='undefined') window.deleteVendor=deleteVendor;
+if(typeof addVend!=='undefined') // window.addVend — 已在 vendors.js expose
+if(typeof eVend!=='undefined') // window.eVend — 已在 vendors.js expose
+if(typeof saveVend!=='undefined') // window.saveVend — 已在 vendors.js expose
+if(typeof setVendorSort!=='undefined') // window.setVendorSort — 已在 vendors.js expose
+if(typeof toggleVendor!=='undefined') // window.toggleVendor — 已在 vendors.js expose
+if(typeof deleteVendor!=='undefined') // window.deleteVendor — 已在 vendors.js expose
 
 
 window.filterPODrop=(id,q)=>{const drop=$('podrop-'+id);if(!drop)return;drop.style.display='block';const fil=q?_poProds.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)):_poProds;drop.innerHTML=fil.slice(0,30).map(p=>`<div style="padding:6px 9px;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''" onmousedown="pickPOItem(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}',${p.cost||0})">${p.name}${p.spec?` (${p.spec})`:''}</div>`).join('')||'<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';};
@@ -464,8 +464,7 @@ const _origGo = window.go;
 // 覆寫 go，每次渲染後插入漢堡按鈕
 // 漢堡按鈕已改為固定位置 #mobile-topbar，不再動態注入
 
-window.CM2=CM2; window.OM2=OM2; window.delCust=delCust;
- window.confirmBadDebt=confirmBadDebt; window.toggleBadDebt=toggleBadDebt;
+// CM2/OM2 已在本檔案定義，delCust/confirmBadDebt/toggleBadDebt 已在各自模組 expose
 window.openSidebar=openSidebar;
 window.closeSidebar=closeSidebar;
 
@@ -587,9 +586,9 @@ window._createRestockPO = createRestockPO;
 // ════════════════════════════
 
 
- window.addBrand=addBrand; window.editBrand=editBrand;
- window.setBrandSort=setBrandSort;
- window.deleteBrand=deleteBrand;
+ // window.addBrand — 已在 vendors.js expose // window.editBrand — 已在 vendors.js expose
+ // window.setBrandSort — 已在 vendors.js expose
+ // window.deleteBrand — 已在 vendors.js expose
 
 
 // ════════════════════════
