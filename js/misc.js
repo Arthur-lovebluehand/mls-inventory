@@ -339,6 +339,7 @@ async function doSplitBag() {
 window.openSplitBag = openSplitBag;
 window.doSplitBag = doSplitBag;
 async function auditLogs() {
+  try {
   const { data, count } = await sb.from('audit_logs')
     .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
@@ -383,5 +384,7 @@ async function auditLogs() {
         </div></div>
     </div>
   </div>`;
+
+  } catch(e) { $('main').innerHTML='<div class="ld" style="color:var(--rd)">載入失敗：'+e.message+'</div>'; }
 }
 window.auditLogs = auditLogs;
