@@ -41,18 +41,21 @@ window.addEventListener('error',e=>{
 })();
 
 // ── nav ──
-const pages={
-  dashboard,products,orders,purchase,customers,loans,
-  accounts,bonus,vendors,
-  promotions:()=>window.promotions?.(),
-  loanParties:()=>window.loanParties?.(),
-  auditLogs:()=>window.auditLogs?.()
-,
-  brands:()=>window.brands?.(),
-  categories:()=>window.categories?.()
-};
+// pages 動態建立（所有模組載入後才呼叫 go()，所以函數都存在）
+function _getPages(){
+  return {
+    dashboard,products,orders,purchase,customers,loans,
+    accounts,bonus,vendors,
+    promotions:()=>window.promotions?.(),
+    loanParties:()=>window.loanParties?.(),
+    auditLogs:()=>window.auditLogs?.(),
+    brands:()=>window.brands?.(),
+    categories:()=>window.categories?.()
+  };
+}
 
 function go(p){
+  const pages=_getPages();
   document.querySelectorAll('.ni').forEach(el=>el.classList.toggle('on',el.dataset.p===p));
   document.getElementById('main').innerHTML='<div class="ld"><div class="sp"></div>載入中…</div>';
   _cp=pages[p]; pages[p]?.();
@@ -624,5 +627,3 @@ window.makeCatSelect = (currentVal) => {
 
 
 // 進貨廠商排序設定
-
-
