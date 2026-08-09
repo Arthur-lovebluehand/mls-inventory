@@ -89,7 +89,10 @@ async function showOrder(no){
     <span style="font-weight:700">總金額</span><span class="num" style="text-align:right;font-weight:700;color:var(--ac)">${o?.total?'$'+Math.round(Number(o.total)).toLocaleString('zh-TW'):'—'}</span>
     <span>淨利</span><span class="num" style="text-align:right">${o?.total_profit?'$'+Math.round(Number(o.total_profit)).toLocaleString('zh-TW'):'—'}</span>
   </div>`,
-  `<button class="btn" onclick="CM()">關閉</button><button class="btn" onclick="printOrder('${no}')">🖨 列印出貨單</button><button class="btn btn-r" onclick="dOrder('${no}')">刪除訂單</button>`);
+  `<button class="btn" onclick="CM()">關閉</button>
+   <button class="btn" onclick="printOrder('${no}')">🖨 列印出貨單</button>
+   ${o?.is_return?'<span class="badge br2" style="padding:8px 12px">已退貨</span>':'<button class="btn btn-r" style="background:var(--am);border-color:var(--am)" onclick="startReturn(\'${no}\')">↩ 退貨</button>'}
+   <button class="btn btn-r" onclick="dOrder('${no}')">刪除</button>`);
 }
 async function printOrder(no){
   const[{data:o},{data:its}]=await Promise.all([
@@ -475,3 +478,100 @@ async function applyPromo(code, mode, sets) {
   }
 }
 window.applyPromo = applyPromo;
+
+// ══════════════════════════════════════
+//  退貨機制
+// ══════════════════════════════════════
+async function startReturn(no) {
+  const [{ data: o }, { data: its }] = await Promise.all([
+    sb.from('sales_orders').select('*').eq('order_no', no).single(),
+    sb.from('sales_order_items').select('*').eq('order_no', no),
+  ]);
+  if (!o) { toast('找不到訂單', 'e'); return; }
+
+  const items = (its || []).filter(i => (i.qty || 0) + (i.gift_qty || 0) > 0);
+
+  const rows = items.map(i => {
+    const total = (i.qty || 0) + (i.gift_qty || 0);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bd)">
+      <input type="checkbox" class="ret-cb" data-no="${i.product_no}" data-name="${(i.product_name||'').replace(/"/g,'&quot;')}"
+        data-max="${total}" checked style="width:15px;height:15px;flex-shrink:0">
+      <div style="flex:1">
+        <div style="font-weight:500">${i.product_name || '—'}</div>
+        <div style="font-size:12px;color:var(--tx3)">售出 ${i.qty||0} 件${i.gift_qty?` + 贈品 ${i.gift_qty} 件`:''} · ${fM(i.unit_price)}/件</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:12px;color:var(--tx3)">退貨數：</span>
+        <input type="number" class="ret-qty" data-no="${i.product_no}" value="${total}" min="1" max="${total}"
+          style="width:60px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;text-align:center;outline:none">
+      </div>
+    </div>`;
+  }).join('');
+
+  OM(`退貨：${no}`, `
+  <div class="al al-w" style="font-size:12px;margin-bottom:12px">
+    勾選要退貨的品項，確認退貨數量。退貨後庫存會自動回補。
+  </div>
+  <div style="margin-bottom:14px">${rows}</div>
+  <div class="fl fw">
+    <label style="font-size:13px;font-weight:600;margin-bottom:6px;display:block">退貨原因</label>
+    <textarea id="ret-reason" rows="2" placeholder="例如：商品有瑕疵、客戶不滿意…"
+      style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none;resize:vertical"></textarea>
+  </div>
+  <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+    <input type="checkbox" id="ret-restore" checked style="width:15px;height:15px">
+    <label for="ret-restore" style="font-size:13px;cursor:pointer">退貨後自動回補庫存</label>
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-r" style="background:var(--am);border-color:var(--am)" onclick="confirmReturn('${no}')">確認退貨</button>`
+  );
+}
+
+async function confirmReturn(no) {
+  const reason = document.getElementById('ret-reason')?.value?.trim() || '';
+  const restoreStock = document.getElementById('ret-restore')?.checked ?? true;
+
+  // 收集勾選的退貨品項
+  const retItems = [];
+  document.querySelectorAll('.ret-cb:checked').forEach(cb => {
+    const pno = cb.dataset.no;
+    const name = cb.dataset.name;
+    const qty = parseInt(document.querySelector(`.ret-qty[data-no="${pno}"]`)?.value) || 0;
+    if (qty > 0) retItems.push({ pno, name, qty });
+  });
+
+  if (!retItems.length) { toast('請勾選至少一項退貨品項', 'e'); return; }
+
+  // 1. 標記訂單為退貨
+  const { error: e1 } = await sb.from('sales_orders').update({
+    is_return: true,
+    return_date: new Date().toISOString().split('T')[0],
+    return_reason: reason || null,
+    status: '已退貨',
+  }).eq('order_no', no);
+  if (e1) { toast('更新訂單失敗：' + e1.message, 'e'); return; }
+
+  // 2. 回補庫存（若勾選）
+  if (restoreStock) {
+    for (const item of retItems) {
+      const { data: prod } = await sb.from('products').select('stock').eq('product_no', item.pno).single();
+      if (prod) {
+        const newStock = (prod.stock || 0) + item.qty;
+        await sb.from('products').update({ stock: newStock }).eq('product_no', item.pno);
+      }
+    }
+  }
+
+  // 3. 記錄操作
+  await logAction('return', 'sales_orders', no,
+    `退貨 ${no}：${retItems.map(i => `${i.name}×${i.qty}`).join('、')}${reason ? '，原因：' + reason : ''}${restoreStock ? '（已回補庫存）' : '（未回補庫存）'}`,
+    null, { is_return: true, items: retItems }
+  );
+
+  toast(`✅ 退貨完成，已退 ${retItems.length} 項商品${restoreStock ? '，庫存已回補' : ''}`);
+  CM();
+  orders();
+}
+
+window.startReturn = startReturn;
+window.confirmReturn = confirmReturn;
