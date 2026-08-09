@@ -147,7 +147,7 @@ function fa(id,lbl,val){return `<div class="fl"><label>${lbl}</label><textarea i
 // ── Searchable Select Component ──
 // Creates a searchable product picker
 // id: unique id, items: [{value,label,data}], onSelect: fn(value,data)
-let _ssState={};
+var _ssState={};
 function createSS(id,items,placeholder,selectedVal){
   const sel=items.find(x=>x.value===selectedVal);
   return `<div class="ss-wrap" id="ss-${id}">
@@ -232,18 +232,18 @@ async function dashboard(){
 }
 
 // ── PRODUCTS ──
-let pS='',pP=1,pShowInactive=false,pSrc='';
+var pS='',pP=1,pShowInactive=false,pSrc='';
 
 
 // ── ORDERS ──
-let oS='',oP=1,oF='all';
+var oS='',oP=1,oF='all';
 
 
 // 列印出貨單
 
 
 // 新增訂單
-let _items=[], _allProds=[], _allCusts=[];
+var _items=[], _allProds=[], _allCusts=[];
 
 
 window.filterItemDrop=(id,q)=>{
@@ -279,7 +279,7 @@ window.setIG=(id,val)=>{const it=_items.find(x=>x.id===id);if(it)it.giftQty=Math
 
 
 // ── PURCHASE ──
-let puP=1, _poItems=[], _poProds=[], _vends2=[];
+var puP=1, _poItems=[], _poProds=[], _vends2=[];
 
 
 window.pickVend=vno=>{const v=_vends2.find(x=>x.vendor_no===vno);if(v)$('f-povname').value=v.name;};
@@ -314,15 +314,15 @@ window.setPOIG=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.giftQty
 
 
 // ── CUSTOMERS ──
-let cS='',cP=1;
+var cS='',cP=1;
 
 
 // ── VENDORS ──
 
 
 // ── LOANS ──
-let _loanItems=[], _loanProds=[];
-let lFilter='all';
+var _loanItems=[], _loanProds=[];
+var lFilter='all';
 
 
 window.filterLoanDrop=(id,q)=>{const drop=$('ldrop-'+id);if(!drop)return;drop.style.display='block';const fil=q?_loanProds.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)):_loanProds;drop.innerHTML=fil.slice(0,30).map(p=>`<div style="padding:6px 9px;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''" onmousedown="pickLoanItem(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}')">
@@ -335,7 +335,7 @@ window.setLoanIQ=(id,val)=>{const it=_loanItems.find(x=>x.id===id);if(it)it.qty=
 
 
 // ── BONUS ──
-let bnP=1;
+var bnP=1;
 
 
 // ── ACCOUNTS ──
@@ -367,14 +367,10 @@ Object.assign(window,{showOrder,showPO,showCust,showVend,showLoan,addProd,eProd,
 
 
 // ── 新增/編輯套組 ──
-let _promoItems = [], _allProdsForPromo = [];
+var _promoItems = [], _allProdsForPromo = [];
 
 
-window.updatePromoFields = () => {
-  const t = $('f-ptype')?.value || '固定套組';
-  const ef = $('promo-extra-fields');
-  if (ef) ef.innerHTML = promoExtraFields({ type: t });
-};
+// updatePromoFields moved to promotions.js
 
 
 window.filterPromoDrop = (id, q) => {
@@ -387,18 +383,13 @@ window.filterPromoDrop = (id, q) => {
       ${p.name}${p.spec ? ` (${p.spec})` : ''} <span style="color:var(--tx3)">庫存:${p.stock}</span>
     </div>`).join('') || '<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';
 };
-window.closePromoDrop = id => { const d = $('prodrop-' + id); if (d) d.style.display = 'none'; };
-window.pickPromoItem = (id, pno, name) => {
-  const it = _promoItems.find(x => x.id === id); if (!it) return;
-  it.pno = pno; it.name = name;
-  renderPromoItems();
-  closePromoDrop(id);
-};
-window.addPromoItem = () => { _promoItems.push({ id: Date.now(), pno: '', name: '', qty: 1, is_gift: false, price_override: null }); renderPromoItems(); };
-window.rmPromoItem = id => { _promoItems = _promoItems.filter(x => x.id !== id); renderPromoItems(); };
-window.setPromoIQ = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.qty = Math.max(1, +val || 1); };
-window.setPromoIV = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.price_override = +val || null; };
-window.setPromoIG = (id, checked) => { const it = _promoItems.find(x => x.id === id); if (it) it.is_gift = checked; };
+// removed (moved to module) if (d) d.style.display = 'none'; };
+// removed (moved to module)
+// addPromoItem moved to module renderPromoItems(); };
+// removed (moved to module)
+// removed (moved to module)
+// removed (moved to module)
+// removed (moved to module)
 
 
 // ── 在訂單/進貨/借貨新增表單中：選用套組 ──
@@ -416,7 +407,7 @@ window.setPromoIG = (id, checked) => { const it = _promoItems.find(x => x.id ===
 // ════════════════════════════
 //  拆袋/拆箱作業
 // ════════════════════════════
-let _splitItems = [], _splitProds = [];
+var _splitItems = [], _splitProds = [];
 
 
 window.filterSplitDrop = (id, q) => {
@@ -431,16 +422,11 @@ window.filterSplitDrop = (id, q) => {
     </div>`
   ).join('') || '<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';
 };
-window.closeSplitDrop = id => { const d=$('sdrop-'+id); if(d) d.style.display='none'; };
-window.pickSplitItem = (id, pno, name) => {
-  const it = _splitItems.find(x=>x.id===id); if(!it) return;
-  it.pno = pno; it.name = name;
-  renderSplitItems();
-  closeSplitDrop(id);
-};
-window.addSplitItem = () => { _splitItems.push({id:Date.now(),pno:'',name:'',qty:1}); renderSplitItems(); };
-window.rmSplitItem = id => { _splitItems=_splitItems.filter(x=>x.id!==id); renderSplitItems(); };
-window.setSplitIQ = (id, val) => { const it=_splitItems.find(x=>x.id===id); if(it) it.qty=Math.max(1,+val||1); };
+// removed (moved to module) if(d) d.style.display='none'; };
+// removed (moved to module)
+// addSplitItem moved to module renderSplitItems(); };
+// removed (moved to module)
+// removed (moved to module)
 
 
 // ── 漢堡選單 / 手機側欄 ──
@@ -549,7 +535,7 @@ window.handleLogoUpload=handleLogoUpload;
 
 
 // ── 操作記錄查看頁面 ──
-let alP = 1;
+var alP = 1;
 
 
 function saveOpName() {
@@ -619,5 +605,3 @@ window.makeCatSelect = (currentVal) => {
 
 
 // 進貨廠商排序設定
-
-
