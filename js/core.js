@@ -287,13 +287,7 @@ window.pickVend=vno=>{const v=_vends2.find(x=>x.vendor_no===vno);if(v)$('f-povna
 window._getPoItems=()=>_poItems;
 window._setPoItems=(v)=>{_poItems=v;};
 window._renderPOItems=()=>renderPOItems();
-// expose vendor management
-if(typeof addVend!=='undefined') // window.addVend — 已在 vendors.js expose
-if(typeof eVend!=='undefined') // window.eVend — 已在 vendors.js expose
-if(typeof saveVend!=='undefined') // window.saveVend — 已在 vendors.js expose
-if(typeof setVendorSort!=='undefined') // window.setVendorSort — 已在 vendors.js expose
-if(typeof toggleVendor!=='undefined') // window.toggleVendor — 已在 vendors.js expose
-if(typeof deleteVendor!=='undefined') // window.deleteVendor — 已在 vendors.js expose
+// vendors/brands expose 已在 vendors.js 內
 
 
 window.filterPODrop=(id,q)=>{const drop=$('podrop-'+id);if(!drop)return;drop.style.display='block';const fil=q?_poProds.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)):_poProds;drop.innerHTML=fil.slice(0,30).map(p=>`<div style="padding:6px 9px;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''" onmousedown="pickPOItem(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}',${p.cost||0})">${p.name}${p.spec?` (${p.spec})`:''}</div>`).join('')||'<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';};
@@ -350,8 +344,7 @@ function payMethodSel(id,val){
   return `<div class="fl"><label>付款方式</label><select id="f-${id}">${_payMethods.map(m=>`<option value="${m}" ${m===val?'selected':''}>${m}</option>`).join('')}</select></div>`;
 }
 
-// expose for inline
-Object.assign(window,{showOrder,showPO,showCust,showVend,showLoan,addProd,eProd,dProd,adjStk,saveProd,doAdj,addOrder,editOrder,saveOrder,togglePay,dOrder,printOrder,addPO,editPO,savePO,togglePO,addCust,eCust,saveCust,addVend,eVend,saveVend,addLoan,returnLoan,doReturn,addBonus,saveBonus,toggleBonus,dBonus,CM});
+// expose for inline — 已移至各模組自行 expose
 
 
 // ═══════════════════════════════════════════
