@@ -50,7 +50,8 @@ function _getPages(){
     loanParties:()=>window.loanParties?.(),
     auditLogs:()=>window.auditLogs?.(),
     brands:()=>window.brands?.(),
-    categories:()=>window.categories?.()
+    categories:()=>window.categories?.(),
+    serviceHub:()=>window.serviceHub?.()
   };
 }
 
