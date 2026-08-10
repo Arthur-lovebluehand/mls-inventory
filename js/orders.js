@@ -91,7 +91,7 @@ async function showOrder(no){
   </div>`,
   `<button class="btn" onclick="CM()">關閉</button>
    <button class="btn" onclick="printOrder('${no}')">🖨 列印出貨單</button>
-   ${o?.is_return?'<span class="badge br2" style="padding:8px 12px">已退貨</span>':'<button class="btn btn-r" style="background:var(--am);border-color:var(--am)" onclick="startReturn(this.dataset.no)" data-no="${no}">↩ 退貨</button>'}
+   ${o?.is_return?'<span class="badge br2" style="padding:8px 12px">已退貨</span>':'<button class="btn btn-r" style="background:var(--am);border-color:var(--am)" onclick="startReturn(this.dataset.no)" data-no="'+no+'">↩ 退貨</button>'}
    <button class="btn btn-r" onclick="dOrder('${no}')">刪除</button>`);
 }
 async function printOrder(no){

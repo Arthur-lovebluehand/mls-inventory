@@ -217,6 +217,16 @@ window.editPromo = editPromo;
 window.savePromo = savePromo;
 window.showPromo = showPromo;
 window.togglePromo = togglePromo;
+async function deletePromo(code) {
+  if (!confirm(`確定刪除活動「${code}」？此操作無法復原。`)) return;
+  const { error } = await sb.from('promotions').delete().eq('promo_code', code);
+  if (error) { toast('刪除失敗：' + error.message, 'e'); return; }
+  await logAction('delete', 'promotions', code, `刪除活動 ${code}`, null, null);
+  toast('已刪除活動');
+  CM();
+  promotions();
+}
+
 window.deletePromo = deletePromo;
 window.renderPromoItems = renderPromoItems;
 window.updatePromoFields = updatePromoFields;
