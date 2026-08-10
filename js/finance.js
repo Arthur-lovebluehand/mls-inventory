@@ -137,9 +137,16 @@ async function accounts(){
   // 把細節資料存全域供點擊查看
   window._acctByMonth=byMonth;
 
+  const accTab = window._accTab || 'sales';
   $('main').innerHTML=`
   <div class="ph"><div><div class="pt">對帳記錄</div><div class="ps">依訂單自動彙整</div></div></div>
-  <div class="pc">
+  <div class="tab-bar" style="padding:0 16px 10px;overflow-x:auto">
+    <div class="tab${accTab==='sales'?' on':''}" onclick="window._accTab='sales';accounts()">銷售財報</div>
+    <div class="tab${accTab==='total'?' on':''}" onclick="window._accTab='total';accounts()">總財報</div>
+  </div>`;
+  if(accTab==='total'){ await showTotalFinance(); return; }
+  $('main').innerHTML += `
+    <div class="pc">
     ${(yr&&yr.length)?`<div class="tc" style="margin-bottom:14px"><div class="tb"><span class="tt">年度對帳</span></div>
     <div class="tw"><table style="width:100%"><tr><th>年份</th><th>收入</th><th>支出</th><th>結餘</th></tr>
     ${(yr||[]).map(y=>`<tr><td style="font-weight:600">${y.year}</td><td class="num ok">${fM(y.income)}</td><td class="num cr">${fM(y.expense)}</td><td class="num" style="font-weight:700;color:${y.total>=0?'var(--ac)':'var(--rd)'}">${fM(y.total)}</td></tr>`).join('')}
@@ -295,3 +302,76 @@ window.showBonus=showBonus;
 window.editBonus=editBonus;
 window.updateBonus=updateBonus;
 window.toggleBonusFields=toggleBonusFields;
+
+// ════════════════════════════════════
+//  總財報（銷售 + 服務合計）
+// ════════════════════════════════════
+async function showTotalFinance() {
+  const [{ data:sOrders },{ data:pOrders },{ data:svOrders },{ data:svTransfers }] = await Promise.all([
+    sb.from('sales_orders').select('order_date,total_amount,payment_status').eq('payment_status','已收'),
+    sb.from('purchase_orders').select('po_date,total').eq('done','完成'),
+    sb.from('service_orders').select('order_date,total,consumable_cost'),
+    sb.from('service_transfers').select('transfer_date,total_cost'),
+  ]);
+
+  // 月度彙整
+  const mMap = {};
+  const addM = (ym, key, val) => { if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,trCost:0}; mMap[ym][key]+=val||0; };
+  (sOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym) addM(ym,'salesRev',o.total_amount); });
+  (pOrders||[]).forEach(o => { const ym=(o.po_date||'').slice(0,7); if(ym) addM(ym,'purchCost',o.total); });
+  (svOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'svcRev',o.total); addM(ym,'svcCost',o.consumable_cost); }});
+  (svTransfers||[]).forEach(t => { const ym=(t.transfer_date||'').slice(0,7); if(ym) addM(ym,'trCost',t.total_cost); });
+
+  // 年度彙整
+  const yMap = {};
+  Object.entries(mMap).forEach(([ym, d]) => {
+    const yr = ym.slice(0,4);
+    if(!yMap[yr]) yMap[yr]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,trCost:0};
+    Object.keys(d).forEach(k => yMap[yr][k]+=d[k]);
+  });
+
+  const months = Object.keys(mMap).sort().reverse().slice(0,24);
+  const years = Object.keys(yMap).sort().reverse();
+
+  const netRow = d => d.salesRev + d.svcRev - d.purchCost - d.svcCost - d.trCost;
+
+  $('main').innerHTML += `
+  <div class="pc">
+    <div class="tc" style="margin-bottom:16px">
+      <div class="tb"><span class="tt">年度總財報</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>進貨支出</th><th>服務成本</th><th>總淨利</th></tr>
+        ${years.map(yr=>{
+          const d=yMap[yr]; const net=netRow(d);
+          return `<tr>
+            <td style="font-weight:700">${yr}</td>
+            <td class="num" style="color:var(--ac)">${fM(d.salesRev)}</td>
+            <td class="num" style="color:var(--ac)">${fM(d.svcRev)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.svcCost+d.trCost)}</td>
+            <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
+          </tr>`;
+        }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+      </table></div>
+    </div>
+    <div class="tc">
+      <div class="tb"><span class="tt">月度總財報</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>月份</th><th>銷售收入</th><th>服務收入</th><th>進貨支出</th><th>服務成本</th><th>總淨利</th></tr>
+        ${months.map(ym=>{
+          const d=mMap[ym]; const net=netRow(d);
+          return `<tr>
+            <td style="color:var(--ac);font-weight:600">${ym}</td>
+            <td class="num">${fM(d.salesRev)}</td>
+            <td class="num">${fM(d.svcRev)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.svcCost+d.trCost)}</td>
+            <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
+          </tr>`;
+        }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+      </table></div>
+    </div>
+  </div>`;
+}
+
+window.showTotalFinance = showTotalFinance;

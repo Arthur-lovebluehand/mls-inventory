@@ -13,6 +13,7 @@ function serviceHub() {
     { id:'transfer',  label:'撥轉記錄' },
     { id:'credits',   label:'儲值管理' },
     { id:'items',     label:'服務項目' },
+    { id:'finance',   label:'服務財報' },
   ];
   $('main').innerHTML = `
   <div class="ph">
@@ -29,6 +30,7 @@ function serviceHub() {
   if(svcTab==='transfer')  svcTransfers();
   if(svcTab==='credits')   svcCredits();
   if(svcTab==='items')     svcItems();
+  if(svcTab==='finance')   svcFinance();
 }
 
 // ════════════════════════
@@ -225,6 +227,7 @@ function renderSvcItems() {
   if(!area) return;
   if(!window._svcItems.length){ area.innerHTML=''; return; }
   const total = window._svcItems.reduce((s,i)=>s+i.subtotal,0);
+  const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable').reduce((s,i)=>s+i.cost,0);
   area.innerHTML = `
   <div class="tc">
     <div class="tb"><span class="tt">訂單品項</span></div>
@@ -260,6 +263,7 @@ async function saveSvcOrder() {
   if(!window._svcItems.length){ toast('請加入至少一個品項','e'); return; }
 
   const total = window._svcItems.reduce((s,i)=>s+i.subtotal,0);
+  const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable').reduce((s,i)=>s+i.cost,0);
 
   // 儲值扣款計算
   let paidByCredit = 0, paidByCash = total;
@@ -273,7 +277,8 @@ async function saveSvcOrder() {
   // 1. 建服務訂單
   const { error:e1 } = await sb.from('service_orders').insert({
     order_no:no, order_date:date, customer_no:custNo, customer_name:custName,
-    total, paid_by_credit:paidByCredit, paid_by_cash:paidByCash,
+    total, consumable_cost:consumableCost,
+    paid_by_credit:paidByCredit, paid_by_cash:paidByCash,
     payment_method:payMethod, note:note||null
   });
   if(e1){ toast('建立失敗：'+e1.message,'e'); return; }
@@ -442,10 +447,16 @@ async function saveTransfer() {
   const trNo = 'TR-'+date.replace(/-/g,'')+'-'+Date.now().toString().slice(-4);
 
   // 1. 建撥轉記錄
+  // 計算撥轉成本（進貨成本 × 撥轉數量 = 服務支出）
+  const { data:costData } = await sb.from('products').select('cost').eq('product_no',pno).single();
+  const unitCost = costData?.cost||0;
+  const totalCost = unitCost * qty;
   await sb.from('service_transfers').insert({
     transfer_no:trNo, transfer_date:date, product_no:pno,
     product_name:opt.text.split('—')[0].trim(),
-    qty_stock:qty, qty_service:svcQty, note:note||null
+    qty_stock:qty, qty_service:svcQty,
+    unit_cost:unitCost, total_cost:totalCost,
+    note:note||null
   });
 
   // 2. 減銷售庫存
@@ -688,3 +699,131 @@ window.svcItems        = svcItems;
 window.addSvcItem      = addSvcItem;
 window.editSvcItem     = editSvcItem;
 window.saveSvcItem     = saveSvcItem;
+
+// ════════════════════════════════════
+//  服務財報
+// ════════════════════════════════════
+async function svcFinance() {
+  // 年度彙整
+  const [{ data:orders },{ data:transfers }] = await Promise.all([
+    sb.from('service_orders').select('order_date,total,consumable_cost'),
+    sb.from('service_transfers').select('transfer_date,total_cost'),
+  ]);
+
+  // 按年分組
+  const yearMap = {};
+  (orders||[]).forEach(o => {
+    const yr = (o.order_date||'').slice(0,4);
+    if(!yr) return;
+    if(!yearMap[yr]) yearMap[yr] = { revenue:0, cost:0, transfer_cost:0 };
+    yearMap[yr].revenue += o.total||0;
+    yearMap[yr].cost += o.consumable_cost||0;
+  });
+  (transfers||[]).forEach(t => {
+    const yr = (t.transfer_date||'').slice(0,4);
+    if(!yr) return;
+    if(!yearMap[yr]) yearMap[yr] = { revenue:0, cost:0, transfer_cost:0 };
+    yearMap[yr].transfer_cost += t.total_cost||0;
+  });
+
+  // 按月分組（近12月）
+  const monthMap = {};
+  (orders||[]).forEach(o => {
+    const ym = (o.order_date||'').slice(0,7);
+    if(!ym) return;
+    if(!monthMap[ym]) monthMap[ym] = { revenue:0, cost:0, transfer_cost:0 };
+    monthMap[ym].revenue += o.total||0;
+    monthMap[ym].cost += o.consumable_cost||0;
+  });
+  (transfers||[]).forEach(t => {
+    const ym = (t.transfer_date||'').slice(0,7);
+    if(!ym) return;
+    if(!monthMap[ym]) monthMap[ym] = { revenue:0, cost:0, transfer_cost:0 };
+    monthMap[ym].transfer_cost += t.total_cost||0;
+  });
+
+  const years = Object.keys(yearMap).sort().reverse();
+  const months = Object.keys(monthMap).sort().reverse().slice(0,24);
+
+  $('svc-content').innerHTML = `
+  <div class="tc" style="margin-bottom:16px">
+    <div class="tb"><span class="tt">年度服務財報</span></div>
+    <div class="tw"><table style="width:100%">
+      <tr><th>年份</th><th>服務收入</th><th>耗材成本</th><th>撥轉成本</th><th>服務淨利</th></tr>
+      ${years.map(yr=>{
+        const d=yearMap[yr];
+        const net=d.revenue-d.cost-d.transfer_cost;
+        return `<tr>
+          <td style="font-weight:700">${yr}</td>
+          <td class="num" style="color:var(--ac)">${fM(d.revenue)}</td>
+          <td class="num" style="color:var(--rd)">${fM(d.cost)}</td>
+          <td class="num" style="color:var(--am)">${fM(d.transfer_cost)}</td>
+          <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
+        </tr>`;
+      }).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+    </table></div>
+  </div>
+  <div class="tc">
+    <div class="tb"><span class="tt">月度服務財報</span>
+      <span style="font-size:11px;color:var(--tx3)">點月份看訂單明細</span>
+    </div>
+    <div class="tw"><table style="width:100%">
+      <tr><th>月份</th><th>服務收入</th><th>耗材成本</th><th>撥轉成本</th><th>服務淨利</th></tr>
+      ${months.map(ym=>{
+        const d=monthMap[ym];
+        const net=d.revenue-d.cost-d.transfer_cost;
+        return `<tr style="cursor:pointer" onclick="svcMonthDetail('${ym}')"
+          onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+          <td style="color:var(--ac);font-weight:600">${ym}</td>
+          <td class="num" style="color:var(--ac)">${fM(d.revenue)}</td>
+          <td class="num" style="color:var(--rd)">${fM(d.cost)}</td>
+          <td class="num" style="color:var(--am)">${fM(d.transfer_cost)}</td>
+          <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
+        </tr>`;
+      }).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+    </table></div>
+  </div>`;
+}
+
+async function svcMonthDetail(ym) {
+  const [{ data:orders },{ data:transfers }] = await Promise.all([
+    sb.from('service_orders').select('*').like('order_date',ym+'%').order('order_date',{ascending:false}),
+    sb.from('service_transfers').select('*').like('transfer_date',ym+'%').order('transfer_date',{ascending:false}),
+  ]);
+  const revenue = (orders||[]).reduce((s,o)=>s+(o.total||0),0);
+  const cost = (orders||[]).reduce((s,o)=>s+(o.consumable_cost||0),0);
+  const trCost = (transfers||[]).reduce((s,t)=>s+(t.total_cost||0),0);
+  const net = revenue-cost-trCost;
+
+  OM(`${ym} 服務明細`,`
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+    ${[['服務收入',revenue,'var(--ac)'],['耗材成本',cost,'var(--rd)'],['撥轉成本',trCost,'var(--am)'],['服務淨利',net,net>=0?'var(--ac)':'var(--rd)']].map(([lbl,val,clr])=>`
+    <div style="background:var(--sf2);border-radius:var(--r);padding:10px;text-align:center">
+      <div style="font-size:11px;color:var(--tx3)">${lbl}</div>
+      <div style="font-weight:700;color:${clr}">${fM(val)}</div>
+    </div>`).join('')}
+  </div>
+  ${orders?.length?`<div style="font-weight:600;margin-bottom:6px">服務訂單</div>
+  <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
+    <tr><th>訂單號</th><th>日期</th><th>客戶</th><th>服務費</th><th>耗材成本</th></tr>
+    ${(orders||[]).map(o=>`<tr>
+      <td style="font-size:12px">${o.order_no}</td>
+      <td>${o.order_date}</td><td>${o.customer_name||'—'}</td>
+      <td class="num" style="color:var(--ac)">${fM(o.total)}</td>
+      <td class="num" style="color:var(--rd)">${fM(o.consumable_cost)}</td>
+    </tr>`).join('')}
+  </table></div></div>`:''}
+  ${transfers?.length?`<div style="font-weight:600;margin-bottom:6px">撥轉記錄</div>
+  <div class="tc"><div class="tw"><table style="width:100%">
+    <tr><th>日期</th><th>商品</th><th>數量</th><th>成本</th></tr>
+    ${(transfers||[]).map(t=>`<tr>
+      <td>${t.transfer_date}</td><td>${t.product_name||t.product_no}</td>
+      <td>${t.qty_stock} 盒/瓶</td>
+      <td class="num" style="color:var(--am)">${fM(t.total_cost)}</td>
+    </tr>`).join('')}
+  </table></div></div>`:''}`,
+  `<button class="btn" onclick="CM()">關閉</button>`);
+}
+
+window.svcFinance = svcFinance;
+window.svcMonthDetail = svcMonthDetail;
