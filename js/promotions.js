@@ -229,12 +229,267 @@ async function deletePromo(code) {
 
 window.deletePromo = deletePromo;
 window.renderPromoItems = renderPromoItems;
-window.updatePromoFields = updatePromoFields;
-window.addPromoItem = addPromoItem;
-window.rmPromoItem = rmPromoItem;
-window.setPromoIQ = setPromoIQ;
-window.setPromoIV = setPromoIV;
-window.setPromoIG = setPromoIG;
-window.closePromoDrop = closePromoDrop;
-window.pickPromoItem = pickPromoItem;
-window.applyBundle = applyBundle;
+// ── 活動品項操作函數 ──
+window.updatePromoFields = () => {
+  const t = $('f-ptype')?.value || '固定套組';
+  const ef = $('promo-extra-fields');
+  if (ef) ef.innerHTML = promoExtraFields({ type: t });
+};
+
+window.addPromoItem = () => { _promoItems.push({ id: Date.now(), pno: '', name: '', qty: 1, is_gift: false, price_override: null }); renderPromoItems(); };
+
+window.rmPromoItem = id => { _promoItems = _promoItems.filter(x => x.id !== id); renderPromoItems(); };
+
+window.setPromoIQ = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.qty = Math.max(1, +val || 1); };
+
+window.setPromoIV = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.price_override = +val || null; };
+
+window.setPromoIG = (id, checked) => { const it = _promoItems.find(x => x.id === id); if (it) it.is_gift = checked; };
+
+window.closePromoDrop = id => { const d = $('prodrop-' + id); if (d) d.style.display = 'none'; };
+
+window.pickPromoItem = (id, pno, name) => {
+  const it = _promoItems.find(x => x.id === id); if (!it) return;
+  it.pno = pno; it.name = name;
+  renderPromoItems();
+  closePromoDrop(id);
+};
+
+window.applyBundle = async (code) => {
+  const { data: promo } = await sb.from('promotions').select('*,promotions_items(*)').eq('promo_code', code).single();
+  if (!promo) { toast('找不到套組', 'e'); return; }
+  const items = promo.promotions_items || [];
+  items.forEach(item => {
+    _promoItems.push({
+      id: Date.now() + Math.random(),
+      pno: item.product_no,
+      name: item.product_name || item.product_no,
+      qty: item.qty || 1,
+      giftQty: item.gift_qty || 0,
+      isGift: item.is_gift || false,
+    });
+  });
+  renderPromoItems();
+};
+
+
+// 以下函數定義已移至下方
+
+
+// ══ 套組表單輔助函數（從 core.js 還原）══
+window.updatePromoFields = () => {
+  const t = $('f-ptype')?.value || '固定套組';
+  const ef = $('promo-extra-fields');
+  if (ef) ef.innerHTML = promoExtraFields({ type: t });
+};
+
+function renderPromoItems() {
+  const area = $('promoItemsArea'); if (!area) return;
+  area.innerHTML = _promoItems.map(item => `
+  <div style="display:grid;grid-template-columns:3fr 60px 80px 60px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+    <div style="position:relative">
+      <input type="text" value="${item.pno ? (item.name || item.pno) : ''}" placeholder="輸入關鍵字搜尋商品…"
+        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
+        oninput="filterPromoDrop(${item.id},this.value)" onfocus="filterPromoDrop(${item.id},this.value)"
+        onblur="setTimeout(()=>closePromoDrop(${item.id}),350)">
+      <div id="prodrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:140px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+    </div>
+    <input type="number" value="${item.qty || 1}" min="1" onchange="setPromoIQ(${item.id},this.value)"
+      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="number" value="${item.price_override || ''}" placeholder="套組價" onchange="setPromoIV(${item.id},this.value)"
+      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="checkbox" ${item.is_gift ? 'checked' : ''} onchange="setPromoIG(${item.id},this.checked)"
+      style="width:16px;height:16px;cursor:pointer" title="勾選=贈品（免費）">
+    <button onclick="rmPromoItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
+  </div>`).join('');
+};
+
+window.addPromoItem = () => { _promoItems.push({ id: Date.now(), pno: '', name: '', qty: 1, is_gift: false, price_override: null }); renderPromoItems(); };;
+
+window.rmPromoItem = id => { _promoItems = _promoItems.filter(x => x.id !== id); renderPromoItems(); };;
+
+window.setPromoIQ = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.qty = Math.max(1, +val || 1); };;
+
+window.setPromoIV = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.price_override = +val || null; };;
+
+window.setPromoIG = (id, checked) => { const it = _promoItems.find(x => x.id === id); if (it) it.is_gift = checked; };
+
+async function savePromo(editCode) {
+  const code = v('pcode'), name = v('pname'), type = v('ptype');
+  if (!code || !name) { toast('請填寫代碼和名稱', 'e'); return; }
+  const payload = {
+    promo_code: code, name, type,
+    start_date: v('pstart') || null, end_date: v('pend') || null,
+    description: v('pdesc') || null, note: v('pnote') || null,
+    bundle_price: null, discount_amount: null, discount_pct: null, buy_qty: null, get_qty: null,
+  };
+  if (type === '固定套組') payload.bundle_price = parseFloat($('f-pbprice')?.value) || null;
+  if (type === '買幾送幾') { payload.buy_qty = parseFloat($('f-pbuy')?.value) || null; payload.get_qty = parseFloat($('f-pget')?.value) || null; }
+  if (type === '折扣金額') payload.discount_amount = parseFloat($('f-pdamt')?.value) || null;
+  if (type === '百分比折扣') payload.discount_pct = parseFloat($('f-pdpct')?.value) || null;
+
+  if (editCode) {
+    await sb.from('promotions').update(payload).eq('promo_code', editCode);
+    await sb.from('promotion_items').delete().eq('promo_code', editCode);
+  } else {
+    payload.is_active = true;
+    const { error } = await sb.from('promotions').insert(payload);
+    if (error) { toast('新增失敗：' + error.message, 'e'); return; }
+  }
+  const items = _promoItems.filter(i => i.pno).map(i => ({
+    promo_code: code, product_no: i.pno, product_name: i.name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override || null
+  }));
+  if (items.length) await sb.from('promotion_items').insert(items);
+  toast(editCode ? '套組已更新' : '套組新增成功！'); CM(); promotions();
+}
+
+async function showPromo(code) {
+  const [{ data: p }, { data: its }] = await Promise.all([
+    sb.from('promotions').select('*').eq('promo_code', code).single(),
+    sb.from('promotion_items').select('*').eq('promo_code', code).order('is_gift'),
+  ]);
+  const today_s = today();
+  const expired = p?.end_date && p.end_date < today_s;
+  OM(`套組：${p?.name}`, `
+  <div class="dg" style="margin-bottom:13px">
+    <div class="dr"><span class="dlb">代碼</span><span class="dv" style="font-family:monospace">${p?.promo_code}</span></div>
+    <div class="dr"><span class="dlb">類型</span><span class="dv">${p?.type}</span></div>
+    <div class="dr"><span class="dlb">有效期間</span><span class="dv">${p?.start_date || '即日起'} ～ ${p?.end_date || '永久'}</span></div>
+    <div class="dr"><span class="dlb">狀態</span><span class="dv"><span class="badge ${!expired && p?.is_active ? 'bg' : 'br2'}">${expired ? '已過期' : p?.is_active ? '使用中' : '停用'}</span></span></div>
+    ${p?.bundle_price ? `<div class="dr"><span class="dlb">套組售價</span><span class="dv" style="font-weight:600;color:var(--ac)">${fM(p.bundle_price)}</span></div>` : ''}
+    ${p?.buy_qty ? `<div class="dr"><span class="dlb">買幾送幾</span><span class="dv">買 ${p.buy_qty} 送 ${p.get_qty}</span></div>` : ''}
+    ${p?.discount_amount ? `<div class="dr"><span class="dlb">折扣金額</span><span class="dv">折 ${fM(p.discount_amount)}</span></div>` : ''}
+    ${p?.discount_pct ? `<div class="dr"><span class="dlb">折扣比例</span><span class="dv">${p.discount_pct}% off</span></div>` : ''}
+    ${p?.description ? `<div class="dr" style="grid-column:1/-1"><span class="dlb">說明</span><span class="dv">${p.description}</span></div>` : ''}
+  </div>
+  <div class="sh">套組包含商品</div>
+  <table class="itb">
+    <tr><th>商品</th><th>數量</th><th>套組價</th><th>性質</th></tr>
+    ${(its || []).map(i => `<tr>
+      <td>${i.product_name || '—'}</td>
+      <td class="num">${fN(i.qty)}</td>
+      <td class="num">${i.price_override ? fM(i.price_override) : '依位階定價'}</td>
+      <td><span class="badge ${i.is_gift ? 'ba' : 'bg'}">${i.is_gift ? '贈品' : '商品'}</span></td>
+    </tr>`).join('')}
+  </table>`);
+}
+
+async function togglePromo(code, active) {
+  await sb.from('promotions').update({ is_active: !active }).eq('promo_code', code);
+  toast(!active ? '已啟用' : '已停用'); promotions();
+}
+
+// ── 在訂單/進貨/借貨新增表單中：選用套組 ──
+async function openBundlePicker(mode) {
+  // mode: 'order' | 'po' | 'loan'
+  const today_s = today();
+  const { data: promos } = await sb.from('promotions').select('*')
+    .eq('is_active', true)
+    .or(`end_date.is.null,end_date.gte.${today_s}`)
+    .order('name');
+  OM2('選用套組/活動', `
+  <div class="al al-w" style="font-size:12px">選擇套組後，子項目數量會依「組數」自動計算（買2組送的也自動×2）。</div>
+  ${(promos || []).length === 0 ? '<div style="color:var(--tx3);padding:20px;text-align:center">目前無有效套組</div>' :
+    (promos || []).map(p => `
+    <div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-weight:500">${p.name}</span>
+        <span class="badge ${p.type === '固定套組' ? 'bb' : p.type === '買幾送幾' ? 'bg' : 'ba'}">${p.type}</span>
+      </div>
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">
+        ${p.description || ''} ${p.bundle_price ? `・套組價 ${fM(p.bundle_price)}` : ''}
+        ${p.end_date ? `・有效至 ${p.end_date}` : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:12px;color:var(--tx2)">幾組：</label>
+        <input type="number" id="bqty-${p.promo_code}" value="1" min="1" max="99"
+          style="width:65px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);font-size:14px;font-weight:600;text-align:center;outline:none">
+        <button class="btn btn-p btn-s" onclick="applyPromo('${p.promo_code}','${mode}',parseInt(document.getElementById('bqty-${p.promo_code}')?.value)||1)">
+          加入 →
+        </button>
+      </div>
+    </div>`).join('')}`, '');
+}
+
+async function applyPromo(code, mode, sets) {
+  sets = Math.max(1, parseInt(sets) || 1);
+  const [{ data: p }, { data: its }] = await Promise.all([
+    sb.from('promotions').select('*').eq('promo_code', code).single(),
+    sb.from('promotion_items').select('*').eq('promo_code', code).order('is_gift'),
+  ]);
+  if (!its || !its.length) { toast('此套組尚無商品設定', 'w'); return; }
+
+  const today_s = today();
+  if (p.end_date && p.end_date < today_s) { toast('此套組已過有效期！', 'e'); return; }
+
+  const bundleGroup = 'BG-' + Date.now();
+
+  if (mode === 'order') {
+    // 取得客戶位階決定售價
+    const lv = $('f-oalv')?.value || '零售';
+    const col = LEVEL_COLS[lv] || 'price_retail';
+
+    for (const i of its) {
+      const { data: prod } = await sb.from('products').select('product_no,name,spec,stock,' + col).eq('product_no', i.product_no).single();
+      const unitPrice = i.is_gift ? 0 : (i.price_override || prod?.[col] || 0);
+      const itemQty = (i.qty || 1) * sets;       // 數量 × 組數
+      const newItem = {
+        id: Date.now() + Math.random(),
+        pno: i.product_no,
+        qty: i.is_gift ? 0 : itemQty,
+        price: unitPrice,
+        giftQty: i.is_gift ? itemQty : 0,
+        amt: i.is_gift ? 0 : (itemQty * unitPrice),
+        is_gift: i.is_gift,
+        promo_code: code,
+        bundle_name: p.name + (sets > 1 ? ' ×' + sets : ''),
+        bundle_group: bundleGroup,
+        _pname: i.product_name || prod?.name || i.product_no,
+      };
+      _items.push(newItem);
+    }
+    // 套組折扣
+    if (p.discount_amount) {
+      _items.push({ id: Date.now(), pno: 'DISCOUNT', qty: 1, price: -p.discount_amount, giftQty: 0, amt: -p.discount_amount, _pname: `套組折扣 (${p.name})`, promo_code: code, bundle_group: bundleGroup });
+    }
+    CM2();
+    renderItems();
+    toast('套組已展開，請確認品項！');
+  } else if (mode === 'po') {
+    for (const i of its) {
+      const pQty = (i.qty || 1) * sets;
+      // 從已載入的商品清單取進貨成本，若套組有設定 price_override 則優先使用
+      const prodInfo = _poProds.find(x => x.product_no === i.product_no);
+      const price = i.is_gift ? 0 : (i.price_override || prodInfo?.cost || 0);
+      _poItems.push({ id: Date.now() + Math.random(), pno: i.product_no, qty: i.is_gift ? 0 : pQty, price, giftQty: i.is_gift ? pQty : 0, amt: i.is_gift ? 0 : pQty * price, _pname: i.product_name || prodInfo?.name || i.product_no, promo_code: code, bundle_name: p.name + (sets > 1 ? ' ×' + sets : ''), bundle_group: bundleGroup });
+    }
+    CM2();
+    renderPOItems();
+    toast('套組已展開至進貨品項！');
+  } else if (mode === 'loan') {
+    for (const i of its) {
+      const lQty = (i.qty || 1) * sets;
+      _loanItems.push({ id: Date.now() + Math.random(), pno: i.product_no, qty: lQty, _pname: i.product_name || i.product_no, promo_code: code, bundle_group: bundleGroup, is_gift: i.is_gift });
+    }
+    CM2();
+    renderLoanItems();
+    toast('套組已展開至借貨品項！');
+  }
+};
+
+window.closePromoDrop = id => { const d = $('prodrop-' + id); if (d) d.style.display = 'none'; };;
+
+window.pickPromoItem = (id, pno, name) => {
+  const it = _promoItems.find(x => x.id === id); if (!it) return;
+  it.pno = pno; it.name = name;
+  renderPromoItems();
+  closePromoDrop(id);
+};;
+
+window.applyBundle = function applyBundle(code) {
+  const promo = (window._allPromos || []).find(p => p.promo_code === code);
+  if (!promo) return;
+  const items = promo.items || [];
+  _promoItems = items.map(i => ({id: Date.now()+Math.random(), pno:i.product_no, name:i.product_name||'', qty:i.qty||1, price:i.unit_price||0, giftQty:i.gift_qty||0, is_gift:!!i.is_gift}));
+  renderPromoItems();
+};
