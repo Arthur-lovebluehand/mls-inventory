@@ -142,8 +142,10 @@ async function accounts(){
   <div class="ph"><div><div class="pt">對帳記錄</div><div class="ps">依訂單自動彙整</div></div></div>
   <div class="tab-bar" style="padding:0 16px 10px;overflow-x:auto">
     <div class="tab${accTab==='sales'?' on':''}" onclick="window._accTab='sales';accounts()">銷售財報</div>
+    <div class="tab${accTab==='service'?' on':''}" onclick="window._accTab='service';accounts()">服務財報</div>
     <div class="tab${accTab==='total'?' on':''}" onclick="window._accTab='total';accounts()">總財報</div>
   </div>`;
+  if(accTab==='service'){ await showSvcFinance(); return; }
   if(accTab==='total'){ await showTotalFinance(); return; }
   $('main').innerHTML += `
     <div class="pc">
@@ -375,3 +377,71 @@ async function showTotalFinance() {
 }
 
 window.showTotalFinance = showTotalFinance;
+
+// ════════════════════════════════════
+//  服務財報（含技師薪資）
+// ════════════════════════════════════
+async function showSvcFinance() {
+  const [{ data:orders },{ data:transfers },{ data:items }] = await Promise.all([
+    sb.from('service_orders').select('order_date,total,consumable_cost'),
+    sb.from('service_transfers').select('transfer_date,total_cost'),
+    sb.from('service_order_items').select('order_date:service_orders(order_date),technician_id,technician_name,technician_pay,item_type,qty,unit_price,subtotal').eq('item_type','service'),
+  ]);
+
+  // 月度彙整
+  const mMap = {};
+  const addM = (ym,key,val) => { if(!mMap[ym]) mMap[ym]={rev:0,cost:0,trCost:0,techPay:0}; mMap[ym][key]+=val||0; };
+  (orders||[]).forEach(o=>{ const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'rev',o.total); addM(ym,'cost',o.consumable_cost); }});
+  (transfers||[]).forEach(t=>{ const ym=(t.transfer_date||'').slice(0,7); if(ym) addM(ym,'trCost',t.total_cost); });
+  (items||[]).forEach(i=>{ const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',i.technician_pay); });
+
+  // 技師月薪彙整
+  const techMap = {};
+  (items||[]).forEach(i=>{
+    if(!i.technician_id) return;
+    const ym=(i.order_date?.order_date||'').slice(0,7);
+    if(!ym) return;
+    const key=`${i.technician_id}_${ym}`;
+    if(!techMap[key]) techMap[key]={name:i.technician_name,ym,pay:0,sessions:0};
+    techMap[key].pay+=i.technician_pay||0;
+    techMap[key].sessions+=i.qty||0;
+  });
+
+  const months = Object.keys(mMap).sort().reverse().slice(0,24);
+
+  $('main').innerHTML += `
+  <div class="pc">
+    <div class="tc" style="margin-bottom:16px">
+      <div class="tb"><span class="tt">月度服務財報</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>月份</th><th>服務收入</th><th>耗材成本</th><th>撥轉成本</th><th>技師薪資</th><th>服務淨利</th></tr>
+        ${months.map(ym=>{
+          const d=mMap[ym];
+          const net=d.rev-d.cost-d.trCost-d.techPay;
+          return `<tr>
+            <td style="color:var(--ac);font-weight:600;cursor:pointer" onclick="svcMonthDetail('${ym}')">${ym}</td>
+            <td class="num" style="color:var(--ac)">${fM(d.rev)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.cost)}</td>
+            <td class="num" style="color:var(--am)">${fM(d.trCost)}</td>
+            <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
+            <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
+          </tr>`;
+        }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+      </table></div>
+    </div>
+    <div class="tc">
+      <div class="tb"><span class="tt">技師月薪表</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>月份</th><th>技師</th><th>服務時數/次</th><th>應付薪資</th></tr>
+        ${Object.values(techMap).sort((a,b)=>b.ym.localeCompare(a.ym)||a.name.localeCompare(b.name)).map(t=>`<tr>
+          <td>${t.ym}</td>
+          <td style="font-weight:500">${t.name}</td>
+          <td style="text-align:center">${t.sessions}</td>
+          <td class="num" style="font-weight:700;color:var(--bl)">${fM(t.pay)}</td>
+        </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+      </table></div>
+    </div>
+  </div>`;
+}
+
+window.showSvcFinance = showSvcFinance;

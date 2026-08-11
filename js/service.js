@@ -13,7 +13,7 @@ function serviceHub() {
     { id:'transfer',  label:'撥轉記錄' },
     { id:'credits',   label:'儲值管理' },
     { id:'items',     label:'服務項目' },
-    { id:'finance',   label:'服務財報' },
+    { id:'technicians', label:'技師管理' },
   ];
   $('main').innerHTML = `
   <div class="ph">
@@ -29,8 +29,8 @@ function serviceHub() {
   if(svcTab==='inventory') svcInventory();
   if(svcTab==='transfer')  svcTransfers();
   if(svcTab==='credits')   svcCredits();
-  if(svcTab==='items')     svcItems();
-  if(svcTab==='finance')   svcFinance();
+  if(svcTab==='items')       svcItems();
+  if(svcTab==='technicians') svcTechnicians();
 }
 
 // ════════════════════════
@@ -104,11 +104,13 @@ async function svcShowOrder(no) {
 
 async function svcNewOrder() {
   // 抓服務項目、服務庫存商品、客戶
-  const [{ data:sitems },{ data:sinv },{ data:custs }] = await Promise.all([
+  const [{ data:sitems },{ data:sinv },{ data:custs },{ data:techs }] = await Promise.all([
     sb.from('service_items').select('*').eq('is_active',true).order('sort_order'),
     sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty,cost)').gt('stock_qty',0),
     sb.from('customers').select('customer_no,name').order('name').limit(200),
+    sb.from('technicians').select('*').eq('is_active',true).order('name'),
   ]);
+  const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-name="${t.name}">${t.name}（抽成 ${Math.round(t.commission_rate*100)}%）</option>`).join('');
 
   const today2 = new Date().toISOString().split('T')[0];
   const orderNo = 'SV-'+today2.replace(/-/g,'')+'-001';
@@ -138,13 +140,16 @@ async function svcNewOrder() {
   <div style="margin-bottom:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
     <div style="font-weight:600;margin-bottom:8px;font-size:13px">加入服務項目（人工）</div>
     <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:end">
-      <select id="sv-sitem" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+      <select id="sv-sitem" onchange="svcItemChange(this)" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
         <option value="">— 選服務項目 —</option>${svcOpts}
       </select>
-      <input type="number" id="sv-siqty" value="1" min="0.5" step="0.5" placeholder="數量"
+      <input type="number" id="sv-siqty" value="1" min="1" step="1" placeholder="數量"
         style="width:60px;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
       <input type="number" id="sv-siprice" value="" placeholder="單價"
         style="width:80px;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+      <select id="sv-tech" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+        <option value="">— 技師 —</option>${techOpts}
+      </select>
       <button class="btn btn-s" onclick="svcAddServiceItem()">＋ 加入</button>
     </div>
     <div style="font-size:11px;color:var(--tx3);margin-top:4px">可在單價欄位覆蓋預設價格</div>
@@ -189,15 +194,40 @@ function svcPickCust(sel) {
 
 window._svcItems = [];
 
+function svcItemChange(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  const unit = opt?.dataset?.unit || '次';
+  const qtyEl = document.getElementById('sv-siqty');
+  if(qtyEl) {
+    // 小時制：步進 0.5；次數制：步進 1
+    const isHour = unit === '小時' || unit === 'hr' || unit === 'h';
+    qtyEl.step = isHour ? '0.5' : '1';
+    qtyEl.min = isHour ? '0.5' : '1';
+    // 自動帶入預設單價
+    const price = opt?.dataset?.price;
+    if(price) {
+      const priceEl = document.getElementById('sv-siprice');
+      if(priceEl && !priceEl.value) priceEl.value = price;
+    }
+  }
+}
+
 function svcAddServiceItem() {
   const sel = document.getElementById('sv-sitem');
   const opt = sel.options[sel.selectedIndex];
   if(!opt.value){ toast('請選擇服務項目','e'); return; }
   const qty = parseFloat(document.getElementById('sv-siqty').value)||1;
   const price = parseFloat(document.getElementById('sv-siprice').value)||parseFloat(opt.dataset.price)||0;
+  const techSel = document.getElementById('sv-tech');
+  const techOpt = techSel?.options[techSel.selectedIndex];
+  const techId = techOpt?.value ? parseInt(techOpt.value) : null;
+  const techName = techOpt?.dataset?.name || null;
+  const techRate = parseFloat(techOpt?.dataset?.rate)||0.5;
+  const techPay = techId ? Math.round(qty * price * techRate * 100)/100 : 0;
   window._svcItems.push({
     id: Date.now(), item_type:'service', item_name:opt.text.split('（')[0],
-    qty, unit:opt.dataset.unit||'次', unit_price:price, cost:0, subtotal:qty*price
+    qty, unit:opt.dataset.unit||'次', unit_price:price, cost:0, subtotal:qty*price,
+    technician_id:techId, technician_name:techName, technician_pay:techPay
   });
   renderSvcItems();
 }
@@ -232,7 +262,7 @@ function renderSvcItems() {
   <div class="tc">
     <div class="tb"><span class="tt">訂單品項</span></div>
     <div class="tw"><table style="width:100%">
-      <tr><th>類型</th><th>項目</th><th>數量</th><th>單價</th><th>小計</th><th></th></tr>
+      <tr><th>類型</th><th>項目</th><th>數量</th><th>單價</th><th>小計</th><th>技師</th><th></th></tr>
       ${window._svcItems.map(i=>`<tr>
         <td><span class="badge ${i.item_type==='service'?'bg':'br2'}" style="font-size:10px">${i.item_type==='service'?'服務':'耗材'}</span></td>
         <td style="font-size:13px">${i.item_name}</td>
@@ -284,7 +314,13 @@ async function saveSvcOrder() {
   if(e1){ toast('建立失敗：'+e1.message,'e'); return; }
 
   // 2. 建品項
-  const items = window._svcItems.map(i=>({...i, order_no:no, id:undefined}));
+  const items = window._svcItems.map(i=>({
+    order_no:no, item_type:i.item_type, item_name:i.item_name,
+    product_no:i.product_no||null, qty:i.qty, unit:i.unit,
+    unit_price:i.unit_price, cost:i.cost, subtotal:i.subtotal,
+    technician_id:i.technician_id||null, technician_name:i.technician_name||null,
+    technician_pay:i.technician_pay||0
+  }));
   await sb.from('service_order_items').insert(items);
 
   // 3. 扣服務庫存
@@ -682,6 +718,7 @@ window.svcNewOrder     = svcNewOrder;
 window.svcShowOrder    = svcShowOrder;
 window.saveSvcOrder    = saveSvcOrder;
 window.deleteSvcOrder  = deleteSvcOrder;
+window.svcItemChange = svcItemChange;
 window.svcAddServiceItem = svcAddServiceItem;
 window.svcAddConsumable  = svcAddConsumable;
 window.rmSvcItem       = rmSvcItem;
@@ -825,5 +862,69 @@ async function svcMonthDetail(ym) {
   `<button class="btn" onclick="CM()">關閉</button>`);
 }
 
-window.svcFinance = svcFinance;
-window.svcMonthDetail = svcMonthDetail;
+// svcFinance/svcMonthDetail 已移至 finance.js
+
+// ════════════════════════
+//  技師管理
+// ════════════════════════
+async function svcTechnicians() {
+  const { data } = await sb.from('technicians').select('*').order('name');
+  $('svc-content').innerHTML = `
+  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+    <button class="btn btn-p btn-s" onclick="addTechnician()">＋ 新增技師</button>
+  </div>
+  <div class="tc"><div class="tb"><span class="tt">技師名單</span></div>
+  <div class="tw"><table style="width:100%">
+    <tr><th>姓名</th><th>抽成比例</th><th>狀態</th><th>操作</th></tr>
+    ${(data||[]).map(t=>`<tr>
+      <td style="font-weight:500">${t.name}</td>
+      <td style="text-align:center">${Math.round(t.commission_rate*100)}%</td>
+      <td><span class="badge ${t.is_active?'bg':'br2'}">${t.is_active?'在職':'離職'}</span></td>
+      <td><button class="btn btn-s" onclick="editTechnician(${t.id})">編輯</button></td>
+    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無技師</td></tr>'}
+  </table></div></div>`;
+}
+
+function addTechnician() {
+  OM('新增技師',`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    ${fi('tc-name','技師姓名 *')}
+    ${fi('tc-rate','抽成比例（%）*','number','50')}
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveTechnician()">儲存</button>`);
+}
+
+async function editTechnician(id) {
+  const { data:t } = await sb.from('technicians').select('*').eq('id',id).single();
+  if(!t) return;
+  OM(`編輯技師：${t.name}`,`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    ${fi('tc-name','技師姓名 *','text',t.name)}
+    ${fi('tc-rate','抽成比例（%）*','number',Math.round(t.commission_rate*100))}
+  </div>
+  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+    <input type="checkbox" id="tc-active" ${t.is_active?'checked':''} style="width:14px;height:14px">
+    <span>在職中</span>
+  </label>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveTechnician(${id})">儲存</button>`);
+}
+
+async function saveTechnician(id) {
+  const name = v('tc-name');
+  const rate = parseFloat(v('tc-rate'))/100;
+  if(!name||isNaN(rate)){ toast('請填寫姓名和抽成比例','e'); return; }
+  const payload = { name, commission_rate:rate,
+    is_active: id ? (document.getElementById('tc-active')?.checked??true) : true };
+  if(id) await sb.from('technicians').update(payload).eq('id',id);
+  else await sb.from('technicians').insert(payload);
+  toast('✅ 已儲存');
+  CM();
+  svcTechnicians();
+}
+
+window.svcTechnicians  = svcTechnicians;
+window.addTechnician   = addTechnician;
+window.editTechnician  = editTechnician;
+window.saveTechnician  = saveTechnician;
