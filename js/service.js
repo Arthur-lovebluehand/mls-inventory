@@ -118,7 +118,11 @@ async function svcNewOrder() {
   window._svcItems = []; // 服務訂單品項暫存
 
   const custOpts = (custs||[]).map(c=>`<option value="${c.customer_no}">${c.name}</option>`).join('');
-  const svcOpts = (sitems||[]).map(s=>`<option value="${s.id}" data-price="${s.default_price}" data-unit="${s.unit||'次'}">${s.name}（預設 ${fM(s.default_price)}/${s.unit||'次'}）</option>`).join('');
+  const catGroups = {};
+  (sitems||[]).forEach(s=>{ const c=s.category||'其他項目'; if(!catGroups[c]) catGroups[c]=[]; catGroups[c].push(s); });
+  const svcOpts = Object.entries(catGroups).map(([cat,items])=>
+    `<optgroup label="${cat}">${items.map(s=>`<option value="${s.id}" data-price="${s.default_price}" data-unit="${s.unit||'次'}">${s.name}（${fM(s.default_price)}/${s.unit||'次'}）</option>`).join('')}</optgroup>`
+  ).join('');
   const prodOpts = (sinv||[]).map(p=>{
     const prod = p.products;
     return `<option value="${p.product_no}" data-unit="${prod?.service_unit||'次'}" data-qty="${prod?.default_service_qty||1}" data-cost="${prod?.cost||0}">${prod?.name||p.product_no}（庫存 ${p.stock_qty} ${prod?.service_unit||'次'}）</option>`;
@@ -635,23 +639,31 @@ async function svcCreditHistory(custNo) {
 // ════════════════════════
 //  5. 服務項目管理
 // ════════════════════════
+var _svcItemCat = '全部';
+
 async function svcItems() {
   const { data } = await sb.from('service_items').select('*').order('sort_order').order('name');
+  const cats = ['全部', ...new Set((data||[]).map(s=>s.category).filter(Boolean))];
+  const filtered = _svcItemCat === '全部' ? (data||[]) : (data||[]).filter(s=>s.category===_svcItemCat);
+
   $('svc-content').innerHTML = `
-  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
-    <button class="btn btn-p btn-s" onclick="addSvcItem()">＋ 新增服務項目</button>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div class="tab-bar" style="flex:1;overflow-x:auto">
+      ${cats.map(c=>`<div class="tab${_svcItemCat===c?' on':''}" onclick="_svcItemCat='${c}';svcItems()" style="white-space:nowrap">${c}</div>`).join('')}
+    </div>
+    <button class="btn btn-p btn-s" style="flex-shrink:0;margin-left:8px" onclick="addSvcItem()">＋ 新增</button>
   </div>
-  <div class="tc"><div class="tb"><span class="tt">服務項目清單</span></div>
-  <div class="tw"><table style="width:100%">
-    <tr><th>服務名稱</th><th>說明</th><th>預設價格</th><th>單位</th><th>狀態</th><th>操作</th></tr>
-    ${(data||[]).map(s=>`<tr>
+  <div class="tc"><div class="tw"><table style="width:100%">
+    <tr><th>服務名稱</th><th>分類</th><th>說明</th><th>預設價格</th><th>單位</th><th>狀態</th><th>操作</th></tr>
+    ${filtered.map(s=>`<tr>
       <td style="font-weight:500">${s.name}</td>
+      <td><span class="badge bg" style="font-size:10px">${s.category||'—'}</span></td>
       <td style="font-size:12px;color:var(--tx3)">${s.description||'—'}</td>
       <td class="num">${fM(s.default_price)}</td>
       <td>${s.unit||'次'}</td>
       <td><span class="badge ${s.is_active?'bg':'br2'}">${s.is_active?'使用中':'停用'}</span></td>
       <td><button class="btn btn-s" onclick="editSvcItem(${s.id})">編輯</button></td>
-    </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無服務項目</td></tr>'}
+    </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3)">尚無項目</td></tr>'}
   </table></div></div>`;
 }
 
@@ -665,7 +677,15 @@ async function addSvcItem() {
     ${fi('si-price','預設價格','number','0')}
     ${fi('si-sort','排序','number','99')}
   </div>
-  ${fi('si-desc','說明（選填）')}`,
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div class='fl'><label>分類</label><select id='si-cat' style='width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)'><option value="身體療程">身體療程</option>
+<option value="臉部療程">臉部療程</option>
+<option value="精華液導入">精華液導入</option>
+<option value="極緻幼態喚醒">極緻幼態喚醒</option>
+<option value="活化加固">活化加固</option>
+<option value="其他項目">其他項目</option></select></div>
+    ${fi('si-desc','說明（選填）')}
+  </div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveSvcItem()">儲存</button>`);
 }
@@ -696,11 +716,13 @@ async function editSvcItem(id) {
 async function saveSvcItem(id) {
   const name = v('si-name');
   if(!name){ toast('請輸入服務名稱','e'); return; }
+  const catEl = document.getElementById('si-cat');
   const payload = {
     name, unit:v('si-unit')||'次',
     default_price:parseFloat(v('si-price'))||0,
     sort_order:parseInt(v('si-sort'))||99,
     description:v('si-desc')||null,
+    category:catEl?.value||'其他項目',
     is_active:id ? (document.getElementById('si-active')?.checked??true) : true,
   };
   if(id) { await sb.from('service_items').update(payload).eq('id',id); }
