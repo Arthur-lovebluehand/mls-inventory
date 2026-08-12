@@ -133,6 +133,27 @@ function prodForm(p){
     ${fi('pf','創始','number',p.price_founder)} ${fi('prg','大區','number',p.price_region)} ${fi('pct','市代','number',p.price_city)}
     ${fi('pdr','經銷','number',p.price_dealer)} ${fi('pvp','VIP','number',p.price_vip)} ${fi('prl','零售','number',p.price_retail)}
     ${fi('pcost','進貨價','number',p.cost)}
+    <div style="background:var(--acl);border-radius:var(--r);padding:12px;margin-top:4px">
+      <div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:8px">🛁 服務用途設定（選填）</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div class="fl">
+          <label style="font-size:12px">服務單位</label>
+          <select id="f-psunit" style="width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+            <option value="">不用於服務</option>
+            <option value="組" ${(p.service_unit||'')==='組'?'selected':''}>組</option>
+            <option value="ml" ${(p.service_unit||'')==='ml'?'selected':''}>ml</option>
+            <option value="片" ${(p.service_unit||'')==='片'?'selected':''}>片</option>
+            <option value="次" ${(p.service_unit||'')==='次'?'selected':''}>次</option>
+            <option value="顆" ${(p.service_unit||'')==='顆'?'selected':''}>顆</option>
+          </select>
+        </div>
+        ${fi('psuperunit','1進貨單位=幾服務單位','number',p.service_units_per_stock||1)}
+        ${fi('psdefqty','每次服務預設用量','number',p.default_service_qty||1)}
+      </div>
+      <div style="font-size:11px;color:var(--tx3);margin-top:6px">
+        例：外泌體 1盒=4組，每次服務用1組
+      </div>
+    </div>
   </div>
   <div class="sh">商品圖片</div>
   <div style="margin-bottom:12px">
