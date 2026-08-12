@@ -540,6 +540,13 @@ function saveOpName() {
 
 window.saveOpName = saveOpName;
 
+async function logout() {
+  if (!confirm('確定要登出嗎？')) return;
+  await sb.auth.signOut();
+  location.reload();
+}
+window.logout = logout;
+
 
 // ═══════════════════════════════
 //  獎金查看 / 編輯
