@@ -650,6 +650,22 @@ async function svcCreditHistory(custNo) {
 // ════════════════════════
 //  5. 服務項目管理
 // ════════════════════════
+
+function svcCatChange(sel) {
+  if(sel.value !== '__new__') return;
+  const name = prompt('請輸入新分類名稱：');
+  if(!name || !name.trim()) { sel.value = sel.options[0].value; return; }
+  const trimmed = name.trim();
+  // 檢查是否已存在
+  const exists = Array.from(sel.options).some(o => o.value === trimmed);
+  if(!exists) {
+    // 在「＋ 新增分類」前插入新選項
+    const newOpt = new Option(trimmed, trimmed, true, true);
+    sel.insertBefore(newOpt, sel.lastElementChild);
+  }
+  sel.value = trimmed;
+}
+window.svcCatChange = svcCatChange;
 var _svcItemCat = '全部';
 
 async function svcItems() {
@@ -689,12 +705,12 @@ async function addSvcItem() {
     ${fi('si-sort','排序','number','99')}
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    <div class='fl'><label>分類</label><select id='si-cat' style='width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)'><option value="身體療程">身體療程</option>
+    <div class='fl'><label>分類</label><select id='si-cat' onchange='svcCatChange(this)' style='width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)'><option value="身體療程">身體療程</option>
 <option value="臉部療程">臉部療程</option>
 <option value="精華液導入">精華液導入</option>
 <option value="極緻幼態喚醒">極緻幼態喚醒</option>
 <option value="活化加固">活化加固</option>
-<option value="其他項目">其他項目</option></select></div>
+<option value="其他項目">其他項目</option><option value="__new__">＋ 新增分類…</option></select></div>
     ${fi('si-desc','說明（選填）')}
   </div>`,
   `<button class="btn" onclick="CM()">取消</button>
@@ -717,8 +733,9 @@ async function editSvcItem(id) {
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     <div class="fl"><label>分類</label>
-      <select id="si-cat" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+      <select id="si-cat" onchange="svcCatChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
         ${catOpts}
+        <option value="__new__">＋ 新增分類…</option>
       </select>
     </div>
     ${fi('si-desc','說明','text',s.description||'')}
