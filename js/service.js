@@ -218,7 +218,7 @@ function svcItemChange(sel) {
     const price = opt?.dataset?.price;
     if(price) {
       const priceEl = document.getElementById('sv-siprice');
-      if(priceEl && !priceEl.value) priceEl.value = price;
+      if(priceEl) priceEl.value = price;
     }
   }
 }
@@ -704,6 +704,8 @@ async function addSvcItem() {
 async function editSvcItem(id) {
   const { data:s } = await sb.from('service_items').select('*').eq('id',id).single();
   if(!s) return;
+  const catOpts = ['身體療程','臉部療程','精華液導入','極緻幼態喚醒','活化加固','其他項目']
+    .map(c=>`<option value="${c}" ${(s.category||'其他項目')===c?'selected':''}>${c}</option>`).join('');
   OM('編輯服務項目',`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('si-name','服務名稱 *','text',s.name)}
@@ -713,7 +715,14 @@ async function editSvcItem(id) {
     ${fi('si-price','預設價格','number',s.default_price||0)}
     ${fi('si-sort','排序','number',s.sort_order||99)}
   </div>
-  ${fi('si-desc','說明',s.description||'')}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div class="fl"><label>分類</label>
+      <select id="si-cat" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+        ${catOpts}
+      </select>
+    </div>
+    ${fi('si-desc','說明','text',s.description||'')}
+  </div>
   <div style="margin-top:10px">
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
       <input type="checkbox" id="si-active" ${s.is_active?'checked':''} style="width:14px;height:14px">
