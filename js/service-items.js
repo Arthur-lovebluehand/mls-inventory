@@ -1,223 +1,195 @@
-// ══════════════════════════════
-// service-items.js
-// ══════════════════════════════
+// ═══════════════════════════════════════
+// categories.js — 商品類別 + 服務職位管理
+// ═══════════════════════════════════════
 
-async function svcItems() {
-  const { data } = await sb.from('service_items').select('*').order('sort_order').order('name');
-  const cats = ['全部', ...new Set((data||[]).map(s=>s.category).filter(Boolean))];
-  const filtered = _svcItemCat === '全部' ? (data||[]) : (data||[]).filter(s=>s.category===_svcItemCat);
+async function loadCats() {
+  const { data } = await sb.from('products').select('category').not('category','is',null);
+  window._cats = [...new Set((data||[]).map(x=>x.category).filter(Boolean))].sort();
+  return window._cats;
+}
 
-  $('svc-content').innerHTML = `
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-    <div class="tab-bar" style="flex:1;overflow-x:auto">
-      ${cats.map(c=>`<div class="tab${_svcItemCat===c?' on':''}" onclick="_svcItemCat='${c}';svcItems()" style="white-space:nowrap">${c}</div>`).join('')}
+var _catTab = 'products';
+
+async function categories() {
+  const tab = window._catTab || 'products';
+  // 先設 ph + tabs
+  $('main').innerHTML = `
+  <div class="ph">
+    <div><div class="pt">類別管理</div></div>
+    <div class="ha">
+      ${tab==='products'
+        ? `<button class="btn btn-p btn-s" onclick="addCategoryModal()">＋ 新增類別</button>`
+        : `<button class="btn btn-p btn-s" onclick="addRoleModal()">＋ 新增職位</button>`
+      }
     </div>
-    <button class="btn btn-p btn-s" style="flex-shrink:0;margin-left:8px" onclick="addSvcItem()">＋ 新增</button>
   </div>
-  <div class="tc"><div class="tw"><table style="width:100%">
-    <tr><th>服務名稱</th><th>分類</th><th>說明</th><th>預設價格</th><th>單位</th><th>狀態</th><th>操作</th></tr>
-    ${filtered.map(s=>`<tr>
-      <td style="font-weight:500">${s.name}</td>
-      <td><span class="badge bg" style="font-size:10px">${s.category||'—'}</span></td>
-      <td style="font-size:12px;color:var(--tx3)">${s.description||'—'}</td>
-      <td class="num">${fM(s.default_price)}</td>
-      <td>${s.unit||'次'}</td>
-      <td><span class="badge ${s.is_active?'bg':'br2'}">${s.is_active?'使用中':'停用'}</span></td>
-      <td><button class="btn btn-s" onclick="editSvcItem(${s.id})">編輯</button></td>
-    </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3)">尚無項目</td></tr>'}
-  </table></div></div>`;
+  <div class="tab-bar" style="padding:0 16px 10px">
+    <div class="tab${tab==='products'?' on':''}" onclick="window._catTab='products';categories()">商品類別</div>
+    <div class="tab${tab==='roles'?' on':''}" onclick="window._catTab='roles';categories()">服務職位</div>
+  </div>
+  <div class="pc" id="cat-content"><div class="ld"><div class="sp"></div>載入中…</div></div>`;
+
+  if(tab==='roles') { await categoriesRoles(); return; }
+  await categoriesProducts();
 }
 
-window.svcItems        = svcItems;
-async function addSvcItem() {
-  OM('新增服務項目',`
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fi('si-name','服務名稱 *')}
-    <div class='fl'><label>單位</label><select id='f-si-unit' onchange='svcUnitChange(this)' style='width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)'>
-  <option value="次">次</option>
-  <option value="小時">小時（按時計費，步進0.5）</option>
-  <option value="30分">30分（按30分計費）</option>
-  <option value="療程">療程</option>
-  <option value="片">片</option>
-  <option value="ml">ml</option>
-  <option value="__new__">＋ 自訂單位…</option>
-</select></div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fi('si-price','預設價格','number','0')}
-    ${fi('si-sort','排序','number','99')}
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    <div class='fl'><label>分類</label><select id='si-cat' onchange='svcCatChange(this)' style='width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)'><option value="身體療程">身體療程</option>
-<option value="臉部療程">臉部療程</option>
-<option value="精華液導入">精華液導入</option>
-<option value="極緻幼態喚醒">極緻幼態喚醒</option>
-<option value="活化加固">活化加固</option>
-<option value="其他項目">其他項目</option><option value="__new__">＋ 新增分類…</option></select></div>
-    ${fi('si-desc','說明（選填）')}
-  </div>`,
-  `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveSvcItem()">儲存</button>`);
-}
-
-window.addSvcItem      = addSvcItem;
-async function editSvcItem(id) {
-  const { data:s } = await sb.from('service_items').select('*').eq('id',id).single();
-  if(!s) return;
-  const catOpts = ['身體療程','臉部療程','精華液導入','極緻幼態喚醒','活化加固','其他項目']
-    .map(c=>`<option value="${c}" ${(s.category||'其他項目')===c?'selected':''}>${c}</option>`).join('');
-  OM('編輯服務項目',`
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fi('si-name','服務名稱 *','text',s.name)}
-    <div class="fl"><label>單位</label><select id="f-si-unit" onchange="svcUnitChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
-  <option value="次" ${(s.unit||'次')==='次'?'selected':''}>次</option>
-  <option value="小時" ${(s.unit||'次')==='小時'?'selected':''}>小時（按時計費，步進0.5）</option>
-  <option value="30分" ${(s.unit||'次')==='30分'?'selected':''}>30分（按30分計費）</option>
-  <option value="療程" ${(s.unit||'次')==='療程'?'selected':''}>療程</option>
-  <option value="片" ${(s.unit||'次')==='片'?'selected':''}>片</option>
-  <option value="ml" ${(s.unit||'次')==='ml'?'selected':''}>ml</option>
-  ${!['次','小時','30分','療程','片','ml'].includes(s.unit||'次')?`<option value="${s.unit}" selected>${s.unit}</option>`:''}
-  <option value="__new__">＋ 自訂單位…</option>
-</select></div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fi('si-price','預設價格','number',s.default_price||0)}
-    ${fi('si-sort','排序','number',s.sort_order||99)}
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    <div class="fl"><label>分類</label>
-      <select id="si-cat" onchange="svcCatChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
-        ${catOpts}
-        <option value="__new__">＋ 新增分類…</option>
-      </select>
-    </div>
-    ${fi('si-desc','說明','text',s.description||'')}
-  </div>
-  <div style="margin-top:10px">
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-      <input type="checkbox" id="si-active" ${s.is_active?'checked':''} style="width:14px;height:14px">
-      <span style="font-size:13px">啟用此服務項目</span>
-    </label>
-  </div>`,
-  `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveSvcItem(${id})">儲存</button>`);
-}
-
-window.editSvcItem     = editSvcItem;
-async function saveSvcItem(id) {
-  const name = v('si-name');
-  if(!name){ toast('請輸入服務名稱','e'); return; }
-  const catEl = document.getElementById('si-cat');
-  const payload = {
-    name, unit:(document.getElementById('f-si-unit')?.value||'次'),
-    default_price:parseFloat(v('si-price'))||0,
-    sort_order:parseInt(v('si-sort'))||99,
-    description:v('si-desc')||null,
-    category:catEl?.value||'其他項目',
-    is_active:id ? (document.getElementById('si-active')?.checked??true) : true,
-  };
-  if(id) { await sb.from('service_items').update(payload).eq('id',id); }
-  else { await sb.from('service_items').insert(payload); }
-  toast('✅ 已儲存');
-  CM();
-  svcItems();
-}
-
-window.saveSvcItem     = saveSvcItem;
-async function svcTechnicians() {
-  const [{ data }, { data:roles }] = await Promise.all([
-    sb.from('technicians').select('*').order('name'),
-    sb.from('service_roles').select('*').eq('is_active',true).order('sort_order'),
+async function categoriesProducts() {
+  // 抓類別和商品數量
+  const [cats, { data:cnts }] = await Promise.all([
+    loadCats(),
+    sb.from('products').select('category').eq('is_active',true)
   ]);
-  window._svcRoles = roles || [];
-  $('svc-content').innerHTML = `
-  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
-    <button class="btn btn-p btn-s" onclick="addTechnician()">＋ 新增技師</button>
+  const catCount = {};
+  (cnts||[]).forEach(x => { if(x.category) catCount[x.category] = (catCount[x.category]||0)+1; });
+
+  document.getElementById('cat-content').innerHTML = `
+  <div class="al al-w" style="font-size:12px;margin-bottom:12px">
+    管理商品類別。名稱修改後，現有商品類別不會自動更新，請至商品列表手動更新。
   </div>
-  <div class="tc"><div class="tb"><span class="tt">技師名單</span></div>
+  <div class="tc"><div class="tb"><span class="tt">類別列表</span></div>
   <div class="tw"><table style="width:100%">
-    <tr><th>姓名</th><th>職位</th><th>抽成比例</th><th>狀態</th><th>操作</th></tr>
-    ${(data||[]).map(t=>`<tr>
-      <td style="font-weight:500">${t.name}</td>
-      <td style="color:var(--tx3)">${t.role||'技師'}</td>
-      <td class="num">${Math.round(t.commission_rate*100)}%</td>
-      <td><span class="badge ${t.is_active?'bg':'br2'}">${t.is_active?'在職':'離職'}</span></td>
-      <td style="display:flex;gap:4px">
-        <button class="btn btn-s" onclick="editTechnician(${t.id})">編輯</button>
-        <button class="btn btn-s btn-r" onclick="deleteTechnician(${t.id},'${t.name}（${t.role||'技師'}）')">刪除</button>
-      </td>
-    </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">尚無技師</td></tr>'}
+    <tr><th>類別名稱</th><th>使用中商品</th><th>操作</th></tr>
+    ${cats.map(c=>`<tr>
+      <td style="font-weight:500;font-size:14px">${c}</td>
+      <td style="text-align:center"><span class="badge bg">${catCount[c]||0} 項</span></td>
+      <td><button class="btn btn-s" onclick="renameCategoryModal('${c.replace(/'/g,"\\'")}')">改名</button></td>
+    </tr>`).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">尚無類別</td></tr>'}
   </table></div></div>`;
 }
 
-window.svcTechnicians  = svcTechnicians;
-async function addTechnician() {
-  if(!(window._svcRoles||[]).length){
-    const {data:r}=await sb.from('service_roles').select('*').eq('is_active',true).order('sort_order');
-    window._svcRoles=r||[];
+async function categoriesRoles() {
+  const { data } = await sb.from('service_roles').select('*').order('sort_order').order('name');
+  document.getElementById('cat-content').innerHTML = `
+  <div class="al al-w" style="font-size:12px;margin-bottom:12px">
+    管理服務職位。職位用於技師管理的職位選單，可新增/編輯/停用/刪除。
+  </div>
+  <div class="tc"><div class="tb"><span class="tt">職位列表</span></div>
+  <div class="tw"><table style="width:100%">
+    <tr><th>職位名稱</th><th>排序</th><th>狀態</th><th>操作</th></tr>
+    ${(data||[]).map(r=>`<tr>
+      <td style="font-weight:500">${r.name}</td>
+      <td style="text-align:center">${r.sort_order}</td>
+      <td><span class="badge ${r.is_active?'bg':'br2'}">${r.is_active?'啟用':'停用'}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn btn-s" onclick="editRoleModal(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.sort_order},${r.is_active})">編輯</button>
+        <button class="btn btn-s" onclick="toggleRole(${r.id},${r.is_active})">${r.is_active?'停用':'啟用'}</button>
+        <button class="btn btn-s btn-r" onclick="deleteRole(${r.id},'${r.name.replace(/'/g,"\\'")}')">刪除</button>
+      </div></td>
+    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無職位</td></tr>'}
+  </table></div></div>`;
+}
+
+// ── 商品類別 CRUD ──
+function addCategoryModal() {
+  OM('新增類別', fi('newcat','類別名稱 *'),
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="saveNewCategory()">新增</button>`);
+}
+
+async function saveNewCategory() {
+  const nm = v('newcat').trim();
+  if(!nm) { toast('請輸入類別名稱','e'); return; }
+  if((window._cats||[]).includes(nm)) { toast('此類別已存在','w'); return; }
+  let existing = [];
+  try {
+    const { data:s } = await sb.from('settings').select('value').eq('key','custom_categories').single();
+    if(s?.value) existing = JSON.parse(s.value);
+  } catch(e){}
+  if(!existing.includes(nm)) {
+    existing.push(nm);
+    await sb.from('settings').upsert({key:'custom_categories', value:JSON.stringify(existing), updated_at:new Date().toISOString()});
   }
-  OM('新增技師',`
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fi('tc-name','技師姓名 *')}
-    <div class="fl"><label>職位</label>
-      <select id="tc-role" onchange="svcRoleChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
-        ${(window._svcRoles||[]).map(r=>`<option value="${r.name}">${r.name}</option>`).join('')}
-        <option value="__new__">＋ 自訂職位…</option>
-      </select>
-    </div>
-  </div>
-  ${fi('tc-rate','抽成比例（%）*','number','50')}`,
-  `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveTechnician()">儲存</button>`);
+  window._cats = [...new Set([...(window._cats||[]), nm])].sort();
+  toast('類別已新增：'+nm); CM(); categories();
 }
 
-window.addTechnician   = addTechnician;
-async function editTechnician(id) {
-  const { data:t } = await sb.from('technicians').select('*').eq('id',id).single();
-  if(!t) return;
-  OM(`編輯技師：${t.name}`,`
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fi('tc-name','技師姓名 *','text',t.name)}
-    <div class="fl"><label>職位</label>
-      <select id="tc-role" onchange="svcRoleChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
-        ${(window._svcRoles||[]).map(r=>`<option value="${r.name}" ${t.role===r.name?'selected':''}>${r.name}</option>`).join('')}
-        ${(window._svcRoles||[]).every(r=>r.name!==t.role)&&t.role?`<option value="${t.role}" selected>${t.role}</option>`:''}
-        <option value="__new__">＋ 自訂職位…</option>
-      </select>
-    </div>
-  </div>
-  ${fi('tc-rate','抽成比例（%）','number',Math.round(t.commission_rate*100))}
-  <div style="margin-top:10px">
-  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-    <input type="checkbox" id="tc-active" ${t.is_active?'checked':''} style="width:14px;height:14px">
-    <span>在職中</span>
-  </label></div>`,
-  `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveTechnician(${id})">儲存</button>`);
+async function renameCategoryModal(oldName) {
+  OM(`改名類別：${oldName}`, fi('rencat','新類別名稱 *','text',oldName),
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="renameCategory('${oldName.replace(/'/g,"\\'")}')">確認改名</button>`);
 }
 
-window.editTechnician  = editTechnician;
-async function saveTechnician(id) {
-  const name = v('tc-name');
-  const rate = parseFloat(v('tc-rate'))/100;
-  if(!name||isNaN(rate)){ toast('請填寫姓名和抽成比例','e'); return; }
-  const role = document.getElementById('tc-role')?.value || '技師';
-  const payload = { name, role, commission_rate:rate,
-    is_active: id ? (document.getElementById('tc-active')?.checked??true) : true };
-  if(id) await sb.from('technicians').update(payload).eq('id',id);
-  else await sb.from('technicians').insert(payload);
-  toast('✅ 已儲存');
-  CM();
-  svcTechnicians();
+async function renameCategory(oldName) {
+  const newName = v('rencat').trim();
+  if(!newName || newName===oldName) { CM(); return; }
+  if(!confirm(`確定把「${oldName}」改名為「${newName}」？\n這會批次更新所有使用此類別的商品。`)) return;
+  const { error } = await sb.from('products').update({category:newName}).eq('category',oldName);
+  if(error) { toast('更新失敗：'+error.message,'e'); return; }
+  toast(`已更新「${oldName}」→「${newName}」`);
+  window._cats = (window._cats||[]).map(c => c===oldName?newName:c).sort();
+  CM(); categories();
 }
 
-window.saveTechnician  = saveTechnician;
-async function deleteTechnician(id, name) {
-  if(!confirm(`確定刪除「${name}」？\n⚠ 已建立的服務記錄不受影響，但未來無法選擇此技師。`)) return;
-  const { error } = await sb.from('technicians').delete().eq('id', id);
-  if(error) { toast('刪除失敗：'+error.message,'e'); return; }
-  toast('已刪除技師：'+name);
-  svcTechnicians();
+// ── 服務職位 CRUD ──
+function addRoleModal() {
+  OM('新增服務職位',
+    `${fi('role-name','職位名稱 *')}${fi('role-sort','排序','number','99')}`,
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="saveRole()">新增</button>`);
 }
 
-window.deleteTechnician = deleteTechnician;
+function editRoleModal(id, name, sort, active) {
+  OM(`編輯職位：${name}`,
+    `${fi('role-name','職位名稱 *','text',name)}${fi('role-sort','排序','number',sort)}
+     <div style="margin-top:10px">
+       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+         <input type="checkbox" id="role-active" ${active?'checked':''} style="width:14px;height:14px">
+         <span>啟用此職位</span>
+       </label>
+     </div>`,
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="saveRole(${id})">儲存</button>`);
+}
+
+async function saveRole(id) {
+  const name = v('role-name')?.trim();
+  if(!name) { toast('請輸入職位名稱','e'); return; }
+  const payload = {
+    name, sort_order:parseInt(v('role-sort'))||99,
+    is_active: id ? (document.getElementById('role-active')?.checked??true) : true
+  };
+  if(id) await sb.from('service_roles').update(payload).eq('id',id);
+  else {
+    const { error } = await sb.from('service_roles').insert(payload);
+    if(error) { toast('新增失敗：'+error.message,'e'); return; }
+  }
+  window._svcRoles = null;
+  toast('✅ 已儲存'); CM(); categories();
+}
+
+async function toggleRole(id, current) {
+  await sb.from('service_roles').update({is_active:!current}).eq('id',id);
+  window._svcRoles = null;
+  categories();
+}
+
+async function deleteRole(id, name) {
+  if(!confirm(`確定刪除職位「${name}」？`)) return;
+  await sb.from('service_roles').delete().eq('id',id);
+  window._svcRoles = null;
+  toast('已刪除'); categories();
+}
+
+window.categories = categories;
+window.categoriesRoles = categoriesRoles;
+window.addCategoryModal = addCategoryModal;
+window.saveNewCategory = saveNewCategory;
+window.renameCategoryModal = renameCategoryModal;
+window.renameCategory = renameCategory;
+window.addRoleModal = addRoleModal;
+window.editRoleModal = editRoleModal;
+window.saveRole = saveRole;
+window.toggleRole = toggleRole;
+window.deleteRole = deleteRole;
+window.loadCats = loadCats;
+window.makeCatSelect = (currentVal) => {
+  const cats = window._cats || [];
+  const opts = [...new Set([...cats, currentVal||''].filter(Boolean))].sort();
+  return `<div class="fl"><label>類別</label><select id="f-cat"
+    style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none"
+    onchange="if(this.value==='__new__'){const nc=prompt('請輸入新類別名稱：');if(nc){window._cats=[...new Set([...(window._cats||[]),nc])].sort();}return nc||null;}">
+    <option value="">— 選擇類別 —</option>
+    ${opts.map(c=>`<option value="${c}" ${c===currentVal?'selected':''}>${c}</option>`).join('')}
+    <option value="__new__">＋ 新增類別…</option>
+  </select></div>`;
+};
