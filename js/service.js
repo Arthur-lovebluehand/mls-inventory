@@ -112,7 +112,7 @@ async function svcNewOrder() {
     sb.from('customers').select('customer_no,name').order('name').limit(200),
     sb.from('technicians').select('*').eq('is_active',true).order('name'),
   ]);
-  const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-name="${t.name}">${t.name}（抽成 ${Math.round(t.commission_rate*100)}%）</option>`).join('');
+  const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-name="${t.name}">${t.name}（${t.role||'技師'}，抽成 ${Math.round(t.commission_rate*100)}%）</option>`).join('');
 
   const today2 = new Date().toISOString().split('T')[0];
   const orderNo = 'SV-'+today2.replace(/-/g,'')+'-001';
@@ -962,22 +962,32 @@ async function svcTechnicians() {
   </div>
   <div class="tc"><div class="tb"><span class="tt">技師名單</span></div>
   <div class="tw"><table style="width:100%">
-    <tr><th>姓名</th><th>抽成比例</th><th>狀態</th><th>操作</th></tr>
+    <tr><th>姓名</th><th>職位</th><th>抽成比例</th><th>狀態</th><th>操作</th></tr>
     ${(data||[]).map(t=>`<tr>
       <td style="font-weight:500">${t.name}</td>
+      <td style="color:var(--tx3)">${t.role||'技師'}</td>
       <td style="text-align:center">${Math.round(t.commission_rate*100)}%</td>
       <td><span class="badge ${t.is_active?'bg':'br2'}">${t.is_active?'在職':'離職'}</span></td>
       <td><button class="btn btn-s" onclick="editTechnician(${t.id})">編輯</button></td>
-    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無技師</td></tr>'}
+    </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">尚無技師</td></tr>'}
   </table></div></div>`;
 }
 
 function addTechnician() {
   OM('新增技師',`
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('tc-name','技師姓名 *')}
-    ${fi('tc-rate','抽成比例（%）*','number','50')}
-  </div>`,
+    <div class="fl"><label>職位</label>
+      <select id="tc-role" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+        <option value="按摩師">按摩師</option>
+        <option value="美容師">美容師</option>
+        <option value="美容按摩師">美容按摩師</option>
+        <option value="技師">技師</option>
+        <option value="助理">助理</option>
+      </select>
+    </div>
+  </div>
+  ${fi('tc-rate','抽成比例（%）*','number','50')}`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveTechnician()">儲存</button>`);
 }
@@ -988,12 +998,22 @@ async function editTechnician(id) {
   OM(`編輯技師：${t.name}`,`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('tc-name','技師姓名 *','text',t.name)}
-    ${fi('tc-rate','抽成比例（%）*','number',Math.round(t.commission_rate*100))}
+    <div class="fl"><label>職位</label>
+      <select id="tc-role" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+        <option value="按摩師" ${t.role==='按摩師'?'selected':''}>按摩師</option>
+        <option value="美容師" ${t.role==='美容師'?'selected':''}>美容師</option>
+        <option value="美容按摩師" ${t.role==='美容按摩師'?'selected':''}>美容按摩師</option>
+        <option value="技師" ${(t.role||'技師')==='技師'?'selected':''}>技師</option>
+        <option value="助理" ${t.role==='助理'?'selected':''}>助理</option>
+      </select>
+    </div>
   </div>
+  ${fi('tc-rate','抽成比例（%）','number',Math.round(t.commission_rate*100))}
+  <div style="margin-top:10px">
   <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
     <input type="checkbox" id="tc-active" ${t.is_active?'checked':''} style="width:14px;height:14px">
     <span>在職中</span>
-  </label>`,
+  </label></div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveTechnician(${id})">儲存</button>`);
 }
@@ -1002,7 +1022,8 @@ async function saveTechnician(id) {
   const name = v('tc-name');
   const rate = parseFloat(v('tc-rate'))/100;
   if(!name||isNaN(rate)){ toast('請填寫姓名和抽成比例','e'); return; }
-  const payload = { name, commission_rate:rate,
+  const role = document.getElementById('tc-role')?.value || '技師';
+  const payload = { name, role, commission_rate:rate,
     is_active: id ? (document.getElementById('tc-active')?.checked??true) : true };
   if(id) await sb.from('technicians').update(payload).eq('id',id);
   else await sb.from('technicians').insert(payload);
