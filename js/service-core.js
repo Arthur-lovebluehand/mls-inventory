@@ -25,12 +25,12 @@ function serviceHub() {
       style="white-space:nowrap">${t.label}</div>`).join('')}
   </div>
   <div class="pc" id="svc-content">載入中…</div>`;
-  if(svcTab==='orders')    svcOrders();
-  if(svcTab==='inventory') svcInventory();
-  if(svcTab==='transfer')  svcTransfers();
-  if(svcTab==='credits')   svcCredits();
-  if(svcTab==='items')       svcItems();
-  if(svcTab==='technicians') svcTechnicians();
+  if(svcTab==='orders')      window.svcOrders?.();
+  if(svcTab==='inventory')   window.svcInventory?.();
+  if(svcTab==='transfer')    window.svcTransfers?.();
+  if(svcTab==='credits')     window.svcCredits?.();
+  if(svcTab==='items')       window.svcItems?.();
+  if(svcTab==='technicians') window.svcTechnicians?.();
 }
 
 window.serviceHub      = serviceHub;
