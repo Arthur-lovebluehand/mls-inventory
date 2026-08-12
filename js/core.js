@@ -717,3 +717,45 @@ async function logout() {
 
 window.doLogin  = doLogin;
 window.logout   = logout;
+
+async function changePassword() {
+  OM('修改密碼', `
+  <div style="margin-bottom:12px">
+    <label style="font-size:13px;color:var(--tx3);font-weight:600;display:block;margin-bottom:6px">目前密碼</label>
+    <input type="password" id="pw-old" placeholder="輸入目前密碼"
+      style="width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:var(--r);font-size:14px;outline:none;box-sizing:border-box">
+  </div>
+  <div style="margin-bottom:12px">
+    <label style="font-size:13px;color:var(--tx3);font-weight:600;display:block;margin-bottom:6px">新密碼</label>
+    <input type="password" id="pw-new" placeholder="輸入新密碼（至少6字元）"
+      style="width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:var(--r);font-size:14px;outline:none;box-sizing:border-box">
+  </div>
+  <div>
+    <label style="font-size:13px;color:var(--tx3);font-weight:600;display:block;margin-bottom:6px">確認新密碼</label>
+    <input type="password" id="pw-new2" placeholder="再輸入一次新密碼"
+      style="width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:var(--r);font-size:14px;outline:none;box-sizing:border-box">
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="savePassword()">確認修改</button>`);
+}
+
+async function savePassword() {
+  const oldPw  = document.getElementById('pw-old')?.value;
+  const newPw  = document.getElementById('pw-new')?.value;
+  const newPw2 = document.getElementById('pw-new2')?.value;
+  if (!oldPw || !newPw || !newPw2) { toast('請填寫所有欄位','e'); return; }
+  if (newPw.length < 6) { toast('新密碼至少需要6個字元','e'); return; }
+  if (newPw !== newPw2) { toast('兩次新密碼不一致','e'); return; }
+  // 驗證目前密碼
+  const { data:check } = await sb.from('settings').select('value')
+    .eq('key','access_password').eq('value', pgMd5(oldPw)).single();
+  if (!check) { toast('目前密碼錯誤','e'); return; }
+  // 更新新密碼
+  await sb.from('settings').update({ value: pgMd5(newPw), updated_at: new Date().toISOString() })
+    .eq('key','access_password');
+  toast('✅ 密碼已修改，下次登入請用新密碼');
+  CM();
+}
+
+window.changePassword = changePassword;
+window.savePassword = savePassword;
