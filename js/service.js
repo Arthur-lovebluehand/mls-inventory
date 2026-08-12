@@ -666,6 +666,17 @@ function svcCatChange(sel) {
   sel.value = trimmed;
 }
 window.svcCatChange = svcCatChange;
+function svcUnitChange(sel) {
+  if(sel.value !== '__new__') return;
+  const name = prompt('請輸入自訂單位：（例如：組、顆）');
+  if(!name || !name.trim()) { sel.value = '次'; return; }
+  const trimmed = name.trim();
+  const newOpt = new Option(trimmed, trimmed, true, true);
+  sel.insertBefore(newOpt, sel.lastElementChild);
+  sel.value = trimmed;
+}
+window.svcUnitChange = svcUnitChange;
+
 var _svcItemCat = '全部';
 
 async function svcItems() {
@@ -698,7 +709,15 @@ async function addSvcItem() {
   OM('新增服務項目',`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('si-name','服務名稱 *')}
-    ${fi('si-unit','單位','text','次')}
+    <div class='fl'><label>單位</label><select id='f-si-unit' onchange='svcUnitChange(this)' style='width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)'>
+  <option value="次">次</option>
+  <option value="小時">小時（按時計費，步進0.5）</option>
+  <option value="30分">30分（按30分計費）</option>
+  <option value="療程">療程</option>
+  <option value="片">片</option>
+  <option value="ml">ml</option>
+  <option value="__new__">＋ 自訂單位…</option>
+</select></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('si-price','預設價格','number','0')}
@@ -725,7 +744,16 @@ async function editSvcItem(id) {
   OM('編輯服務項目',`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('si-name','服務名稱 *','text',s.name)}
-    ${fi('si-unit','單位','text',s.unit||'次')}
+    <div class="fl"><label>單位</label><select id="f-si-unit" onchange="svcUnitChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+  <option value="次" ${(s.unit||'次')==='次'?'selected':''}>次</option>
+  <option value="小時" ${(s.unit||'次')==='小時'?'selected':''}>小時（按時計費，步進0.5）</option>
+  <option value="30分" ${(s.unit||'次')==='30分'?'selected':''}>30分（按30分計費）</option>
+  <option value="療程" ${(s.unit||'次')==='療程'?'selected':''}>療程</option>
+  <option value="片" ${(s.unit||'次')==='片'?'selected':''}>片</option>
+  <option value="ml" ${(s.unit||'次')==='ml'?'selected':''}>ml</option>
+  ${!['次','小時','30分','療程','片','ml'].includes(s.unit||'次')?`<option value="${s.unit}" selected>${s.unit}</option>`:''}
+  <option value="__new__">＋ 自訂單位…</option>
+</select></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('si-price','預設價格','number',s.default_price||0)}
@@ -755,7 +783,7 @@ async function saveSvcItem(id) {
   if(!name){ toast('請輸入服務名稱','e'); return; }
   const catEl = document.getElementById('si-cat');
   const payload = {
-    name, unit:v('si-unit')||'次',
+    name, unit:(document.getElementById('f-si-unit')?.value||'次'),
     default_price:parseFloat(v('si-price'))||0,
     sort_order:parseInt(v('si-sort'))||99,
     description:v('si-desc')||null,
