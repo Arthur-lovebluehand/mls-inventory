@@ -274,7 +274,7 @@ window.pickItem=(id,pno,name)=>{
 };
 window.addItem=()=>{_items.push({id:Date.now(),pno:'',_pname:'',qty:1,price:0,giftQty:0,amt:0});renderItems();};
 window.rmItem=id=>{_items=_items.filter(x=>x.id!==id);renderItems();};
-window.setIQ=(id,val)=>{const it=_items.find(x=>x.id===id);if(it){it.qty=Math.max(1,+val||1);it.amt=it.qty*it.price;}renderItems();};
+window.setIQ=(id,val)=>{const it=_items.find(x=>x.id===id);if(it){it.qty=Math.max(0,+val||0);it.amt=it.qty*it.price;}renderItems();};
 window.setIV=(id,val)=>{const it=_items.find(x=>x.id===id);if(it){it.price=+val||0;it.amt=it.qty*it.price;}renderItems();};
 window.setIG=(id,val)=>{const it=_items.find(x=>x.id===id);if(it)it.giftQty=Math.max(0,+val||0);};
 
