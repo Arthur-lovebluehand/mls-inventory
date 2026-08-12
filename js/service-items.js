@@ -125,7 +125,11 @@ async function saveSvcItem(id) {
 
 window.saveSvcItem     = saveSvcItem;
 async function svcTechnicians() {
-  const { data } = await sb.from('technicians').select('*').order('name');
+  const [{ data }, { data:roles }] = await Promise.all([
+    sb.from('technicians').select('*').order('name'),
+    sb.from('service_roles').select('*').eq('is_active',true).order('sort_order'),
+  ]);
+  window._svcRoles = roles || [];
   $('svc-content').innerHTML = `
   <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
     <button class="btn btn-p btn-s" onclick="addTechnician()">＋ 新增技師</button>
@@ -136,7 +140,7 @@ async function svcTechnicians() {
     ${(data||[]).map(t=>`<tr>
       <td style="font-weight:500">${t.name}</td>
       <td style="color:var(--tx3)">${t.role||'技師'}</td>
-      <td style="text-align:center">${Math.round(t.commission_rate*100)}%</td>
+      <td class="num">${Math.round(t.commission_rate*100)}%</td>
       <td><span class="badge ${t.is_active?'bg':'br2'}">${t.is_active?'在職':'離職'}</span></td>
       <td style="display:flex;gap:4px">
         <button class="btn btn-s" onclick="editTechnician(${t.id})">編輯</button>
@@ -147,17 +151,17 @@ async function svcTechnicians() {
 }
 
 window.svcTechnicians  = svcTechnicians;
-function addTechnician() {
+async function addTechnician() {
+  if(!(window._svcRoles||[]).length){
+    const {data:r}=await sb.from('service_roles').select('*').eq('is_active',true).order('sort_order');
+    window._svcRoles=r||[];
+  }
   OM('新增技師',`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('tc-name','技師姓名 *')}
     <div class="fl"><label>職位</label>
       <select id="tc-role" onchange="svcRoleChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
-        <option value="按摩師">按摩師</option>
-        <option value="美容師">美容師</option>
-        <option value="美容按摩師">美容按摩師</option>
-        <option value="技師">技師</option>
-        <option value="助理">助理</option>
+        ${(window._svcRoles||[]).map(r=>`<option value="${r.name}">${r.name}</option>`).join('')}
         <option value="__new__">＋ 自訂職位…</option>
       </select>
     </div>
@@ -176,12 +180,8 @@ async function editTechnician(id) {
     ${fi('tc-name','技師姓名 *','text',t.name)}
     <div class="fl"><label>職位</label>
       <select id="tc-role" onchange="svcRoleChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
-        <option value="按摩師" ${t.role==='按摩師'?'selected':''}>按摩師</option>
-        <option value="美容師" ${t.role==='美容師'?'selected':''}>美容師</option>
-        <option value="美容按摩師" ${t.role==='美容按摩師'?'selected':''}>美容按摩師</option>
-        <option value="技師" ${(t.role||'技師')==='技師'?'selected':''}>技師</option>
-        <option value="助理" ${t.role==='助理'?'selected':''}>助理</option>
-        ${!['按摩師','美容師','美容按摩師','技師','助理'].includes(t.role||'')&&t.role?`<option value="${t.role}" selected>${t.role}</option>`:''}
+        ${(window._svcRoles||[]).map(r=>`<option value="${r.name}" ${t.role===r.name?'selected':''}>${r.name}</option>`).join('')}
+        ${(window._svcRoles||[]).every(r=>r.name!==t.role)&&t.role?`<option value="${t.role}" selected>${t.role}</option>`:''}
         <option value="__new__">＋ 自訂職位…</option>
       </select>
     </div>
