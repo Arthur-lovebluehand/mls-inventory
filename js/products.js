@@ -1,6 +1,6 @@
 // Tab 切換（商品詳情 Modal）
 function switchProdTab(tab){
-  ['s','p','l','a'].forEach(t=>{
+  ['s','p','l','a','t'].forEach(t=>{
     const btn=document.getElementById('ptab-'+t);
     const con=document.getElementById('ptab-'+t+'-con');
     if(btn) btn.className='tab'+(t===tab?' on':'');
@@ -449,6 +449,7 @@ async function showProd(no) {
   const { data: poItems } = await sb.from('purchase_order_items').select('po_no,qty,gift_qty,unit_price,amount,received_qty').eq('product_no',no).order('po_no',{ascending:false}).limit(10);
   const { data: lnItems } = await sb.from('loan_order_items').select('loan_no,qty,returned_qty').eq('product_no',no).order('loan_no',{ascending:false}).limit(10);
   const { data: adjLogs } = await sb.from('audit_logs').select('description,created_at,operator').eq('table_name','products').eq('record_id',no).eq('action','adjust').order('created_at',{ascending:false}).limit(10);
+  const { data: transfers } = await sb.from('service_transfers').select('transfer_date,qty_stock,qty_service,note').eq('product_no',no).order('transfer_date',{ascending:false}).limit(20);
   // 批次取相關主表資訊
   const soNos=(soItems||[]).map(x=>x.order_no).filter(Boolean);
   const poNos=(poItems||[]).map(x=>x.po_no).filter(Boolean);
@@ -496,6 +497,7 @@ async function showProd(no) {
     <div class="tab" id="ptab-p" onclick="switchProdTab('p')" style="white-space:nowrap">進貨</div>
     <div class="tab" id="ptab-l" onclick="switchProdTab('l')" style="white-space:nowrap">借貨</div>
     <div class="tab" id="ptab-a" onclick="switchProdTab('a')" style="white-space:nowrap">庫存調整</div>
+    <div class="tab" id="ptab-t" onclick="switchProdTab('t')" style="white-space:nowrap">🛁 服務撥轉</div>
   </div>
   <div id="ptab-content">
   <!-- 銷貨 -->
@@ -550,6 +552,26 @@ async function showProd(no) {
     }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--tx3)">暫無借貨紀錄</td></tr>'}
   </table></div></div>
   <!-- 庫存調整 -->
+  <div id="ptab-t-con" style="display:none">
+    ${p.service_unit ? `
+    <div style="background:var(--acl);border-radius:var(--r);padding:12px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:6px">🛁 服務設定</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:13px">
+        <div><span style="color:var(--tx3)">服務單位：</span><b>${p.service_unit}</b></div>
+        <div><span style="color:var(--tx3)">1進貨單位=</span><b>${p.service_units_per_stock||1} ${p.service_unit}</b></div>
+        <div><span style="color:var(--tx3)">每次預設：</span><b>${p.default_service_qty||1} ${p.service_unit}</b></div>
+      </div>
+    </div>
+    ${(transfers||[]).length ? `<table style="width:100%"><tr><th>日期</th><th>撥轉盒數</th><th>換算</th><th>備註</th></tr>
+      ${transfers.map(t=>`<tr>
+        <td>${t.transfer_date}</td>
+        <td style="text-align:center">${t.qty_stock} 盒/瓶</td>
+        <td style="text-align:center;color:var(--ac)">${t.qty_service} ${p.service_unit}</td>
+        <td style="font-size:12px;color:var(--tx3)">${t.note||'—'}</td>
+      </tr>`).join('')}
+    </table>` : '<div style="padding:20px;text-align:center;color:var(--tx3)">尚無撥轉記錄</div>'}` :
+    `<div style="padding:20px;text-align:center;color:var(--tx3)">此商品尚未設定服務單位<br><small>請點「編輯商品」→ 填寫服務用途設定</small></div>`}
+  </div>
   <div id="ptab-a-con" style="display:none">
   <table class="itb">
     <tr><th>時間</th><th>調整說明</th><th>操作者</th></tr>
