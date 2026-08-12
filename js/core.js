@@ -34,7 +34,19 @@ window.addEventListener('error',e=>{
     if(typeof loadCats==='function') loadCats().catch(()=>{});
     document.getElementById('modal2').addEventListener('click',e=>{if(e.target.id==='modal2')CM2();});
     try{sb.channel('rt').on('postgres_changes',{event:'*',schema:'public',table:'products'},()=>{if(_cp)_cp();}).on('postgres_changes',{event:'*',schema:'public',table:'sales_orders'},()=>{if(_cp)_cp();}).subscribe();}catch(e){}
-    loadPayMethods().then(()=>go('dashboard'));
+    // Auth 檢查：未登入就顯示登入頁
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        if (!session) { showLoginPage(); return; }
+        await loadPayMethods();
+        go('dashboard');
+      } else if (event === 'SIGNED_IN') {
+        await loadPayMethods();
+        go('dashboard');
+      } else if (event === 'SIGNED_OUT') {
+        showLoginPage();
+      }
+    });
   };
   s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
   document.head.appendChild(s);
