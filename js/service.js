@@ -97,7 +97,9 @@ async function svcShowOrder(no) {
   <div style="text-align:right;font-size:15px;font-weight:700;border-top:1px solid var(--bd);padding-top:10px">
     服務收入：${fM(o.total)}
   </div>
-  ${o.note?`<div style="font-size:12px;color:var(--tx3);margin-top:8px">備註：${o.note}</div>`:''}`,
+  ${o.note?`<div style="margin-top:10px;padding:8px 10px;background:var(--acl);border-radius:var(--r);font-size:13px">
+    <span style="color:var(--tx3);font-weight:600">備註：</span>${o.note}
+  </div>`:''}`,
   `<button class="btn" onclick="CM()">關閉</button>
    <button class="btn btn-r" onclick="deleteSvcOrder('${no}')">刪除</button>`);
 }
@@ -174,7 +176,12 @@ async function svcNewOrder() {
   <div id="sv-items-area" style="margin-bottom:14px"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fs('sv-pay','付款方式',['現金','銀行轉帳','LINE Pay','儲值扣款','現金+儲值'],'現金')}
-    ${fi('sv-note','備註')}
+    ${fi('sv-person','實際服務對象（選填）','text','')}
+  </div>
+  <div class="fl" style="margin-bottom:10px">
+    <label style="font-weight:600">備註</label>
+    <textarea id="f-sv-note" rows="2" placeholder="例如：使用王太太儲值金，實際服務對象：王小姐"
+      style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none;resize:vertical"></textarea>
   </div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveSvcOrder()">建立服務單</button>`,true);
@@ -273,6 +280,7 @@ function renderSvcItems() {
         <td>${i.qty}${i.unit}</td>
         <td class="num">${fM(i.unit_price)}</td>
         <td class="num"><b>${fM(i.subtotal)}</b></td>
+        <td style="font-size:11px;color:var(--tx3)">${i.technician_name||'—'}</td>
         <td><button onclick="rmSvcItem(${i.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:16px">×</button></td>
       </tr>`).join('')}
     </table></div>
@@ -292,7 +300,10 @@ async function saveSvcOrder() {
   const custNo = custSel?.value||null;
   const custName = v('sv-cname');
   const payMethod = v('sv-pay');
-  const note = v('sv-note');
+  const person = v('sv-person');
+  const noteRaw = document.getElementById('f-sv-note')?.value?.trim();
+  const note = person && noteRaw ? `${noteRaw}（服務對象：${person}）` :
+               person ? `服務對象：${person}` : noteRaw || null;
   if(!no||!date||!custName){ toast('請填寫單號、日期、客戶','e'); return; }
   if(!window._svcItems.length){ toast('請加入至少一個品項','e'); return; }
 
