@@ -34,33 +34,8 @@ window.addEventListener('error',e=>{
     if(typeof loadCats==='function') loadCats().catch(()=>{});
     document.getElementById('modal2').addEventListener('click',e=>{if(e.target.id==='modal2')CM2();});
     try{sb.channel('rt').on('postgres_changes',{event:'*',schema:'public',table:'products'},()=>{if(_cp)_cp();}).on('postgres_changes',{event:'*',schema:'public',table:'sales_orders'},()=>{if(_cp)_cp();}).subscribe();}catch(e){}
-    // Auth 檢查
-    const authTimeout = setTimeout(() => {
-      // 超過3秒還沒回應，直接顯示登入頁
-      showLoginPage('載入逾時，請重新整理');
-    }, 3000);
-    
-    Promise.race([
-      sb.auth.getSession(),
-      new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 5000))
-    ]).then(({data:{session}}) => {
-      clearTimeout(authTimeout);
-      if (!session) {
-        showLoginPage();
-        sb.auth.onAuthStateChange((event) => {
-          if (event === 'SIGNED_IN') location.reload();
-        });
-        return;
-      }
-      // 已登入 → 啟動系統
-      sb.auth.onAuthStateChange((event) => {
-        if (event === 'SIGNED_OUT') showLoginPage();
-      });
-      loadPayMethods().then(() => go('dashboard'));
-    }).catch(err => {
-      clearTimeout(authTimeout);
-      showLoginPage('連線錯誤，請重新整理（' + err.message + '）');
-    });
+    // 暫時跳過 auth 測試
+    loadPayMethods().then(() => go('dashboard'));
   };
   s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
   document.head.appendChild(s);
