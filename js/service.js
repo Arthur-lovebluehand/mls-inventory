@@ -968,7 +968,10 @@ async function svcTechnicians() {
       <td style="color:var(--tx3)">${t.role||'技師'}</td>
       <td style="text-align:center">${Math.round(t.commission_rate*100)}%</td>
       <td><span class="badge ${t.is_active?'bg':'br2'}">${t.is_active?'在職':'離職'}</span></td>
-      <td><button class="btn btn-s" onclick="editTechnician(${t.id})">編輯</button></td>
+      <td style="display:flex;gap:4px">
+        <button class="btn btn-s" onclick="editTechnician(${t.id})">編輯</button>
+        <button class="btn btn-s btn-r" onclick="deleteTechnician(${t.id},'${t.name}（${t.role||'技師'}）')">刪除</button>
+      </td>
     </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">尚無技師</td></tr>'}
   </table></div></div>`;
 }
@@ -978,12 +981,13 @@ function addTechnician() {
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('tc-name','技師姓名 *')}
     <div class="fl"><label>職位</label>
-      <select id="tc-role" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+      <select id="tc-role" onchange="svcRoleChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
         <option value="按摩師">按摩師</option>
         <option value="美容師">美容師</option>
         <option value="美容按摩師">美容按摩師</option>
         <option value="技師">技師</option>
         <option value="助理">助理</option>
+        <option value="__new__">＋ 自訂職位…</option>
       </select>
     </div>
   </div>
@@ -999,12 +1003,14 @@ async function editTechnician(id) {
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('tc-name','技師姓名 *','text',t.name)}
     <div class="fl"><label>職位</label>
-      <select id="tc-role" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+      <select id="tc-role" onchange="svcRoleChange(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
         <option value="按摩師" ${t.role==='按摩師'?'selected':''}>按摩師</option>
         <option value="美容師" ${t.role==='美容師'?'selected':''}>美容師</option>
         <option value="美容按摩師" ${t.role==='美容按摩師'?'selected':''}>美容按摩師</option>
         <option value="技師" ${(t.role||'技師')==='技師'?'selected':''}>技師</option>
         <option value="助理" ${t.role==='助理'?'selected':''}>助理</option>
+        ${!['按摩師','美容師','美容按摩師','技師','助理'].includes(t.role||'')&&t.role?`<option value="${t.role}" selected>${t.role}</option>`:''}
+        <option value="__new__">＋ 自訂職位…</option>
       </select>
     </div>
   </div>
@@ -1032,6 +1038,30 @@ async function saveTechnician(id) {
   svcTechnicians();
 }
 
+
+function svcRoleChange(sel) {
+  if(sel.value !== '__new__') return;
+  const name = prompt('請輸入自訂職位名稱：');
+  if(!name || !name.trim()) { sel.value = sel.options[0].value; return; }
+  const trimmed = name.trim();
+  const exists = Array.from(sel.options).some(o => o.value === trimmed);
+  if(!exists) {
+    const newOpt = new Option(trimmed, trimmed, true, true);
+    sel.insertBefore(newOpt, sel.lastElementChild);
+  }
+  sel.value = trimmed;
+}
+
+async function deleteTechnician(id, name) {
+  if(!confirm(`確定刪除「${name}」？\n⚠ 已建立的服務記錄不受影響，但未來無法選擇此技師。`)) return;
+  const { error } = await sb.from('technicians').delete().eq('id', id);
+  if(error) { toast('刪除失敗：'+error.message,'e'); return; }
+  toast('已刪除技師：'+name);
+  svcTechnicians();
+}
+
+window.svcRoleChange = svcRoleChange;
+window.deleteTechnician = deleteTechnician;
 window.svcTechnicians  = svcTechnicians;
 window.addTechnician   = addTechnician;
 window.editTechnician  = editTechnician;
