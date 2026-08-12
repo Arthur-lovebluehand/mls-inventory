@@ -1,0 +1,349 @@
+// ══════════════════════════════
+// service-orders.js
+// ══════════════════════════════
+
+async function svcOrders() {
+  const { data, count } = await sb.from('service_orders')
+    .select('*', { count:'exact' })
+    .order('order_date', { ascending:false })
+    .order('order_no', { ascending:false })
+    .range((svcOrderPage-1)*25, svcOrderPage*25-1);
+
+  const tp = Math.max(1, Math.ceil((count||0)/25));
+  $('svc-content').innerHTML = `
+  <div class="tc">
+    <div class="tw"><table style="width:100%">
+      <tr><th>訂單號</th><th>日期</th><th>客戶</th><th>金額</th><th>付款</th><th>操作</th></tr>
+      ${(data||[]).map(o=>`<tr>
+        <td style="font-size:12px;color:var(--ac)">${o.order_no}</td>
+        <td>${o.order_date||''}</td>
+        <td>${o.customer_name||'—'}</td>
+        <td class="num">${fM(o.total)}</td>
+        <td><span style="font-size:11px">${o.payment_method||''}</span></td>
+        <td><button class="btn btn-s" onclick="svcShowOrder('${o.order_no}')">明細</button></td>
+      </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+    </table></div>
+  </div>
+  <div class="pg"><span class="pi">第 ${svcOrderPage}/${tp} 頁，共 ${count||0} 筆</span>
+    ${svcOrderPage>1?`<button class="btn btn-s" onclick="svcOrderPage--;svcOrders()">上一頁</button>`:''}
+    ${svcOrderPage<tp?`<button class="btn btn-s" onclick="svcOrderPage++;svcOrders()">下一頁</button>`:''}
+  </div>`;
+}
+
+async function svcShowOrder(no) {
+  const [{ data:o },{ data:its }] = await Promise.all([
+    sb.from('service_orders').select('*').eq('order_no',no).single(),
+    sb.from('service_order_items').select('*').eq('order_no',no),
+  ]);
+  if(!o){ toast('找不到訂單','e'); return; }
+  const services = (its||[]).filter(i=>i.item_type==='service');
+  const consumables = (its||[]).filter(i=>i.item_type==='consumable');
+
+  OM(`服務單：${no}`,`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;font-size:13px">
+    <div><span style="color:var(--tx3)">日期：</span>${o.order_date||''}</div>
+    <div><span style="color:var(--tx3)">客戶：</span>${o.customer_name||'—'}</div>
+    <div><span style="color:var(--tx3)">付款：</span>${o.payment_method||''}</div>
+    <div><span style="color:var(--tx3)">儲值扣：</span>${fM(o.paid_by_credit)}</div>
+  </div>
+  ${services.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">服務項目</div>
+  <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
+    <tr><th>項目</th><th>數量</th><th>單價</th><th>小計</th></tr>
+    ${services.map(i=>`<tr><td>${i.item_name}</td><td>${i.qty}${i.unit||''}</td>
+      <td class="num">${fM(i.unit_price)}</td><td class="num">${fM(i.subtotal)}</td></tr>`).join('')}
+  </table></div></div>`:''}
+  ${consumables.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">耗材</div>
+  <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
+    <tr><th>商品</th><th>用量</th><th>服務費</th><th>耗材成本</th></tr>
+    ${consumables.map(i=>`<tr><td>${i.item_name}</td><td>${i.qty}${i.unit||''}</td>
+      <td class="num">${fM(i.unit_price)}</td><td class="num" style="color:var(--rd)">${fM(i.cost)}</td></tr>`).join('')}
+  </table></div></div>`:''}
+  <div style="text-align:right;font-size:15px;font-weight:700;border-top:1px solid var(--bd);padding-top:10px">
+    服務收入：${fM(o.total)}
+  </div>
+  ${o.note?`<div style="margin-top:10px;padding:8px 10px;background:var(--acl);border-radius:var(--r);font-size:13px">
+    <span style="color:var(--tx3);font-weight:600">備註：</span>${o.note}
+  </div>`:''}`,
+  `<button class="btn" onclick="CM()">關閉</button>
+   <button class="btn btn-r" onclick="deleteSvcOrder('${no}')">刪除</button>`);
+}
+
+window.svcShowOrder    = svcShowOrder;
+async function svcNewOrder() {
+  // 抓服務項目、服務庫存商品、客戶
+  const [{ data:sitems },{ data:sinv },{ data:custs },{ data:techs }] = await Promise.all([
+    sb.from('service_items').select('*').eq('is_active',true).order('sort_order'),
+    sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty,cost)').gt('stock_qty',0),
+    sb.from('customers').select('customer_no,name').order('name').limit(200),
+    sb.from('technicians').select('*').eq('is_active',true).order('name'),
+  ]);
+  const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-name="${t.name}">${t.name}（${t.role||'技師'}，抽成 ${Math.round(t.commission_rate*100)}%）</option>`).join('');
+
+  const today2 = new Date().toISOString().split('T')[0];
+  const orderNo = 'SV-'+today2.replace(/-/g,'')+'-001';
+
+  window._svcItems = []; // 服務訂單品項暫存
+
+  const custOpts = (custs||[]).map(c=>`<option value="${c.customer_no}">${c.name}</option>`).join('');
+  const catGroups = {};
+  (sitems||[]).forEach(s=>{ const c=s.category||'其他項目'; if(!catGroups[c]) catGroups[c]=[]; catGroups[c].push(s); });
+  const svcOpts = Object.entries(catGroups).map(([cat,items])=>
+    `<optgroup label="${cat}">${items.map(s=>`<option value="${s.id}" data-price="${s.default_price}" data-unit="${s.unit||'次'}">${s.name}（${fM(s.default_price)}/${s.unit||'次'}）</option>`).join('')}</optgroup>`
+  ).join('');
+  const prodOpts = (sinv||[]).map(p=>{
+    const prod = p.products;
+    return `<option value="${p.product_no}" data-unit="${prod?.service_unit||'次'}" data-qty="${prod?.default_service_qty||1}" data-cost="${prod?.cost||0}">${prod?.name||p.product_no}（庫存 ${p.stock_qty} ${prod?.service_unit||'次'}）</option>`;
+  }).join('');
+
+  OM('新增服務單', `
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+    ${fi('sv-no','服務單號','text',orderNo)}
+    ${fi('sv-date','日期','date',today2)}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+    <div class="fl"><label>選擇客戶</label>
+      <select id="f-sv-cust" onchange="svcPickCust(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+        <option value="">— 選擇客戶 —</option>${custOpts}
+      </select>
+    </div>
+    ${fi('sv-cname','客戶姓名 *')}
+  </div>
+  <div style="margin-bottom:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
+    <div style="font-weight:600;margin-bottom:8px;font-size:13px">加入服務項目（人工）</div>
+    <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:end">
+      <select id="sv-sitem" onchange="svcItemChange(this)" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+        <option value="">— 選服務項目 —</option>${svcOpts}
+      </select>
+      <input type="number" id="sv-siqty" value="1" min="1" step="1" placeholder="數量"
+        style="width:60px;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+      <input type="number" id="sv-siprice" value="" placeholder="單價"
+        style="width:80px;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+      <select id="sv-tech" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+        <option value="">— 技師 —</option>${techOpts}
+      </select>
+      <button class="btn btn-s" onclick="svcAddServiceItem()">＋ 加入</button>
+    </div>
+    <div style="font-size:11px;color:var(--tx3);margin-top:4px">可在單價欄位覆蓋預設價格</div>
+  </div>
+  <div style="margin-bottom:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
+    <div style="font-weight:600;margin-bottom:8px;font-size:13px">加入耗材（服務庫存）</div>
+    <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:end">
+      <select id="sv-prod" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+        <option value="">— 選耗材 —</option>${prodOpts}
+      </select>
+      <input type="number" id="sv-prodqty" value="1" min="0.5" step="0.5" placeholder="用量"
+        style="width:60px;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+      <input type="number" id="sv-prodprice" value="0" placeholder="服務費"
+        style="width:80px;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+      <button class="btn btn-s" onclick="svcAddConsumable()">＋ 加入</button>
+    </div>
+  </div>
+  <div id="sv-items-area" style="margin-bottom:14px"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    ${fs('sv-pay','付款方式',['現金','銀行轉帳','LINE Pay','儲值扣款','現金+儲值'],'現金')}
+    ${fi('sv-person','實際服務對象（選填）','text','')}
+  </div>
+  <div class="fl" style="margin-bottom:10px">
+    <label style="font-weight:600">備註</label>
+    <textarea id="f-sv-note" rows="2" placeholder="例如：使用王太太儲值金，實際服務對象：王小姐"
+      style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none;resize:vertical"></textarea>
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveSvcOrder()">建立服務單</button>`,true);
+}
+
+window.svcNewOrder     = svcNewOrder;
+function svcPickCust(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if(opt.value) {
+    $('f-sv-cname').value = opt.text;
+    // 查儲值餘額
+    sb.from('store_credits').select('balance').eq('customer_no',opt.value).single()
+      .then(({data})=>{
+        const bal = data?.balance||0;
+        let hint = document.getElementById('sv-credit-hint');
+        if(!hint){ hint=document.createElement('div'); hint.id='sv-credit-hint';
+          $('f-sv-cname').parentNode.appendChild(hint); }
+        hint.innerHTML=`<div style="font-size:11px;color:${bal>0?'var(--ac)':'var(--tx3)'};margin-top:4px">儲值餘額：${fM(bal)}</div>`;
+      });
+  }
+}
+
+window.svcPickCust     = svcPickCust;
+function svcAddServiceItem() {
+  const sel = document.getElementById('sv-sitem');
+  const opt = sel.options[sel.selectedIndex];
+  if(!opt.value){ toast('請選擇服務項目','e'); return; }
+  const qty = parseFloat(document.getElementById('sv-siqty').value)||1;
+  const price = parseFloat(document.getElementById('sv-siprice').value)||parseFloat(opt.dataset.price)||0;
+  const techSel = document.getElementById('sv-tech');
+  const techOpt = techSel?.options[techSel.selectedIndex];
+  const techId = techOpt?.value ? parseInt(techOpt.value) : null;
+  const techName = techOpt?.dataset?.name || null;
+  const techRate = parseFloat(techOpt?.dataset?.rate)||0.5;
+  const techPay = techId ? Math.round(qty * price * techRate * 100)/100 : 0;
+  window._svcItems.push({
+    id: Date.now(), item_type:'service', item_name:opt.text.split('（')[0],
+    qty, unit:opt.dataset.unit||'次', unit_price:price, cost:0, subtotal:qty*price,
+    technician_id:techId, technician_name:techName, technician_pay:techPay
+  });
+  renderSvcItems();
+}
+
+window.svcAddServiceItem = svcAddServiceItem;
+function svcAddConsumable() {
+  const sel = document.getElementById('sv-prod');
+  const opt = sel.options[sel.selectedIndex];
+  if(!opt.value){ toast('請選擇耗材','e'); return; }
+  const qty = parseFloat(document.getElementById('sv-prodqty').value)||1;
+  const svcPrice = parseFloat(document.getElementById('sv-prodprice').value)||0;
+  const costPerUnit = parseFloat(opt.dataset.cost)||0;
+  const costPerSvcUnit = costPerUnit / (parseFloat(opt.dataset.qty)||1);
+  window._svcItems.push({
+    id: Date.now(), item_type:'consumable',
+    item_name: opt.text.split('（')[0],
+    product_no: opt.value,
+    qty, unit:opt.dataset.unit||'次',
+    unit_price: svcPrice,
+    cost: Math.round(costPerSvcUnit * qty * 100)/100,
+    subtotal: svcPrice * qty
+  });
+  renderSvcItems();
+}
+
+window.svcAddConsumable  = svcAddConsumable;
+function renderSvcItems() {
+  const area = document.getElementById('sv-items-area');
+  if(!area) return;
+  if(!window._svcItems.length){ area.innerHTML=''; return; }
+  const total = window._svcItems.reduce((s,i)=>s+i.subtotal,0);
+  const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable').reduce((s,i)=>s+i.cost,0);
+  area.innerHTML = `
+  <div class="tc">
+    <div class="tb"><span class="tt">訂單品項</span></div>
+    <div class="tw"><table style="width:100%">
+      <tr><th>類型</th><th>項目</th><th>數量</th><th>單價</th><th>小計</th><th>技師</th><th></th></tr>
+      ${window._svcItems.map(i=>`<tr>
+        <td><span class="badge ${i.item_type==='service'?'bg':'br2'}" style="font-size:10px">${i.item_type==='service'?'服務':'耗材'}</span></td>
+        <td style="font-size:13px">${i.item_name}</td>
+        <td>${i.qty}${i.unit}</td>
+        <td class="num">${fM(i.unit_price)}</td>
+        <td class="num"><b>${fM(i.subtotal)}</b></td>
+        <td style="font-size:11px;color:var(--tx3)">${i.technician_name||'—'}</td>
+        <td><button onclick="rmSvcItem(${i.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:16px">×</button></td>
+      </tr>`).join('')}
+    </table></div>
+  </div>
+  <div style="text-align:right;font-weight:700;font-size:15px;margin-top:6px">合計：${fM(total)}</div>`;
+}
+
+function rmSvcItem(id) {
+  window._svcItems = window._svcItems.filter(i=>i.id!==id);
+  renderSvcItems();
+}
+
+window.rmSvcItem       = rmSvcItem;
+async function saveSvcOrder() {
+  const no = v('sv-no');
+  const date = v('sv-date');
+  const custSel = document.getElementById('f-sv-cust');
+  const custNo = custSel?.value||null;
+  const custName = v('sv-cname');
+  const payMethod = v('sv-pay');
+  const person = v('sv-person');
+  const noteRaw = document.getElementById('f-sv-note')?.value?.trim();
+  const note = person && noteRaw ? `${noteRaw}（服務對象：${person}）` :
+               person ? `服務對象：${person}` : noteRaw || null;
+  if(!no||!date||!custName){ toast('請填寫單號、日期、客戶','e'); return; }
+  if(!window._svcItems.length){ toast('請加入至少一個品項','e'); return; }
+
+  const total = window._svcItems.reduce((s,i)=>s+i.subtotal,0);
+  const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable').reduce((s,i)=>s+i.cost,0);
+
+  // 儲值扣款計算
+  let paidByCredit = 0, paidByCash = total;
+  if(payMethod.includes('儲值') && custNo) {
+    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
+    const bal = cr?.balance||0;
+    if(payMethod==='儲值扣款') { paidByCredit=Math.min(bal,total); paidByCash=Math.max(0,total-paidByCredit); }
+    else if(payMethod==='現金+儲值') { paidByCredit=Math.min(bal,total); paidByCash=Math.max(0,total-paidByCredit); }
+  }
+
+  // 1. 建服務訂單
+  const { error:e1 } = await sb.from('service_orders').insert({
+    order_no:no, order_date:date, customer_no:custNo, customer_name:custName,
+    total, consumable_cost:consumableCost,
+    paid_by_credit:paidByCredit, paid_by_cash:paidByCash,
+    payment_method:payMethod, note:note||null
+  });
+  if(e1){ toast('建立失敗：'+e1.message,'e'); return; }
+
+  // 2. 建品項
+  const items = window._svcItems.map(i=>({
+    order_no:no, item_type:i.item_type, item_name:i.item_name,
+    product_no:i.product_no||null, qty:i.qty, unit:i.unit,
+    unit_price:i.unit_price, cost:i.cost, subtotal:i.subtotal,
+    technician_id:i.technician_id||null, technician_name:i.technician_name||null,
+    technician_pay:i.technician_pay||0
+  }));
+  await sb.from('service_order_items').insert(items);
+
+  // 3. 扣服務庫存
+  for(const item of window._svcItems.filter(i=>i.item_type==='consumable'&&i.product_no)) {
+    const { data:inv } = await sb.from('service_inventory').select('stock_qty').eq('product_no',item.product_no).single();
+    if(inv) {
+      const newQty = Math.max(0, (inv.stock_qty||0)-item.qty);
+      await sb.from('service_inventory').update({stock_qty:newQty,updated_at:new Date().toISOString()}).eq('product_no',item.product_no);
+    }
+  }
+
+  // 4. 儲值扣款記錄
+  if(paidByCredit>0 && custNo) {
+    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
+    const newBal = (cr?.balance||0)-paidByCredit;
+    await sb.from('store_credits').update({balance:newBal,updated_at:new Date().toISOString()}).eq('customer_no',custNo);
+    await sb.from('store_credit_records').insert({
+      customer_no:custNo, record_date:date, type:'deduct',
+      amount:-paidByCredit, balance_after:newBal, note:`服務單 ${no}`, order_no:no
+    });
+  }
+
+  await logAction('create','service_orders',no,`新增服務單 ${no}，客戶：${custName}，金額：${fM(total)}`,null,{total});
+  toast('✅ 服務單建立成功');
+  CM();
+  window._svcItems=[];
+  svcOrders();
+}
+
+window.saveSvcOrder    = saveSvcOrder;
+async function deleteSvcOrder(no) {
+  if(!confirm(`確定刪除服務單 ${no}？`)) return;
+  await sb.from('service_orders').delete().eq('order_no',no);
+  toast('已刪除');
+  CM();
+  svcOrders();
+}
+
+window.deleteSvcOrder  = deleteSvcOrder;
+function svcItemChange(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  const unit = opt?.dataset?.unit || '次';
+  const qtyEl = document.getElementById('sv-siqty');
+  if(qtyEl) {
+    // 小時制：步進 0.5；次數制：步進 1
+    const isHour = unit === '小時' || unit === 'hr' || unit === 'h';
+    qtyEl.step = isHour ? '0.5' : '1';
+    qtyEl.min = isHour ? '0.5' : '1';
+    // 自動帶入預設單價
+    const price = opt?.dataset?.price;
+    if(price) {
+      const priceEl = document.getElementById('sv-siprice');
+      if(priceEl) priceEl.value = price;
+    }
+  }
+}
+
+window.svcItemChange = svcItemChange;
+
+window.svcOrders = svcOrders;
+window.renderSvcItems = renderSvcItems;
