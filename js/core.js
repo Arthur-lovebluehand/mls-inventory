@@ -303,7 +303,7 @@ window.pickPOItem=(id,pno,name,cost)=>{
 };
 window.addPOItem=()=>{_poItems.push({id:Date.now(),pno:'',qty:1,price:0,amt:0});renderPOItems();};
 window.rmPOItem=id=>{_poItems=_poItems.filter(x=>x.id!==id);renderPOItems();};
-window.setPOIQ=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.qty=Math.max(1,+val||1);it.amt=it.qty*it.price;}renderPOItems();};
+window.setPOIQ=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.qty=Math.max(0,+val||0);it.amt=it.qty*it.price;}renderPOItems();};
 window.setPOIV=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.price=+val||0;it.amt=it.qty*it.price;}renderPOItems();};
 window.setPOIG=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.giftQty=Math.max(0,+val||0);}updPOAmt();};
 
