@@ -148,7 +148,11 @@ async function showPO(no){
     <span>小計（稅前參考）</span><span class="num" style="text-align:right">${fM(po?.subtotal)}</span>
     <span>稅（含稅，拆算參考）</span><span class="num" style="text-align:right">${fM(po?.tax)}</span>
     <span style="font-weight:700">合計</span><span class="num" style="text-align:right;font-weight:700;color:var(--br)">${fM(po?.total)}</span>
-  </div>`);
+  </div>`,
+  `<button class="btn" onclick="CM()">關閉</button>
+   <button class="btn" onclick="CM();editPO('${no}')">修改</button>
+   <button class="btn btn-p" onclick="CM();recordReceipt('${no}')">📦 收貨記錄</button>
+   <button class="btn" style="color:var(--am);border-color:var(--am)" onclick="CM();returnPO('${no}')">退貨</button>`);
 }
 async function loadPOForm(poData,itsData){
   const[{data:pr},{data:vn}]=await Promise.all([
