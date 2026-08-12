@@ -253,7 +253,10 @@ async function saveProd(existingNo){
     }
     window._prodImgFile=null;
   }
-  const obj={name:nm,spec:v('pspec')||null,category:(()=>{const cv=v('pcat');return(cv&&cv!=='__new__')?cv:null;})(),unit:v('punit')||'個',stock:n('pstock')||0,...priceFields,source:v('psource')||null,vendor_product_no:v('pvpno')||null,image_url:imageUrl,description:v('pdesc')||null};
+  const obj={name:nm,spec:v('pspec')||null,category:(()=>{const cv=v('pcat');return(cv&&cv!=='__new__')?cv:null;})(),unit:v('punit')||'個',stock:n('pstock')||0,...priceFields,source:v('psource')||null,vendor_product_no:v('pvpno')||null,image_url:imageUrl,description:v('pdesc')||null,
+    service_unit:document.getElementById('f-psunit')?.value||null,
+    service_units_per_stock:parseFloat(document.getElementById('f-psuperunit')?.value)||1,
+    default_service_qty:parseFloat(document.getElementById('f-psdefqty')?.value)||1};
   let err;
   if(existingNo){
     // 比對舊價格，有變動則記錄
