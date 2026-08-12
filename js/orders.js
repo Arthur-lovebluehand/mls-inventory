@@ -318,7 +318,7 @@ async function editOrder(no){
     sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address').order('name'),
   ]);
   _allProds=pr||[]; _allCusts=cu||[];
-  _items=(its||[]).map((i,idx)=>({id:idx+1,pno:i.product_no,qty:i.qty,price:i.unit_price,amt:i.amount}));
+  _items=(its||[]).map((i,idx)=>({id:idx+1,pno:i.product_no,_pname:i.product_name||'',qty:i.qty||0,price:i.unit_price||0,giftQty:i.gift_qty||0,amt:i.amount||0}));
   const custOpts=_allCusts.map(c=>({value:c.customer_no,label:`${c.name} (${c.agent_level||'—'})`,data:c}));
   OM(`修改訂單：${no}`,`
   <div class="fg" style="margin-bottom:13px">
