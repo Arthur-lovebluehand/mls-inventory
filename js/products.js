@@ -133,25 +133,33 @@ function prodForm(p){
     ${fi('pf','創始','number',p.price_founder)} ${fi('prg','大區','number',p.price_region)} ${fi('pct','市代','number',p.price_city)}
     ${fi('pdr','經銷','number',p.price_dealer)} ${fi('pvp','VIP','number',p.price_vip)} ${fi('prl','零售','number',p.price_retail)}
     ${fi('pcost','進貨價','number',p.cost)}
-    <div style="background:var(--acl);border-radius:var(--r);padding:12px;margin-top:4px">
-      <div style="font-size:12px;font-weight:700;color:var(--ac);margin-bottom:8px">🛁 服務用途設定（選填）</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+    <div style="background:var(--acl);border:1px solid var(--bd);border-radius:var(--rl);padding:16px;margin-top:8px">
+      <div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:14px">🛁 服務用途設定（選填）</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="fl">
-          <label style="font-size:12px">服務單位</label>
-          <select id="f-psunit" style="width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
+          <label>服務單位</label>
+          <select id="f-psunit" style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
             <option value="">不用於服務</option>
-            <option value="組" ${(p.service_unit||'')==='組'?'selected':''}>組</option>
-            <option value="ml" ${(p.service_unit||'')==='ml'?'selected':''}>ml</option>
-            <option value="片" ${(p.service_unit||'')==='片'?'selected':''}>片</option>
-            <option value="次" ${(p.service_unit||'')==='次'?'selected':''}>次</option>
+            <option value="組" ${(p.service_unit||'')==='組'?'selected':''}>組（例：外泌體4組/盒）</option>
+            <option value="ml" ${(p.service_unit||'')==='ml'?'selected':''}>ml（例：精油150ml/瓶）</option>
+            <option value="片" ${(p.service_unit||'')==='片'?'selected':''}>片（例：面膜8片/盒）</option>
+            <option value="次" ${(p.service_unit||'')==='次'?'selected':''}>次（例：安瓶1次/支）</option>
             <option value="顆" ${(p.service_unit||'')==='顆'?'selected':''}>顆</option>
           </select>
         </div>
-        ${fi('psuperunit','1進貨單位=幾服務單位','number',p.service_units_per_stock||1)}
-        ${fi('psdefqty','每次服務預設用量','number',p.default_service_qty||1)}
+        <div class="fl">
+          <label>1個進貨單位 = 幾服務單位</label>
+          <input type="number" id="f-psuperunit" value="${p.service_units_per_stock||1}" min="0.1" step="0.5"
+            style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
+        </div>
       </div>
-      <div style="font-size:11px;color:var(--tx3);margin-top:6px">
-        例：外泌體 1盒=4組，每次服務用1組
+      <div class="fl">
+        <label>每次服務預設用量（服務單位）</label>
+        <input type="number" id="f-psdefqty" value="${p.default_service_qty||1}" min="0.5" step="0.5"
+          style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
+      </div>
+      <div style="font-size:12px;color:var(--ac);margin-top:10px;padding:8px;background:rgba(92,122,92,.08);border-radius:var(--r)">
+        💡 例：外泌體新生源液，服務單位選「組」，1盒=4組，每次服務用1組
       </div>
     </div>
   </div>
