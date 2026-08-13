@@ -72,15 +72,16 @@ async function showOrder(no){
     <div class="dr" style="grid-column:1/-1"><span class="dlb">送貨地址</span><span class="dv">${o?.ship_address||'—'}</span></div>
     <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${o?.note||'—'}</span></div>
   </div>
-  <table class="itb"><tr><th>商品</th><th>單價</th><th>銷售數</th><th style="color:var(--am)">贈品數</th><th>實出數</th><th>金額</th></tr>
+  <table class="itb"><tr><th>商品</th><th>單價</th><th>銷售數</th><th style="color:var(--am)">贈品數</th><th>訂購合計</th><th class="ok">已出貨</th><th>金額</th></tr>
   ${(its||[]).map(i=>`<tr>
     <td>${i.product_name||'—'}</td>
     <td class="num">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString('zh-TW'):'贈品'}</td>
     <td class="num">${fN(i.qty)}</td>
     <td class="num" style="color:var(--am);font-weight:600">${i.gift_qty?fN(i.gift_qty):'—'}</td>
     <td class="num" style="font-weight:600">${fN((i.qty||0)+(i.gift_qty||0))}</td>
+    <td class="num ok">${fN(i.shipped_qty||0)}</td>
     <td class="num">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString('zh-TW'):'—'}</td>
-  </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
+  </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
   </table>
   <div style="background:var(--sf2);border-radius:var(--r);padding:10px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:13px">
     <span>小計（稅前參考）</span><span class="num" style="text-align:right">${fM(o?.subtotal)}</span>
@@ -277,7 +278,7 @@ async function saveOrder(editNo){
     const{error}=await sb.from('sales_orders').update(payload).eq('order_no',editNo);
     if(error){toast('修改失敗：'+error.message,'e');return;}
   } else {
-    payload.order_no=no;payload.payment_done=false;
+    payload.order_no=no;payload.payment_done=false;payload.stock_deducted_at_creation=false;
     const{error}=await sb.from('sales_orders').insert(payload);
     if(error){toast('建立失敗：'+error.message,'e');return;}
   }
@@ -299,16 +300,7 @@ async function saveOrder(editNo){
     };
   });
   await sb.from('sales_order_items').insert(rows);
-  if(!editNo){
-    // 扣庫存：銷售數+贈品數 = 實際出貨量
-  for(const i of its){
-    const actualOut=(i.qty||0)+(i.giftQty||0);
-    if(actualOut<=0) continue;
-    const{data:p}=await sb.from('products').select('stock').eq('product_no',i.pno).single();
-    if(p) await sb.from('products').update({stock:Math.max(0,p.stock-actualOut)}).eq('product_no',i.pno);
-  }
-  }
-  toast(editNo?'訂單已修改！':'訂單建立成功！庫存已自動扣除');CM();orders();
+  toast(editNo?'訂單已修改！':'訂單建立成功！請至「出貨記錄」登記實際出貨數量，庫存會在出貨時才扣除');CM();orders();
 }
 async function editOrder(no){
   const[{data:o},{data:its},{data:pr},{data:cu}]=await Promise.all([
@@ -387,7 +379,7 @@ async function dOrder(no){
 }
 async function recordShipment(no){
   const[{data:o},{data:its}]=await Promise.all([
-    sb.from('sales_orders').select('ship_status').eq('order_no',no).single(),
+    sb.from('sales_orders').select('ship_status,stock_deducted_at_creation').eq('order_no',no).single(),
     sb.from('sales_order_items').select('*').eq('order_no',no),
   ]);
   const td=today();
@@ -404,26 +396,34 @@ async function recordShipment(no){
       +'<td class="num '+(pending>0?'cr':'')+'" >'+fN(pending)+'</td>'
       +'</tr>';
   }).join('');
-  const itsJson=JSON.stringify(its);
   OM('記錄出貨：'+no,
-    '<div class="al al-w" style="font-size:12px">填入本次實際出貨的數量（含贈品），可分批記錄。</div>'
+    '<div class="al al-w" style="font-size:12px">填入本次實際出貨的數量（含贈品），可分批記錄。'+(o?.stock_deducted_at_creation?'（這張單建立時已扣過庫存，這裡只更新出貨進度，不會再扣庫存）':'（庫存會依這次實際出貨量扣除）')+'</div>'
     +'<div class="fl" style="margin-bottom:12px"><label>出貨日期</label><input id="f-sdt" type="date" value="'+td+'" style="width:180px;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>'
     +'<table class="itb"><tr><th>商品</th><th>訂購</th><th>贈品</th><th>已出</th><th>本次出貨</th><th>未出</th></tr>'
     +rows+'</table>',
     '<button class="btn" onclick="CM()">取消</button>'
     +'<button class="btn btn-p" onclick="doShipment()">確認出貨</button>');
-  window._shipNo=no; window._shipIts=its;
+  window._shipNo=no; window._shipIts=its; window._shipDeductAtCreation=o?.stock_deducted_at_creation!==false;
 }
 async function doShipment(no,its){
   no=no||window._shipNo; its=its||window._shipIts;
+  const deductAtCreation=window._shipDeductAtCreation!==false;
   const sdt=v('sdt')||today();
-  let allShipped=true, anyShipped=false;
+  let allShipped=true, anyShipped=false, stockShort=false;
   for(const i of its){
     const shipQty=parseFloat($('f-ship-'+i.id)?.value)||0;
     if(shipQty<=0) continue;
     anyShipped=true;
     const newShipped=Math.min((i.qty||0)+(i.gift_qty||0),(i.shipped_qty||0)+shipQty);
     await sb.from('sales_order_items').update({shipped_qty:newShipped}).eq('id',i.id);
+    // 舊訂單建單時已經扣過庫存，這裡不再重複扣；新訂單改成出貨當下才扣
+    if(!deductAtCreation && i.product_no){
+      const{data:p}=await sb.from('products').select('stock').eq('product_no',i.product_no).single();
+      if(p){
+        if((p.stock||0)<shipQty) stockShort=true;
+        await sb.from('products').update({stock:Math.max(0,(p.stock||0)-shipQty)}).eq('product_no',i.product_no);
+      }
+    }
     // 再查一次確認是否全部出完
     if(newShipped<(i.qty||0)+(i.gift_qty||0)) allShipped=false;
   }
@@ -433,7 +433,7 @@ async function doShipment(no,its){
   const partDone=(updatedIts||[]).some(i=>(i.shipped_qty||0)>0);
   const status=allDone?'全部出貨':partDone?'部分出貨':'待出貨';
   await sb.from('sales_orders').update({ship_status:status,actual_ship_date:allDone?sdt:null}).eq('order_no',no);
-  toast('出貨記錄已更新！');CM();orders();
+  toast(stockShort?'⚠️ 出貨記錄已更新，但部分商品庫存不足（已扣至0）':'出貨記錄已更新！');CM();orders();
 }
 async function applyPromo(code, mode, sets) {
   sets = Math.max(1, parseInt(sets) || 1);
