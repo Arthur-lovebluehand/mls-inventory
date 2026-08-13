@@ -280,7 +280,11 @@ async function saveOrder(editNo){
       is_gift:i.is_gift||false
     };
   });
-  await sb.from('sales_order_items').insert(rows);
+  const{error:itemsErr}=await sb.from('sales_order_items').insert(rows);
+  if(itemsErr){
+    toast('⚠️ 訂單已建立，但品項儲存失敗：'+itemsErr.message+'（請立即修改此訂單重新加入品項！）','e');
+    CM();orders();return;
+  }
   toast(editNo?'訂單已修改！':'訂單建立成功！請至「出貨記錄」登記實際出貨數量，庫存會在出貨時才扣除');CM();orders();
 }
 async function editOrder(no){
@@ -364,6 +368,12 @@ async function recordShipment(no){
     sb.from('sales_order_items').select('*').eq('order_no',no),
   ]);
   const td=today();
+  if(!its || !its.length){
+    OM('記錄出貨：'+no,
+      '<div class="al al-w" style="font-size:12px;color:var(--rd)">⚠️ 這張訂單目前沒有任何品項資料，無法記錄出貨。請按「修改」重新加入商品品項後再來出貨。</div>',
+      '<button class="btn" onclick="CM()">關閉</button>');
+    return;
+  }
   const rows=(its||[]).map(i=>{
     const total=(i.qty||0)+(i.gift_qty||0), shipped=i.shipped_qty||0, pending=total-shipped;
     return '<tr>'
