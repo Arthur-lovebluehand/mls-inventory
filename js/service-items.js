@@ -1,195 +1,259 @@
-// ═══════════════════════════════════════
-// categories.js — 商品類別 + 服務職位管理
-// ═══════════════════════════════════════
+// ══════════════════════════════
+// service-items.js — 服務項目 + 技師管理
+// ══════════════════════════════
 
-async function loadCats() {
-  const { data } = await sb.from('products').select('category').not('category','is',null);
-  window._cats = [...new Set((data||[]).map(x=>x.category).filter(Boolean))].sort();
-  return window._cats;
-}
-
-var _catTab = 'products';
-
-async function categories() {
-  const tab = window._catTab || 'products';
-  // 先設 ph + tabs
-  $('main').innerHTML = `
-  <div class="ph">
-    <div><div class="pt">類別管理</div></div>
-    <div class="ha">
-      ${tab==='products'
-        ? `<button class="btn btn-p btn-s" onclick="addCategoryModal()">＋ 新增類別</button>`
-        : `<button class="btn btn-p btn-s" onclick="addRoleModal()">＋ 新增職位</button>`
-      }
-    </div>
-  </div>
-  <div class="tab-bar" style="padding:0 16px 10px">
-    <div class="tab${tab==='products'?' on':''}" onclick="window._catTab='products';categories()">商品類別</div>
-    <div class="tab${tab==='roles'?' on':''}" onclick="window._catTab='roles';categories()">服務職位</div>
-  </div>
-  <div class="pc" id="cat-content"><div class="ld"><div class="sp"></div>載入中…</div></div>`;
-
-  if(tab==='roles') { await categoriesRoles(); return; }
-  await categoriesProducts();
-}
-
-async function categoriesProducts() {
-  // 抓類別和商品數量
-  const [cats, { data:cnts }] = await Promise.all([
-    loadCats(),
-    sb.from('products').select('category').eq('is_active',true)
-  ]);
-  const catCount = {};
-  (cnts||[]).forEach(x => { if(x.category) catCount[x.category] = (catCount[x.category]||0)+1; });
-
-  document.getElementById('cat-content').innerHTML = `
-  <div class="al al-w" style="font-size:12px;margin-bottom:12px">
-    管理商品類別。名稱修改後，現有商品類別不會自動更新，請至商品列表手動更新。
-  </div>
-  <div class="tc"><div class="tb"><span class="tt">類別列表</span></div>
-  <div class="tw"><table style="width:100%">
-    <tr><th>類別名稱</th><th>使用中商品</th><th>操作</th></tr>
-    ${cats.map(c=>`<tr>
-      <td style="font-weight:500;font-size:14px">${c}</td>
-      <td style="text-align:center"><span class="badge bg">${catCount[c]||0} 項</span></td>
-      <td><button class="btn btn-s" onclick="renameCategoryModal('${c.replace(/'/g,"\\'")}')">改名</button></td>
-    </tr>`).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">尚無類別</td></tr>'}
-  </table></div></div>`;
-}
-
-async function categoriesRoles() {
-  const { data } = await sb.from('service_roles').select('*').order('sort_order').order('name');
-  document.getElementById('cat-content').innerHTML = `
-  <div class="al al-w" style="font-size:12px;margin-bottom:12px">
-    管理服務職位。職位用於技師管理的職位選單，可新增/編輯/停用/刪除。
-  </div>
-  <div class="tc"><div class="tb"><span class="tt">職位列表</span></div>
-  <div class="tw"><table style="width:100%">
-    <tr><th>職位名稱</th><th>排序</th><th>狀態</th><th>操作</th></tr>
-    ${(data||[]).map(r=>`<tr>
-      <td style="font-weight:500">${r.name}</td>
-      <td style="text-align:center">${r.sort_order}</td>
-      <td><span class="badge ${r.is_active?'bg':'br2'}">${r.is_active?'啟用':'停用'}</span></td>
-      <td><div style="display:flex;gap:4px">
-        <button class="btn btn-s" onclick="editRoleModal(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.sort_order},${r.is_active})">編輯</button>
-        <button class="btn btn-s" onclick="toggleRole(${r.id},${r.is_active})">${r.is_active?'停用':'啟用'}</button>
-        <button class="btn btn-s btn-r" onclick="deleteRole(${r.id},'${r.name.replace(/'/g,"\\'")}')">刪除</button>
-      </div></td>
-    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無職位</td></tr>'}
-  </table></div></div>`;
-}
-
-// ── 商品類別 CRUD ──
-function addCategoryModal() {
-  OM('新增類別', fi('newcat','類別名稱 *'),
-    `<button class="btn" onclick="CM()">取消</button>
-     <button class="btn btn-p" onclick="saveNewCategory()">新增</button>`);
-}
-
-async function saveNewCategory() {
-  const nm = v('newcat').trim();
-  if(!nm) { toast('請輸入類別名稱','e'); return; }
-  if((window._cats||[]).includes(nm)) { toast('此類別已存在','w'); return; }
-  let existing = [];
+// ── 服務項目管理 ──
+async function svcItems() {
   try {
-    const { data:s } = await sb.from('settings').select('value').eq('key','custom_categories').single();
-    if(s?.value) existing = JSON.parse(s.value);
-  } catch(e){}
-  if(!existing.includes(nm)) {
-    existing.push(nm);
-    await sb.from('settings').upsert({key:'custom_categories', value:JSON.stringify(existing), updated_at:new Date().toISOString()});
-  }
-  window._cats = [...new Set([...(window._cats||[]), nm])].sort();
-  toast('類別已新增：'+nm); CM(); categories();
+  const { data, error } = await sb.from('service_items')
+    .select('*').order('category').order('sort_order').order('name');
+  if(error) throw error;
+
+  const cats = [...new Set((data||[]).map(i=>i.category).filter(Boolean))].sort();
+  window._svcItemCats = cats;
+
+  $('svc-content').innerHTML = `
+  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+    <button class="btn btn-p btn-s" onclick="svcNewItemModal()">＋ 新增服務項目</button>
+  </div>
+  <div class="tc"><div class="tb"><span class="tt">服務項目列表</span></div>
+  <div class="tw"><table style="width:100%">
+    <tr><th>名稱</th><th>分類</th><th>預設單價</th><th>單位</th><th>排序</th><th>狀態</th><th>操作</th></tr>
+    ${(data||[]).map(s=>`<tr style="${s.is_active===false?'opacity:.5':''}">
+      <td style="font-weight:500">${s.name}</td>
+      <td><span class="badge bg" style="font-size:11px">${s.category||'其他'}</span></td>
+      <td class="num">${fM(s.default_price)}</td>
+      <td>${s.unit||'次'}</td>
+      <td style="text-align:center">${s.sort_order}</td>
+      <td><span class="badge ${s.is_active!==false?'bg':'br2'}">${s.is_active!==false?'啟用':'停用'}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-s" onclick="svcEditItemModal(${s.id})">編輯</button>
+        <button class="btn btn-s" onclick="toggleServiceItem(${s.id},${s.is_active!==false})">${s.is_active!==false?'停用':'啟用'}</button>
+        <button class="btn btn-s btn-r" onclick="deleteServiceItem(${s.id},'${(s.name||'').replace(/'/g,"\\'")}')">刪除</button>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3)">尚無服務項目，請先新增</td></tr>'}
+  </table></div></div>`;
+  }catch(e){$('svc-content').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
 }
 
-async function renameCategoryModal(oldName) {
-  OM(`改名類別：${oldName}`, fi('rencat','新類別名稱 *','text',oldName),
-    `<button class="btn" onclick="CM()">取消</button>
-     <button class="btn btn-p" onclick="renameCategory('${oldName.replace(/'/g,"\\'")}')">確認改名</button>`);
-}
-
-async function renameCategory(oldName) {
-  const newName = v('rencat').trim();
-  if(!newName || newName===oldName) { CM(); return; }
-  if(!confirm(`確定把「${oldName}」改名為「${newName}」？\n這會批次更新所有使用此類別的商品。`)) return;
-  const { error } = await sb.from('products').update({category:newName}).eq('category',oldName);
-  if(error) { toast('更新失敗：'+error.message,'e'); return; }
-  toast(`已更新「${oldName}」→「${newName}」`);
-  window._cats = (window._cats||[]).map(c => c===oldName?newName:c).sort();
-  CM(); categories();
-}
-
-// ── 服務職位 CRUD ──
-function addRoleModal() {
-  OM('新增服務職位',
-    `${fi('role-name','職位名稱 *')}${fi('role-sort','排序','number','99')}`,
-    `<button class="btn" onclick="CM()">取消</button>
-     <button class="btn btn-p" onclick="saveRole()">新增</button>`);
-}
-
-function editRoleModal(id, name, sort, active) {
-  OM(`編輯職位：${name}`,
-    `${fi('role-name','職位名稱 *','text',name)}${fi('role-sort','排序','number',sort)}
-     <div style="margin-top:10px">
-       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-         <input type="checkbox" id="role-active" ${active?'checked':''} style="width:14px;height:14px">
-         <span>啟用此職位</span>
-       </label>
-     </div>`,
-    `<button class="btn" onclick="CM()">取消</button>
-     <button class="btn btn-p" onclick="saveRole(${id})">儲存</button>`);
-}
-
-async function saveRole(id) {
-  const name = v('role-name')?.trim();
-  if(!name) { toast('請輸入職位名稱','e'); return; }
-  const payload = {
-    name, sort_order:parseInt(v('role-sort'))||99,
-    is_active: id ? (document.getElementById('role-active')?.checked??true) : true
-  };
-  if(id) await sb.from('service_roles').update(payload).eq('id',id);
-  else {
-    const { error } = await sb.from('service_roles').insert(payload);
-    if(error) { toast('新增失敗：'+error.message,'e'); return; }
-  }
-  window._svcRoles = null;
-  toast('✅ 已儲存'); CM(); categories();
-}
-
-async function toggleRole(id, current) {
-  await sb.from('service_roles').update({is_active:!current}).eq('id',id);
-  window._svcRoles = null;
-  categories();
-}
-
-async function deleteRole(id, name) {
-  if(!confirm(`確定刪除職位「${name}」？`)) return;
-  await sb.from('service_roles').delete().eq('id',id);
-  window._svcRoles = null;
-  toast('已刪除'); categories();
-}
-
-window.categories = categories;
-window.categoriesRoles = categoriesRoles;
-window.addCategoryModal = addCategoryModal;
-window.saveNewCategory = saveNewCategory;
-window.renameCategoryModal = renameCategoryModal;
-window.renameCategory = renameCategory;
-window.addRoleModal = addRoleModal;
-window.editRoleModal = editRoleModal;
-window.saveRole = saveRole;
-window.toggleRole = toggleRole;
-window.deleteRole = deleteRole;
-window.loadCats = loadCats;
-window.makeCatSelect = (currentVal) => {
-  const cats = window._cats || [];
+window.svcItems = svcItems;
+function svcItemCatSelect(currentVal) {
+  const cats = window._svcItemCats||[];
   const opts = [...new Set([...cats, currentVal||''].filter(Boolean))].sort();
-  return `<div class="fl"><label>類別</label><select id="f-cat"
-    style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none"
-    onchange="if(this.value==='__new__'){const nc=prompt('請輸入新類別名稱：');if(nc){window._cats=[...new Set([...(window._cats||[]),nc])].sort();}return nc||null;}">
-    <option value="">— 選擇類別 —</option>
-    ${opts.map(c=>`<option value="${c}" ${c===currentVal?'selected':''}>${c}</option>`).join('')}
-    <option value="__new__">＋ 新增類別…</option>
-  </select></div>`;
-};
+  return `<div class="fl"><label>分類</label>
+    <select id="f-si-cat" onchange="svcCatChange(this)"
+      style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none">
+      ${opts.map(c=>`<option value="${c}" ${c===currentVal?'selected':''}>${c}</option>`).join('')}
+      ${!currentVal?'<option value="其他" selected>其他</option>':''}
+      <option value="__new__">＋ 新增分類…</option>
+    </select></div>`;
+}
+
+function svcItemUnitSelect(currentVal) {
+  const base = ['次','小時','堂','分鐘'];
+  const opts = [...new Set([...base, currentVal||'次'])];
+  return `<div class="fl"><label>單位</label>
+    <select id="f-si-unit" onchange="svcUnitChange(this)"
+      style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none">
+      ${opts.map(u=>`<option value="${u}" ${u===(currentVal||'次')?'selected':''}>${u}</option>`).join('')}
+      <option value="__new__">＋ 自訂單位…</option>
+    </select></div>`;
+}
+
+function svcNewItemModal() {
+  OM('新增服務項目', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      ${fi('si-name','項目名稱 *')}
+      ${svcItemCatSelect('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      ${fi('si-price','預設單價','number','0')}
+      ${svcItemUnitSelect('次')}
+      ${fi('si-sort','排序','number','99')}
+    </div>
+    ${fi('si-desc','說明（選填）')}`,
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="saveServiceItem()">新增</button>`);
+}
+
+window.svcNewItemModal = svcNewItemModal;
+async function svcEditItemModal(id) {
+  const { data:s } = await sb.from('service_items').select('*').eq('id',id).single();
+  if(!s){ toast('找不到服務項目','e'); return; }
+  OM(`編輯服務項目：${s.name}`, `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      ${fi('si-name','項目名稱 *','text',s.name)}
+      ${svcItemCatSelect(s.category)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      ${fi('si-price','預設單價','number',s.default_price)}
+      ${svcItemUnitSelect(s.unit)}
+      ${fi('si-sort','排序','number',s.sort_order)}
+    </div>
+    ${fi('si-desc','說明（選填）','text',s.description)}`,
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="saveServiceItem(${id})">儲存</button>`);
+}
+
+window.svcEditItemModal = svcEditItemModal;
+async function saveServiceItem(id) {
+  const name = v('si-name')?.trim();
+  if(!name){ toast('請輸入項目名稱','e'); return; }
+  const payload = {
+    name,
+    category: document.getElementById('f-si-cat')?.value || '其他',
+    unit: document.getElementById('f-si-unit')?.value || '次',
+    default_price: parseFloat(v('si-price'))||0,
+    sort_order: parseInt(v('si-sort'))||99,
+    description: v('si-desc')||null
+  };
+  if(id) {
+    const { error } = await sb.from('service_items').update(payload).eq('id',id);
+    if(error){ toast('更新失敗：'+error.message,'e'); return; }
+  } else {
+    const { error } = await sb.from('service_items').insert(payload);
+    if(error){ toast('新增失敗：'+error.message,'e'); return; }
+  }
+  await logAction(id?'update':'create','service_items',String(id||name),`${id?'更新':'新增'}服務項目 ${name}`,null,null);
+  toast('✅ 已儲存');
+  CM();
+  svcItems();
+}
+
+window.saveServiceItem = saveServiceItem;
+async function toggleServiceItem(id, current) {
+  await sb.from('service_items').update({is_active:!current}).eq('id',id);
+  toast(current?'已停用':'已啟用');
+  svcItems();
+}
+
+window.toggleServiceItem = toggleServiceItem;
+async function deleteServiceItem(id, name) {
+  if(!confirm(`確定刪除服務項目「${name}」？`)) return;
+  await sb.from('service_items').delete().eq('id',id);
+  toast('已刪除');
+  svcItems();
+}
+
+window.deleteServiceItem = deleteServiceItem;
+
+// ── 技師管理 ──
+async function svcTechnicians() {
+  try {
+  const [{ data:techs, error:e1 },{ data:roles, error:e2 }] = await Promise.all([
+    sb.from('technicians').select('*').order('is_active',{ascending:false}).order('name'),
+    sb.from('service_roles').select('*').eq('is_active',true).order('sort_order').order('name'),
+  ]);
+  if(e1) throw e1;
+  if(e2) throw e2;
+  window._svcRoles = roles||[];
+
+  $('svc-content').innerHTML = `
+  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+    <button class="btn btn-p btn-s" onclick="svcNewTechModal()">＋ 新增技師</button>
+  </div>
+  <div class="tc"><div class="tb"><span class="tt">技師列表</span></div>
+  <div class="tw"><table style="width:100%">
+    <tr><th>姓名</th><th>職位</th><th>電話</th><th>抽成比例</th><th>狀態</th><th>操作</th></tr>
+    ${(techs||[]).map(t=>`<tr style="${t.is_active===false?'opacity:.5':''}">
+      <td style="font-weight:500">${t.name}</td>
+      <td><span class="badge bg" style="font-size:11px">${t.role||'技師'}</span></td>
+      <td>${t.phone||'—'}</td>
+      <td style="text-align:center">${Math.round((t.commission_rate||0)*100)}%</td>
+      <td><span class="badge ${t.is_active!==false?'bg':'br2'}">${t.is_active!==false?'啟用':'停用'}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-s" onclick="svcEditTechModal(${t.id})">編輯</button>
+        <button class="btn btn-s" onclick="toggleTechnician(${t.id},${t.is_active!==false})">${t.is_active!==false?'停用':'啟用'}</button>
+        <button class="btn btn-s btn-r" onclick="deleteTechnician(${t.id},'${(t.name||'').replace(/'/g,"\\'")}')">刪除</button>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無技師，請先新增</td></tr>'}
+  </table></div></div>`;
+  }catch(e){$('svc-content').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
+}
+
+window.svcTechnicians = svcTechnicians;
+function svcTechRoleSelect(currentVal) {
+  const roles = window._svcRoles||[];
+  return `<div class="fl"><label>職位</label>
+    <select id="f-tech-role" onchange="svcRoleChange(this)"
+      style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none">
+      ${roles.map(r=>`<option value="${r.name}" ${r.name===currentVal?'selected':''}>${r.name}</option>`).join('')}
+      ${currentVal && !roles.some(r=>r.name===currentVal)?`<option value="${currentVal}" selected>${currentVal}</option>`:''}
+      <option value="__new__">＋ 新增職位…</option>
+    </select></div>`;
+}
+
+function svcNewTechModal() {
+  OM('新增技師', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      ${fi('tech-name','姓名 *')}
+      ${svcTechRoleSelect('技師')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      ${fi('tech-phone','電話（選填）')}
+      ${fi('tech-rate','抽成比例（%）','number','50')}
+    </div>`,
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="saveTechnician()">新增</button>`);
+}
+
+window.svcNewTechModal = svcNewTechModal;
+async function svcEditTechModal(id) {
+  const { data:t } = await sb.from('technicians').select('*').eq('id',id).single();
+  if(!t){ toast('找不到技師','e'); return; }
+  if(!window._svcRoles) {
+    const { data:roles } = await sb.from('service_roles').select('*').eq('is_active',true).order('sort_order').order('name');
+    window._svcRoles = roles||[];
+  }
+  OM(`編輯技師：${t.name}`, `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      ${fi('tech-name','姓名 *','text',t.name)}
+      ${svcTechRoleSelect(t.role)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      ${fi('tech-phone','電話（選填）','text',t.phone)}
+      ${fi('tech-rate','抽成比例（%）','number',Math.round((t.commission_rate||0)*100))}
+    </div>`,
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="saveTechnician(${id})">儲存</button>`);
+}
+
+window.svcEditTechModal = svcEditTechModal;
+async function saveTechnician(id) {
+  const name = v('tech-name')?.trim();
+  if(!name){ toast('請輸入姓名','e'); return; }
+  const payload = {
+    name,
+    role: document.getElementById('f-tech-role')?.value || '技師',
+    phone: v('tech-phone')||null,
+    commission_rate: (parseFloat(v('tech-rate'))||0)/100
+  };
+  if(id) {
+    const { error } = await sb.from('technicians').update(payload).eq('id',id);
+    if(error){ toast('更新失敗：'+error.message,'e'); return; }
+  } else {
+    const { error } = await sb.from('technicians').insert(payload);
+    if(error){ toast('新增失敗：'+error.message,'e'); return; }
+  }
+  await logAction(id?'update':'create','technicians',String(id||name),`${id?'更新':'新增'}技師 ${name}`,null,null);
+  toast('✅ 已儲存');
+  CM();
+  svcTechnicians();
+}
+
+window.saveTechnician = saveTechnician;
+async function toggleTechnician(id, current) {
+  await sb.from('technicians').update({is_active:!current}).eq('id',id);
+  toast(current?'已停用':'已啟用');
+  svcTechnicians();
+}
+
+window.toggleTechnician = toggleTechnician;
+async function deleteTechnician(id, name) {
+  if(!confirm(`確定刪除技師「${name}」？`)) return;
+  await sb.from('technicians').delete().eq('id',id);
+  toast('已刪除');
+  svcTechnicians();
+}
+
+window.deleteTechnician = deleteTechnician;

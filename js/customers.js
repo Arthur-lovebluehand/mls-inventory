@@ -16,7 +16,7 @@ async function customers(){
     <div class="tc">
       <div class="tb"><span class="tt">客戶列表</span>
         <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input placeholder="姓名/電話/編號…" value="${cS}" oninput="cS=this.value;cP=1;customers()"></div>
+        <input placeholder="姓名/電話/編號…（輸入後按 Enter 搜尋）" value="${cS}" onkeydown="if(event.key==='Enter'){cS=this.value;cP=1;customers();}"></div>
       </div>
       <div class="tw"><table style="width:100%">
         <tr><th>編號</th><th>姓名</th><th>位階</th><th>手機</th><th>Email</th><th>送貨地址</th><th>儲值金</th><th>操作</th></tr>

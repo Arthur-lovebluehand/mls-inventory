@@ -22,7 +22,7 @@ async function orders(){
       <div class="tc">
         <div class="tb"><span class="tt">訂單列表</span>
           <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-          <input placeholder="訂單號/客戶名稱…" value="${oS}" oninput="oS=this.value;oP=1;orders()"></div>
+          <input placeholder="訂單號/客戶名稱…（輸入後按 Enter 搜尋）" value="${oS}" onkeydown="if(event.key==='Enter'){oS=this.value;oP=1;orders();}"></div>
         </div>
         <div class="tw"><table>
           <tr><th>訂單號</th><th>日期</th><th>客戶</th><th>位階</th><th>小計</th><th>總金額</th><th>收款</th><th>操作</th></tr>
@@ -233,7 +233,7 @@ function renderItems(){
     _html+='<input type="number" value="'+item.qty+'" min="0" onchange="setIQ('+item.id+',this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none" title="銷售數量">';
     _html+='<input type="number" value="'+(item.price||'')+'" placeholder="單價" onchange="setIV('+item.id+',this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">';
     _html+='<input type="number" value="'+(item.giftQty||0)+'" min="0" onchange="setIG('+item.id+',this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none;background:var(--aml);color:var(--am)" title="贈品數量（免費）">';
-    _html+='<span style="font-size:13px;font-weight:500">'+fM(item.amt)+'</span>';
+    _html+='<span id="iamt-'+item.id+'" style="font-size:13px;font-weight:500">'+fM(item.amt)+'</span>';
     _html+='<button onclick="rmItem('+item.id+')" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>';
     _html+='</div>';
   });

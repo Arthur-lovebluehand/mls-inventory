@@ -271,9 +271,11 @@ window.pickItem=(id,pno,name)=>{
     it.price=p[col]||p.price_retail||0;
   }
   it.amt=it.qty*(it.price||0);
-  // 只更新搜尋框文字，不重繪（避免焦點跳掉）
+  // 只更新搜尋框文字和金額，不整個重繪（避免焦點跳掉）
   const srch=$('isrch-'+id);
   if(srch) srch.value=name;
+  const amtEl=$('iamt-'+id);
+  if(amtEl) amtEl.textContent=fM(it.amt);
   closeItemDrop(id);
   updAmt();
 };
