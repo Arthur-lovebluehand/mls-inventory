@@ -239,25 +239,6 @@ function renderItems(){
     _html+='</div>';
   });
   area.innerHTML=_html;
-  return; // renderItems 結束，以下舊程式不執行
-
-  // ↓↓ 舊備份（不執行）↓↓
-  area.innerHTML=_items.map(item=>`
-  <div class="ir ir-order" style="${item.bundle_group?'border-left:3px solid var(--bl)':''}">
-    ${item.is_gift?`<div style="grid-column:1/-1;font-size:10px;color:var(--am);font-weight:600;margin-bottom:2px">🎁 贈品（不計費）</div>`:''}
-    <div style="position:relative">
-      <input type="text" id="isrch-${item.id}" value="${item._pname||(item.pno?(_allProds.find(p=>p.product_no===item.pno)?.name||item.pno):'')}" placeholder="輸入關鍵字搜尋商品…"
-        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
-        oninput="filterItemDrop(${item.id},this.value)" onfocus="filterItemDrop(${item.id},this.value)"
-        oncompositionstart="window._ime=true" oncompositionend="window._ime=false" onblur="if(!window._ime)setTimeout(()=>closeItemDrop(${item.id}),400)" autocomplete="off">
-      <div id="idrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
-    </div>
-    <input type="number" value="${item.qty}" min="0" onchange="setIQ(${item.id},this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none" title="銷售數量">
-    <input type="number" value="${item.price||''}" placeholder="單價" onchange="setIV(${item.id},this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
-    <input type="number" value="${item.giftQty||0}" min="0" onchange="setIG(${item.id},this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none;background:var(--aml);color:var(--am)" title="贈品數量（免費）">
-    <span style="font-size:13px;font-weight:500">${fM(item.amt)}</span>
-    <button onclick="rmItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
-  </div>`).join('');
   updAmt();
 }
 function updAmt(){
