@@ -108,19 +108,19 @@ async function accounts(){
   const byMonth={};
   const addM=(k,field,val)=>{byMonth[k]=byMonth[k]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};byMonth[k][field]+=val;};
 
-  (orders_m||[]).forEach(o=>{
-    const orderK = normYM(o.year_month);  // 訂單月份（訂單列表永遠在這裡）
+    (orders_m||[]).forEach(o=>{
+    const orderK = normYM(o.year_month);
     const payK = o.payment_done
       ? normYM((o.payment_date||o.order_date||'').slice(0,7))
       : null;
-    // 訂單列表：永遠放在訂單本身的月份
-    byMonth[orderK]=byMonth[orderK]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};
-    byMonth[orderK].orders.push(o);
-    // 收入：已收款才計，且計入「收款月份」
-    if(payK){
-      byMonth[payK]=byMonth[payK]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};
-      byMonth[payK].in+=Number(o.total||0);
-    }
+    // 已收款：訂單和收入放在收款月份；未收款：放在訂單月份
+    const showK = payK || orderK;
+    byMonth[showK]=byMonth[showK]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};
+    byMonth[showK].orders.push(o);
+    if(payK) byMonth[showK].in+=Number(o.total||0);
+    // 確保訂單月份容器存在（供月度表格顯示空行用）
+    if(payK && payK!==orderK)
+      byMonth[orderK]=byMonth[orderK]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};
   });
   (po_m||[]).forEach(p=>{
     const k=normYM(p.year_month);
@@ -328,9 +328,9 @@ async function showTotalFinance() {
   const mMap = {};
   const addM = (ym, key, val) => { if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,trCost:0}; mMap[ym][key]+=val||0; };
   (sOrders||[]).forEach(o => {
-    if(!o.payment_done) return; // 未收款不計
-    const ym=(o.payment_date||o.order_date||'').slice(0,7);
-    if(ym) addM(ym,'salesRev',o.total_amount);
+    if(!o.payment_done) return;
+    const ym=(o.order_date||'').slice(0,7);
+    if(ym) addM(ym,'salesRev',o.total||o.total_amount);
   });
   (pOrders||[]).forEach(o => { const ym=(o.po_date||'').slice(0,7); if(ym) addM(ym,'purchCost',o.total); });
   (svOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'svcRev',o.total); addM(ym,'svcCost',o.consumable_cost); }});
