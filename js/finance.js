@@ -109,20 +109,17 @@ async function accounts(){
   const addM=(k,field,val)=>{byMonth[k]=byMonth[k]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};byMonth[k][field]+=val;};
 
   (orders_m||[]).forEach(o=>{
-    const orderK = normYM(o.year_month);  // 訂單月份
+    const orderK = normYM(o.year_month);  // 訂單月份（訂單列表永遠在這裡）
     const payK = o.payment_done
       ? normYM((o.payment_date||o.order_date||'').slice(0,7))
       : null;
-    // 訂單一定進訂單月份的容器（未收款訂單在這裡顯示）
+    // 訂單列表：永遠放在訂單本身的月份
     byMonth[orderK]=byMonth[orderK]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};
-    // 已收款：訂單進「收款月份」顯示；未收款：進「訂單月份」
-    if(payK && payK!==orderK){
+    byMonth[orderK].orders.push(o);
+    // 收入：已收款才計，且計入「收款月份」
+    if(payK){
       byMonth[payK]=byMonth[payK]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};
       byMonth[payK].in+=Number(o.total||0);
-      byMonth[payK].orders.push(o);  // 訂單在收款月份顯示
-    } else {
-      byMonth[orderK].in+= o.payment_done ? Number(o.total||0) : 0;
-      byMonth[orderK].orders.push(o);  // 同月或未收款：在訂單月份顯示
     }
   });
   (po_m||[]).forEach(p=>{
