@@ -135,31 +135,57 @@ function prodForm(p){
     ${fi('pcost','進貨價','number',p.cost)}
     <div style="background:var(--acl);border:1px solid var(--bd);border-radius:var(--rl);padding:16px;margin-top:8px">
       <div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:14px">🛁 服務用途設定（選填）</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="margin-bottom:12px">
+        <label>服務單位</label>
+        <select id="f-psunit" onchange="svcUnitHint(this)"
+          style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);margin-top:6px">
+          <option value="">不用於服務</option>
+          <option value="組" ${(p.service_unit||'')==='組'?'selected':''}>組（計件：如外泌體 4組/盒）</option>
+          <option value="ml" ${(p.service_unit||'')==='ml'?'selected':''}>ml（計量液體：如精油、保養品）</option>
+          <option value="片" ${(p.service_unit||'')==='片'?'selected':''}>片（計件：如面膜）</option>
+          <option value="次" ${(p.service_unit||'')==='次'?'selected':''}>次（整支整瓶為1次）</option>
+          <option value="顆" ${(p.service_unit||'')==='顆'?'selected':''}>顆</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div class="fl">
-          <label>服務單位</label>
-          <select id="f-psunit" style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
-            <option value="">不用於服務</option>
-            <option value="組" ${(p.service_unit||'')==='組'?'selected':''}>組（例：外泌體4組/盒）</option>
-            <option value="ml" ${(p.service_unit||'')==='ml'?'selected':''}>ml（例：精油150ml/瓶）</option>
-            <option value="片" ${(p.service_unit||'')==='片'?'selected':''}>片（例：面膜8片/盒）</option>
-            <option value="次" ${(p.service_unit||'')==='次'?'selected':''}>次（例：安瓶1次/支）</option>
-            <option value="顆" ${(p.service_unit||'')==='顆'?'selected':''}>顆</option>
-          </select>
+          <label id="lbl-super">${(p.service_unit==='ml')?'每瓶/盒總容量（ml）':'1盒/瓶包含幾個服務單位'}</label>
+          <input type="number" id="f-psuperunit" value="${p.service_units_per_stock||1}" min="0.1" step="1"
+            oninput="updateSvcHintCalc()"
+            style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
         </div>
         <div class="fl">
-          <label>1個進貨單位 = 幾服務單位</label>
-          <input type="number" id="f-psuperunit" value="${p.service_units_per_stock||1}" min="0.1" step="0.5"
-            style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
+          <label id="lbl-defqty">${(p.service_unit==='ml')?'每次服務用量（ml）':'每次服務用幾個'}</label>
+          <input type="number" id="f-psdefqty" value="${p.default_service_qty||1}" min="0.5" step="1"
+            oninput="updateSvcHintCalc()"
+            style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
         </div>
       </div>
-      <div class="fl">
-        <label>每次服務預設用量（服務單位）</label>
-        <input type="number" id="f-psdefqty" value="${p.default_service_qty||1}" min="0.5" step="0.5"
-          style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
+      <div id="svc-hint-calc" style="font-size:12px;color:var(--ac);padding:8px;background:rgba(92,122,92,.08);border-radius:var(--r)">
+        ${(()=>{const u=p.service_unit,t=p.service_units_per_stock||1,q=p.default_service_qty||1,n=Math.floor(t/q);
+          return !u?'選擇服務單位後會顯示換算說明':
+          u==='ml'?'💡 '+t+'ml ÷ 每次'+q+'ml ≈ 1瓶可服務 '+n+' 次':
+          '💡 1盒含 '+t+' '+u+'，每次用 '+q+' '+u+' → 可服務 '+n+' 次';})()}
       </div>
-      <div style="font-size:12px;color:var(--ac);margin-top:10px;padding:8px;background:rgba(92,122,92,.08);border-radius:var(--r)">
-        💡 例：外泌體新生源液，服務單位選「組」，1盒=4組，每次服務用1組
+    </div>
+      <div style="margin-bottom:10px">
+        <label>服務單位</label>
+        <select id="f-psunit" onchange="svcUnitHint(this)"
+          style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);margin-top:6px">
+          <option value="">不用於服務</option>
+          <option value="組" ${(p.service_unit||'')==='組'?'selected':''}>組（計件：如外泌體4組/盒）</option>
+          <option value="ml" ${(p.service_unit||'')==='ml'?'selected':''}>ml（計量：如精油/保養品）</option>
+          <option value="片" ${(p.service_unit||'')==='片'?'selected':''}>片（計件：如面膜）</option>
+          <option value="次" ${(p.service_unit||'')==='次'?'selected':''}>次（整支/整瓶用一次）</option>
+          <option value="顆" ${(p.service_unit||'')==='顆'?'selected':''}>顆</option>
+        </select>
+      </div>
+        <div style="font-size:12px;color:var(--ac);padding:8px;background:rgba(92,122,92,.08);border-radius:var(--r)">
+          \${isMl
+            ? '💡 例：150ml精油，每次服務用10ml → 1瓶可服務約'+(Math.floor((p.service_units_per_stock||1)/(p.default_service_qty||1)))+'次'
+            : '💡 例：外泌體1盒=4組，每次服務用1組 → 1盒可服務4次'}
+        </div>\`;
+      })()}
       </div>
     </div>
   </div>
@@ -610,6 +636,28 @@ async function editProdByNo(no){
   if(p) eProd(p);
 }
 window.editProdByNo = editProdByNo;
+window.svcUnitHint = function(sel) {
+  const u = sel.value;
+  const lblS = document.getElementById('lbl-super');
+  const lblQ = document.getElementById('lbl-defqty');
+  const inp = document.getElementById('f-psuperunit');
+  if(lblS) lblS.textContent = u==='ml'?'每瓶/盒總容量（ml）':'1盒/瓶包含幾個服務單位';
+  if(lblQ) lblQ.textContent = u==='ml'?'每次服務用量（ml）':'每次服務用幾個';
+  if(inp) { inp.step = u==='ml'?'10':'1'; }
+  updateSvcHintCalc();
+};
+window.updateSvcHintCalc = function() {
+  const u = document.getElementById('f-psunit')?.value||'';
+  const t = parseFloat(document.getElementById('f-psuperunit')?.value)||0;
+  const q = parseFloat(document.getElementById('f-psdefqty')?.value)||1;
+  const hint = document.getElementById('svc-hint-calc');
+  if(!hint) return;
+  if(!u) { hint.textContent='選擇服務單位後會顯示換算說明'; return; }
+  const n = Math.floor(t/q);
+  hint.textContent = u==='ml'
+    ? '💡 '+t+'ml ÷ 每次'+q+'ml ≈ 1瓶可服務 '+n+' 次'
+    : '💡 1盒含 '+t+' '+u+'，每次用 '+q+' '+u+' → 可服務 '+n+' 次';
+};
 window.toggleProd = toggleProd;
 window.previewProdImg=previewProdImg;
 async function showProdSrcSettings() {
