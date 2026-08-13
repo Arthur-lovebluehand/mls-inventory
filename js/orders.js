@@ -350,8 +350,31 @@ async function editOrder(no){
   renderItems();
 }
 async function togglePay(no,done){
-  await sb.from('sales_orders').update({payment_done:!done,payment_date:!done?today():null}).eq('order_no',no);
-  toast(!done?'已標記收款完成':'已取消收款');orders();
+  if(done){
+    // 取消收款直接執行
+    await sb.from('sales_orders').update({payment_done:false,payment_date:null}).eq('order_no',no);
+    orders(); return;
+  }
+  // 標記收款：先問收款日期（預設訂單日期）
+  const { data:o } = await sb.from('sales_orders').select('order_date').eq('order_no',no).single();
+  const defaultDate = o?.order_date || today();
+  OM('確認收款日期',`
+    <div style="margin-bottom:8px;color:var(--tx3);font-size:13px">訂單：${no}</div>
+    <div class="fl">
+      <label>實際收款日期</label>
+      <input type="date" id="pay-date" value="${defaultDate}"
+        style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:14px;outline:none">
+    </div>
+    <div style="font-size:12px;color:var(--tx3);margin-top:8px">補錄舊訂單請修改為實際收款日期</div>`,
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="confirmPay('${no}')">確認收款</button>`);
+}
+
+async function confirmPay(no){
+  const payDate = document.getElementById('pay-date')?.value || today();
+  await sb.from('sales_orders').update({payment_done:true,payment_date:payDate}).eq('order_no',no);
+  toast('已標記收款');
+  CM(); orders();
 }
 async function dOrder(no){
   if(!confirm(`確定刪除訂單 ${no}？\n\n此操作會：\n・刪除整張訂單及明細\n・不會回復庫存（請手動調整）\n\n操作記錄將被保留。`))return;
@@ -577,3 +600,5 @@ async function confirmReturn(no) {
 
 window.startReturn = startReturn;
 window.confirmReturn = confirmReturn;
+
+window.confirmPay = confirmPay;
