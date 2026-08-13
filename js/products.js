@@ -161,12 +161,7 @@ function prodForm(p){
             style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
         </div>
       </div>
-      <div id="svc-hint-calc" style="font-size:12px;color:var(--ac);padding:8px;background:rgba(92,122,92,.08);border-radius:var(--r)">
-        ${(()=>{const u=p.service_unit,t=p.service_units_per_stock||1,q=p.default_service_qty||1,n=Math.floor(t/q);
-          return !u?'選擇服務單位後會顯示換算說明':
-          u==='ml'?'💡 '+t+'ml ÷ 每次'+q+'ml ≈ 1瓶可服務 '+n+' 次':
-          '💡 1盒含 '+t+' '+u+'，每次用 '+q+' '+u+' → 可服務 '+n+' 次';})()}
-      </div>
+      <div id="svc-hint-calc" style="font-size:12px;color:var(--ac);padding:8px;background:rgba(92,122,92,.08);border-radius:var(--r)">${p.service_unit ? (p.service_unit==='ml' ? '💡 填入容量和每次用量，自動計算可服務次數' : '💡 填入個數和每次用量，自動計算可服務次數') : '選擇服務單位後顯示換算說明'}</div>
     </div>
       <div style="margin-bottom:10px">
         <label>服務單位</label>
