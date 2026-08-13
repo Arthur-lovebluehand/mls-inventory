@@ -91,7 +91,7 @@ async function dBonus(id){if(!confirm('確定刪除此記錄？'))return;await s
 async function accounts(){
   const[{data:yr},{data:orders_m},{data:po_m},{data:bn_m}]=await Promise.all([
     sb.from('yearly_accounts').select('*').order('year',{ascending:false}),
-    sb.from('sales_orders').select('year_month,total,payment_done,order_no,order_date,customer_name'),
+    sb.from('sales_orders').select('year_month,total,payment_done,payment_date,order_no,order_date,customer_name'),
     sb.from('purchase_orders').select('year_month,total,po_no,po_date,vendor_name,done'),
     sb.from('bonus_records').select('year_month,amount,payment_done,direction,record_no,record_date,recipient,type'),
   ]);
@@ -109,10 +109,19 @@ async function accounts(){
   const addM=(k,field,val)=>{byMonth[k]=byMonth[k]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};byMonth[k][field]+=val;};
 
   (orders_m||[]).forEach(o=>{
-    const k=normYM(o.year_month);
-    byMonth[k]=byMonth[k]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};
-    if(o.payment_done) byMonth[k].in+=Number(o.total||0);
-    byMonth[k].orders.push(o);
+    const orderK = normYM(o.year_month);  // 訂單月份（列表用）
+    // 收入以 payment_date 為準；若無則用 order_date
+    const payK = o.payment_done
+      ? normYM((o.payment_date||o.order_date||'').slice(0,7))
+      : null;
+    // 確保訂單月份的容器存在（供訂單列表使用）
+    byMonth[orderK]=byMonth[orderK]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};
+    byMonth[orderK].orders.push(o);
+    // 收入計入收款月份
+    if(payK){
+      byMonth[payK]=byMonth[payK]||{in:0,po:0,bn_out:0,bn_in:0,orders:[],pos:[],bns:[]};
+      byMonth[payK].in+=Number(o.total||0);
+    }
   });
   (po_m||[]).forEach(p=>{
     const k=normYM(p.year_month);
@@ -319,7 +328,11 @@ async function showTotalFinance() {
   // 月度彙整
   const mMap = {};
   const addM = (ym, key, val) => { if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,trCost:0}; mMap[ym][key]+=val||0; };
-  (sOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym) addM(ym,'salesRev',o.total_amount); });
+  (sOrders||[]).forEach(o => {
+    if(!o.payment_done) return; // 未收款不計
+    const ym=(o.payment_date||o.order_date||'').slice(0,7);
+    if(ym) addM(ym,'salesRev',o.total_amount);
+  });
   (pOrders||[]).forEach(o => { const ym=(o.po_date||'').slice(0,7); if(ym) addM(ym,'purchCost',o.total); });
   (svOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'svcRev',o.total); addM(ym,'svcCost',o.consumable_cost); }});
   (svTransfers||[]).forEach(t => { const ym=(t.transfer_date||'').slice(0,7); if(ym) addM(ym,'trCost',t.total_cost); });
