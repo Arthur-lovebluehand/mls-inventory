@@ -154,13 +154,13 @@ async function saveRole(id) {
   window._svcRoles = null; // 清快取，下次重新載
   toast('✅ 已儲存');
   CM();
-  categoriesRoles();
+  categories();
 }
 
 async function toggleRole(id, current) {
   await sb.from('service_roles').update({is_active:!current}).eq('id',id);
   window._svcRoles = null;
-  categoriesRoles();
+  categories();
 }
 
 async function deleteRole(id, name) {
@@ -168,7 +168,7 @@ async function deleteRole(id, name) {
   await sb.from('service_roles').delete().eq('id',id);
   window._svcRoles = null;
   toast('已刪除');
-  categoriesRoles();
+  categories();
 }
 
 window.categoriesRoles = categoriesRoles;
@@ -231,17 +231,20 @@ async function savePayMethod(id) {
   }
   toast('✅ 已儲存');
   CM();
-  categoriesPayment();
+  await loadPayMethods();
+  categories();
 }
 async function togglePayMethod(id, current) {
   await sb.from('payment_methods').update({is_active:!current}).eq('id',id);
-  categoriesPayment();
+  await loadPayMethods();
+  categories();
 }
 async function deletePayMethod(id, name) {
   if(!confirm(`確定刪除付款方式「${name}」？`)) return;
   await sb.from('payment_methods').delete().eq('id',id);
   toast('已刪除');
-  categoriesPayment();
+  await loadPayMethods();
+  categories();
 }
 window.categoriesPayment = categoriesPayment;
 window.addPayMethodModal = addPayMethodModal;
