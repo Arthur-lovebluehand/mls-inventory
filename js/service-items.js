@@ -18,7 +18,7 @@ async function svcItems() {
   </div>
   <div class="tc"><div class="tb"><span class="tt">服務項目列表</span></div>
   <div class="tw"><table style="width:100%">
-    <tr><th>名稱</th><th>分類</th><th>預設單價</th><th>單位</th><th>排序</th><th>狀態</th><th>操作</th></tr>
+    <tr><th>名稱</th><th>分類</th><th>預設單價</th><th>單位</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
     ${(data||[]).map(s=>`<tr style="${s.is_active===false?'opacity:.5':''}">
       <td style="font-weight:500">${s.name}</td>
       <td><span class="badge bg" style="font-size:11px">${s.category||'其他'}</span></td>
@@ -154,7 +154,7 @@ async function svcTechnicians() {
   </div>
   <div class="tc"><div class="tb"><span class="tt">技師列表</span></div>
   <div class="tw"><table style="width:100%">
-    <tr><th>姓名</th><th>職位</th><th>電話</th><th>抽成比例</th><th>狀態</th><th>操作</th></tr>
+    <tr><th>姓名</th><th>職位</th><th>電話</th><th style="text-align:center">抽成比例</th><th>狀態</th><th>操作</th></tr>
     ${(techs||[]).map(t=>`<tr style="${t.is_active===false?'opacity:.5':''}">
       <td style="font-weight:500">${t.name}</td>
       <td><span class="badge bg" style="font-size:11px">${t.role||'技師'}</span></td>

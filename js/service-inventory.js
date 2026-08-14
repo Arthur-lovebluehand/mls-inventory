@@ -13,7 +13,7 @@ async function svcInventory() {
   </div>
   <div class="tc"><div class="tb"><span class="tt">服務庫存</span></div>
   <div class="tw"><table style="width:100%">
-    <tr><th>商品</th><th>規格</th><th>庫存（服務單位）</th><th>換算（銷售單位）</th></tr>
+    <tr><th>商品</th><th>規格</th><th style="text-align:center">庫存（服務單位）</th><th style="text-align:center">換算（銷售單位）</th></tr>
     ${(data||[]).map(i=>{
       const p=i.products;
       const salesQty = i.stock_qty / (p?.service_units_per_stock||1);
@@ -40,7 +40,7 @@ async function svcTransfers() {
   </div>
   <div class="tc"><div class="tb"><span class="tt">撥轉記錄</span></div>
   <div class="tw"><table style="width:100%">
-    <tr><th>日期</th><th>商品</th><th>撥轉數量</th><th>換算服務單位</th><th>備註</th></tr>
+    <tr><th>日期</th><th>商品</th><th style="text-align:center">撥轉數量</th><th style="text-align:center">換算服務單位</th><th>備註</th></tr>
     ${(data||[]).map(t=>`<tr>
       <td>${t.transfer_date}</td>
       <td style="font-weight:500">${t.product_name||t.product_no}</td>
@@ -175,7 +175,7 @@ async function svcConsumables() {
   </div>
   <div class="tc"><div class="tb"><span class="tt">服務耗材清單</span></div>
   <div class="tw"><table style="width:100%">
-    <tr><th>編號</th><th>名稱</th><th>規格</th><th>單位</th><th>單位成本</th><th>目前庫存</th><th>備註</th><th>操作</th></tr>
+    <tr><th>編號</th><th>名稱</th><th>規格</th><th>單位</th><th>單位成本</th><th style="text-align:center">目前庫存</th><th>備註</th><th>操作</th></tr>
     ${(data||[]).map(c=>`<tr style="${c.is_active===false?'opacity:.5':''}">
       <td style="font-size:12px;color:var(--tx3)">${c.item_no}</td>
       <td style="font-weight:500">${c.name}</td>

@@ -37,7 +37,7 @@ async function categoriesProducts() {
   <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理商品類別。新增類別後，在編輯商品時可從下拉選單選擇；類別名稱修改後，現有商品的類別不會自動更新，請至商品列表手動更新。</div>
     <div class="tc"><div class="tb"><span class="tt">類別列表</span></div>
     <div class="tw"><table style="width:100%">
-      <tr><th>類別名稱</th><th>使用中商品</th><th>操作</th></tr>
+      <tr><th>類別名稱</th><th style="text-align:center">使用中商品</th><th>操作</th></tr>
       ${cats.map(c => `<tr>
         <td style="font-weight:500;font-size:15px">${c}</td>
         <td style="text-align:center"><span class="badge bg">${catCount[c]||0} 項</span></td>
@@ -104,7 +104,7 @@ async function categoriesRoles() {
   </div>
   <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理服務職位。職位用於技師管理的職位選單。</div>
   <div class="tc"><div class="tw"><table style="width:100%">
-    <tr><th>職位名稱</th><th>排序</th><th>狀態</th><th>操作</th></tr>
+    <tr><th>職位名稱</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
     ${(data||[]).map(r=>`<tr>
       <td style="font-weight:500">${r.name}</td>
       <td style="text-align:center">${r.sort_order}</td>
@@ -190,7 +190,7 @@ async function categoriesPayment() {
   </div>
   <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理付款方式選項。新增後，訂單/進貨單等表單的付款方式下拉選單會出現這個選項。</div>
   <div class="tc"><div class="tw"><table style="width:100%">
-    <tr><th>名稱</th><th>排序</th><th>狀態</th><th>操作</th></tr>
+    <tr><th>名稱</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
     ${(data||[]).map(p=>`<tr>
       <td style="font-weight:500">${p.name}</td>
       <td style="text-align:center">${p.sort_order}</td>

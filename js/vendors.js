@@ -12,7 +12,7 @@ async function vendors(){
     <div class="tc">
     <div class="tb"><span class="tt">廠商列表</span></div>
     <div class="tw"><table style="width:100%">
-      <tr><th>排序</th><th>廠商名稱</th><th>聯絡人</th><th>電話</th><th>統一編號</th><th>付款方式</th><th>狀態</th><th>操作</th></tr>
+      <tr><th style="text-align:center">排序</th><th>廠商名稱</th><th>聯絡人</th><th>電話</th><th>統一編號</th><th>付款方式</th><th>狀態</th><th>操作</th></tr>
       ${(data||[]).map(vd=>`<tr style="${vd.is_active===false?'opacity:.5':''}">
         <td style="text-align:center">
           <input type="number" value="${vd.sort_order||99}" min="1" max="999"
@@ -96,7 +96,7 @@ async function brands() {
     <div class="al al-w" style="font-size:12px">記錄合作的品牌商（製造商/代理品牌），方便管理商品來源。</div>
     <div class="tc"><div class="tb"><span class="tt">品牌列表</span></div>
     <div class="tw"><table style="width:100%">
-      <tr><th>排序</th><th>品牌名稱</th><th>類型</th><th>產地/來源</th><th>官網</th><th>備註</th><th>狀態</th><th>操作</th></tr>
+      <tr><th style="text-align:center">排序</th><th>品牌名稱</th><th>類型</th><th>產地/來源</th><th>官網</th><th>備註</th><th>狀態</th><th>操作</th></tr>
       ${(data||[]).map(b=>`<tr style="${b.is_active===false?'opacity:.5':''}">
         <td style="text-align:center">
           <input type="number" value="${b.sort_order||99}" min="1" max="999"
