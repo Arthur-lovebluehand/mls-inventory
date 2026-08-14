@@ -49,6 +49,59 @@ const IMP_FIELDS = {
 };
 const IMP_TYPE_LABEL = { products:'商品主檔', customers:'客戶名單', orders:'歷史訂單（含明細）' };
 
+// ── 匯出／備份：全部資料表清單（分類顯示）──
+const EXPORT_TABLES = [
+  { group:'商品／庫存', tables:[
+    {t:'products',label:'商品主檔'},
+    {t:'product_prices',label:'商品價格'},
+    {t:'product_purchase_prices',label:'商品進貨價'},
+    {t:'product_price_logs',label:'商品價格異動記錄'},
+    {t:'brands',label:'品牌商'},
+  ]},
+  { group:'客戶／儲值', tables:[
+    {t:'customers',label:'客戶名單'},
+    {t:'store_credits',label:'儲值金'},
+    {t:'store_credit_records',label:'儲值金異動記錄'},
+  ]},
+  { group:'銷售', tables:[
+    {t:'sales_orders',label:'銷售訂單'},
+    {t:'sales_order_items',label:'銷售訂單品項'},
+    {t:'promotions',label:'促銷活動/套組'},
+    {t:'promotion_items',label:'促銷活動品項'},
+  ]},
+  { group:'進貨／廠商', tables:[
+    {t:'purchase_orders',label:'進貨單'},
+    {t:'purchase_order_items',label:'進貨單品項'},
+    {t:'purchase_returns',label:'進貨退貨單'},
+    {t:'purchase_return_items',label:'進貨退貨品項'},
+    {t:'vendors',label:'廠商'},
+  ]},
+  { group:'借貨', tables:[
+    {t:'loan_orders',label:'借貨單'},
+    {t:'loan_order_items',label:'借貨單品項'},
+    {t:'loan_parties',label:'借貨對象名單'},
+  ]},
+  { group:'服務管理', tables:[
+    {t:'service_items',label:'服務項目'},
+    {t:'technicians',label:'技師'},
+    {t:'service_roles',label:'服務職位'},
+    {t:'service_orders',label:'服務訂單'},
+    {t:'service_order_items',label:'服務訂單品項'},
+    {t:'service_inventory',label:'服務庫存（商品撥轉）'},
+    {t:'service_transfers',label:'撥轉記錄'},
+    {t:'service_consumables',label:'服務專屬耗材'},
+    {t:'service_consumable_restocks',label:'服務耗材補貨記錄'},
+  ]},
+  { group:'財務／其他', tables:[
+    {t:'bonus_records',label:'獎金/分潤記錄'},
+    {t:'monthly_accounts',label:'月結對帳'},
+    {t:'yearly_accounts',label:'年度對帳'},
+    {t:'payment_methods',label:'付款方式設定'},
+    {t:'settings',label:'系統設定'},
+    {t:'audit_logs',label:'操作記錄'},
+  ]},
+];
+
 // ── CSV / TSV 簡易解析（支援雙引號包欄位、逗號或Tab分隔）──
 function parseCSVText(text){
   text = text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
@@ -92,11 +145,17 @@ function guessMapping(headers, fields){
 }
 
 // ── 主頁面 ──
+window._impMode = 'import';
 function dataImport(){
   const imp=window._imp;
   $('main').innerHTML=`
-  <div class="ph"><div><div class="pt">資料匯入</div><div class="ps">從舊系統匯入商品、客戶、歷史訂單（CSV）</div></div></div>
+  <div class="ph"><div><div class="pt">資料匯入／匯出</div><div class="ps">從舊系統匯入資料，或匯出目前資料做備份</div></div></div>
   <div class="pc">
+    <div class="tab-bar" style="margin-bottom:14px">
+      <div class="tab ${window._impMode==='import'?'on':''}" onclick="window._impMode='import';dataImport()">📥 匯入</div>
+      <div class="tab ${window._impMode==='export'?'on':''}" onclick="window._impMode='export';dataImport()">📤 匯出／備份</div>
+    </div>
+    ${window._impMode==='export' ? renderExportPage() : `
     <div class="tc" style="margin-bottom:14px">
       <div class="tb"><span class="tt">第一步：選擇匯入資料類型</span></div>
       <div style="padding:16px;display:flex;gap:10px;flex-wrap:wrap">
@@ -120,9 +179,91 @@ function dataImport(){
     </div>` : ''}
     ${imp.headers.length?renderImpMapping():''}
     <div id="impResult"></div>
+    `}
   </div>`;
 }
 window.dataImport = dataImport;
+
+function renderExportPage(){
+  return `
+  <div class="al al-w" style="font-size:12px;margin-bottom:14px">
+    匯出的是<b>目前資料庫的完整內容</b>（CSV，Excel可直接開），建議定期備份保存。點「匯出」會直接下載檔案到你的電腦，不會異動任何資料。
+  </div>
+  <div style="margin-bottom:14px"><button class="btn btn-p" onclick="exportAllTables()">📦 一鍵匯出全部資料表</button></div>
+  ${EXPORT_TABLES.map(g=>`
+  <div class="tc" style="margin-bottom:14px">
+    <div class="tb"><span class="tt">${g.group}</span></div>
+    <div style="padding:14px;display:flex;flex-wrap:wrap;gap:8px">
+      ${g.tables.map(x=>`<button class="btn btn-s" onclick="exportOneTable('${x.t}','${x.label}')">${x.label}</button>`).join('')}
+    </div>
+  </div>`).join('')}
+  <div id="exportLog" style="font-size:12px;color:var(--tx3);margin-top:10px"></div>`;
+}
+
+function toCSV(rows){
+  if(!rows||!rows.length) return '';
+  const headerSet=new Set();
+  rows.forEach(r=>Object.keys(r).forEach(k=>headerSet.add(k)));
+  const headers=[...headerSet];
+  const esc=v=>{
+    if(v==null) return '';
+    const s=typeof v==='object'?JSON.stringify(v):String(v);
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  };
+  const lines=[headers.join(',')];
+  rows.forEach(r=>lines.push(headers.map(h=>esc(r[h])).join(',')));
+  return '\uFEFF'+lines.join('\n');
+}
+function downloadCSV(filename, content){
+  const blob=new Blob([content],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 3000);
+}
+async function fetchAllRows(table){
+  let all=[], from=0; const step=1000;
+  while(true){
+    const{data,error}=await sb.from(table).select('*').range(from, from+step-1);
+    if(error) throw error;
+    all=all.concat(data||[]);
+    if(!data||data.length<step) break;
+    from+=step;
+  }
+  return all;
+}
+async function exportOneTable(table,label){
+  const log=$('exportLog');
+  if(log) log.textContent=`匯出「${label}」中…`;
+  try{
+    const rows=await fetchAllRows(table);
+    if(!rows.length){ toast(`「${label}」目前沒有資料`,'e'); if(log) log.textContent=''; return; }
+    downloadCSV(`${table}_${today()}.csv`, toCSV(rows));
+    if(log) log.textContent=`✅ 「${label}」匯出完成，共 ${rows.length} 筆`;
+  }catch(e){
+    toast(`匯出「${label}」失敗：${e.message}`,'e');
+    if(log) log.textContent=`⚠️ 「${label}」失敗：${e.message}`;
+  }
+}
+window.exportOneTable = exportOneTable;
+async function exportAllTables(){
+  const all=EXPORT_TABLES.flatMap(g=>g.tables);
+  const log=$('exportLog');
+  let done=0;
+  for(const x of all){
+    if(log) log.textContent=`匯出中… (${done+1}/${all.length}) ${x.label}`;
+    try{
+      const rows=await fetchAllRows(x.t);
+      if(rows.length) downloadCSV(`${x.t}_${today()}.csv`, toCSV(rows));
+    }catch(e){ console.error(x.t, e); }
+    done++;
+    await new Promise(r=>setTimeout(r,250)); // 讓瀏覽器有時間處理下載，避免被擋
+  }
+  if(log) log.textContent=`✅ 全部匯出完成（${done} 個資料表，沒有資料的表已自動略過）`;
+  toast('全部資料表匯出完成！');
+}
+window.exportAllTables = exportAllTables;
 
 function impSetType(t){
   window._imp = { type:t, headers:[], rows:[], mapping:{} };
