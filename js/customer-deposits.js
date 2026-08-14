@@ -119,6 +119,11 @@ async function cdPickOrder(orderNo) {
     sb.from('sales_order_items').select('*').eq('order_no',orderNo),
   ]);
   if(!o) return;
+  // 訂單本身若缺客戶編號，嘗試用姓名比對客戶清單補上，這樣之後服務單才抓得到她的寄放品項
+  if(!o.customer_no && o.customer_name) {
+    const { data:cm } = await sb.from('customers').select('customer_no').eq('name',o.customer_name).maybeSingle();
+    if(cm?.customer_no) o.customer_no = cm.customer_no;
+  }
   window._cdOrder = o;
 
   // 撈這些商品的服務單位換算設定（1庫存單位=幾個服務單位），跟撥轉同一套邏輯
