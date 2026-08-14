@@ -49,6 +49,62 @@ const IMP_FIELDS = {
 };
 const IMP_TYPE_LABEL = { products:'商品主檔', customers:'客戶名單', orders:'歷史訂單（含明細）' };
 
+// ── 欄位中文標題字典（匯出CSV抬頭用）──
+const COL_LABELS = {
+  id:'系統序號', product_no:'商品編號', name:'名稱', name_spec:'名稱規格', category:'類別', unit:'單位',
+  spec:'規格', source:'來源', vendor:'廠商', vendor_no:'廠商編號', vendor_name:'廠商名稱', cost:'成本',
+  stock:'庫存', adjust_stock:'調整庫存', price_retail:'零售價', price_vip:'VIP價', price_dealer:'經銷價',
+  description:'說明', created_by:'建立者', created_at_ragic:'建立時間(舊系統)', updated_by:'更新者',
+  updated_at_ragic:'更新時間(舊系統)', price_founder:'創始價', price_region:'大區價', price_city:'市代價',
+  vendor_product_no:'廠商原始編號', image_url:'圖片網址', is_active:'啟用中', service_unit:'服務單位',
+  service_units_per_stock:'每進貨單位可服務量', default_service_qty:'每次預設服務用量',
+  price_no:'價格編號', product_name:'商品名稱', price:'價格', level:'位階', profit:'利潤', note:'備註',
+  purchase_no:'進貨單號', contact:'聯絡人', date:'日期', brand_no:'品牌編號', sort_order:'排序',
+  origin:'產地', website:'網站',
+  customer_no:'客戶編號', member_no:'會員編號', phone:'手機', other_phone:'其他電話', agent_level:'位階',
+  payment_terms:'付款條件', shipping_method:'寄送方式', payment_method:'付款方式', fax:'傳真',
+  invoice_title:'發票抬頭', tax_no:'統編', email:'Email', birthday:'生日', lunar_mark:'農曆註記',
+  bill_district:'帳單行政區', ship_district:'送貨行政區', bill_zip:'帳單郵遞區號', ship_zip:'送貨郵遞區號',
+  bill_address:'帳單地址', ship_address:'送貨地址', bill_full_address:'帳單完整地址', ship_full_address:'送貨完整地址',
+  store_credit:'儲值金餘額', store_credit_used:'已用儲值金', created_at:'建立時間', is_service_customer:'服務客戶',
+  loan_no:'借貨單號', returned_qty:'已還數量', return_date:'退回/退貨日期', promo_code:'活動代碼',
+  bundle_group:'套組群組', is_gift:'是否贈品', loan_type:'借貨類型', status:'狀態', loan_date:'借貨日期',
+  year_month:'年月', address:'地址', products_summary:'商品摘要', returned:'已歸還', shipping_fee:'運費',
+  total:'總金額', tax_type:'稅別', subtotal:'小計', tax_rate:'稅率', tax:'稅額', actual_ship_date:'實際出貨日',
+  direction:'方向', return_status:'退貨狀態', bad_debt:'呆帳', bad_debt_note:'呆帳備註',
+  party_no:'對象編號', line_id:'Line ID',
+  month:'月份', monthly_account_no:'月結編號', yearly_account_no:'年結編號', income:'收入', expense:'支出',
+  po_no:'進貨單號', po_date:'進貨日期', staff:'經手人', invoice_no:'發票號碼', monthly_account:'月結帳戶',
+  done:'完成', receipt_status:'收貨狀態',
+  order_no:'訂單編號', order_type:'訂單類型', order_date:'訂單日期', customer_name:'客戶名稱',
+  is_return:'是否退貨', recipient:'收款/收件人', store_credit_deduct:'儲值金折抵', payment_done:'已收款',
+  payment_date:'收款日期', total_profit:'總利潤', promo_name:'活動名稱', ship_status:'出貨狀態',
+  return_reason:'退貨原因', stock_deducted_at_creation:'建單時已扣庫存',
+  qty:'數量', unit_price:'單價', amount:'金額', stock_before:'扣減前庫存', gift_qty:'贈品數',
+  actual_qty:'實際數量', shipped_qty:'已出貨數量', is_bundle_item:'是否套組品項', bundle_name:'套組名稱',
+  old_price:'原價格', new_price:'新價格', price_type:'價格類型', change_date:'異動日期',
+  buy_qty:'買幾件', get_qty:'送幾件', bundle_price:'組合價', discount_amount:'折扣金額', discount_pct:'折扣%',
+  min_qty:'最低數量', start_date:'開始日期', end_date:'結束日期', type:'類型',
+  record_no:'記錄編號', record_date:'記錄日期', payer:'付款人', trigger_who:'觸發人',
+  restock_no:'補貨單號', restock_date:'補貨日期', consumable_id:'耗材ID', item_name:'品項名稱',
+  unit_cost:'單位成本', total_cost:'總成本', item_no:'耗材編號', stock_qty:'庫存數量', updated_at:'更新時間',
+  default_price:'預設單價', item_type:'品項類型', technician_id:'技師ID', technician_name:'技師姓名',
+  commission_amount:'抽成金額', technician_pay:'技師抽成', paid_by_credit:'儲值金支付', paid_by_cash:'現金支付',
+  consumable_cost:'耗材成本', total_commission:'總抽成', transfer_no:'撥轉單號', transfer_date:'撥轉日期',
+  qty_stock:'商品庫存數量', qty_service:'服務庫存數量', key:'設定鍵', value:'設定值',
+  balance:'餘額', balance_after:'異動後餘額', commission_rate:'抽成比例', role:'職位',
+  mobile:'手機', bank_name:'銀行', bank_account:'銀行帳號', bank_holder:'戶名',
+  year:'年度', action:'動作', table_name:'資料表', record_id:'記錄編號', old_values:'異動前',
+  new_values:'異動後', operator:'操作人', device_id:'裝置ID', reason:'原因',
+};
+function labelCol(k){ return COL_LABELS[k]||k; }
+function fmtVal(v){
+  if(v===true) return '是';
+  if(v===false) return '否';
+  if(v==null) return '';
+  return v;
+}
+
 // ── 匯出／備份：全部資料表清單（分類顯示）──
 const EXPORT_TABLES = [
   { group:'商品／庫存', tables:[
@@ -210,8 +266,8 @@ function toCSV(rows){
     const s=typeof v==='object'?JSON.stringify(v):String(v);
     return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
   };
-  const lines=[headers.join(',')];
-  rows.forEach(r=>lines.push(headers.map(h=>esc(r[h])).join(',')));
+  const lines=[headers.map(labelCol).join(',')];
+  rows.forEach(r=>lines.push(headers.map(h=>esc(fmtVal(r[h]))).join(',')));
   return '\uFEFF'+lines.join('\n');
 }
 function downloadCSV(filename, content){
@@ -239,7 +295,7 @@ async function exportOneTable(table,label){
   try{
     const rows=await fetchAllRows(table);
     if(!rows.length){ toast(`「${label}」目前沒有資料`,'e'); if(log) log.textContent=''; return; }
-    downloadCSV(`${table}_${today()}.csv`, toCSV(rows));
+    downloadCSV(`${label}_${today()}.csv`, toCSV(rows));
     if(log) log.textContent=`✅ 「${label}」匯出完成，共 ${rows.length} 筆`;
   }catch(e){
     toast(`匯出「${label}」失敗：${e.message}`,'e');
@@ -255,7 +311,7 @@ async function exportAllTables(){
     if(log) log.textContent=`匯出中… (${done+1}/${all.length}) ${x.label}`;
     try{
       const rows=await fetchAllRows(x.t);
-      if(rows.length) downloadCSV(`${x.t}_${today()}.csv`, toCSV(rows));
+      if(rows.length) downloadCSV(`${x.label}_${today()}.csv`, toCSV(rows));
     }catch(e){ console.error(x.t, e); }
     done++;
     await new Promise(r=>setTimeout(r,250)); // 讓瀏覽器有時間處理下載，避免被擋
