@@ -106,7 +106,7 @@ function fmtVal(v){
 }
 // Excel 會把開頭是0的純數字字串自動吃掉開頭0（例如手機0912345678變912345678），
 // 用公式包起來強制當文字處理，避免使用者看到手機號碼開頭0不見。
-const PHONE_LIKE_COLS = new Set(['phone','other_phone','mobile','fax','tax_no','bill_zip','ship_zip']);
+const PHONE_LIKE_COLS = new Set(['phone','other_phone','mobile','fax','tax_no','bill_zip','ship_zip','bank_account']);
 function excelText(v){
   if(v==null||v==='') return '';
   const s=String(v);

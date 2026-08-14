@@ -25,7 +25,7 @@ async function orders(){
           <input placeholder="訂單號/客戶名稱…（輸入後按 Enter 搜尋）" value="${oS}" onkeydown="if(event.key==='Enter'){oS=this.value;oP=1;orders();}"></div>
         </div>
         <div class="tw"><table>
-          <tr><th>訂單號</th><th>日期</th><th>客戶</th><th>位階</th><th>小計</th><th>總金額</th><th>收款</th><th>操作</th></tr>
+          <tr><th>訂單號</th><th>日期</th><th>客戶</th><th>位階</th><th>小計</th><th>總金額</th><th>收款</th><th>出貨狀態</th><th>操作</th></tr>
           ${(data||[]).map(o=>`<tr>
             <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${o.order_no}</td>
             <td style="font-size:12px">${fD(o.order_date)}</td>
