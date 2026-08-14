@@ -87,7 +87,7 @@ async function addLoan(){
   const{data:parties}=await sb.from('loan_parties').select('*').eq('is_active',true).order('name');
   OM('新增借貨單',`
   <div class="fg" style="margin-bottom:13px">
-    ${fi('lno','借貨單號','text',no)} ${fi('ldt','日期','date',td)}
+    ${fi('lno','借貨單號','text',no)} <div class="fl"><label>日期</label><input id="f-ldt" type="date" value="${td}" onchange="regenNoOnDateChange('ldt','lno','LO','loan_orders','loan_no')" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
     ${fs('ldir','方向',['借出','借入'],'借出')}
     <div class="fl"><label>借貨對象</label>
       <div style="position:relative">

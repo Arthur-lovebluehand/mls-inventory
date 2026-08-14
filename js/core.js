@@ -121,10 +121,10 @@ async function logAction(action, tableName, recordId, desc, oldVal=null, newVal=
 }
 
 // 產生當日流水號，例如 PO-20260806-003
-async function genNo(prefix, table, noField){
-  const td=today().replace(/-/g,'');
+async function genNo(prefix, table, noField, dateStr){
+  const td=(dateStr||today()).replace(/-/g,'');
   const prefix_full=prefix+'-'+td+'-';
-  // 查今天已有幾張
+  // 查該日期已有幾張
   const{data}=await sb.from(table).select(noField).like(noField, prefix_full+'%');
   const max=(data||[]).reduce((m,r)=>{
     const n=parseInt((r[noField]||'').replace(prefix_full,''));
@@ -132,6 +132,14 @@ async function genNo(prefix, table, noField){
   },0);
   return prefix_full+String(max+1).padStart(3,'0');
 }
+// 補單常見情境：日期填的是實際交易日，但單號預設用「今天」編號，導致單號跟日期對不起來。
+// 建單畫面的日期欄位改用這個，只要日期一改，單號就自動跟著重新編號成該日期的序號。
+async function regenNoOnDateChange(dateInputId, noInputId, prefix, table, noField){
+  const dateEl=$('f-'+dateInputId), noEl=$('f-'+noInputId);
+  if(!dateEl||!noEl||!dateEl.value) return;
+  noEl.value = await genNo(prefix, table, noField, dateEl.value);
+}
+window.regenNoOnDateChange = regenNoOnDateChange;
 const v=id=>{const el=$('f-'+id);return el?el.value.trim():'';}
 const n=id=>{const x=parseFloat($('f-'+id)?.value);return isNaN(x)?null:x;}
 const fM=x=>x==null?'—':'$'+Math.round(Number(x)||0).toLocaleString('zh-TW');

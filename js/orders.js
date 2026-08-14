@@ -148,7 +148,7 @@ async function addOrder(){
   const custOpts=_allCusts.map(c=>({value:c.customer_no,label:`${c.name} (${c.agent_level||'—'})`,data:c}));
   OM('新增銷售訂單',`
   <div class="fg" style="margin-bottom:13px">
-    ${fi('ono','訂單編號','text',no)} ${fi('odate','日期','date',td)}
+    ${fi('ono','訂單編號','text',no)} <div class="fl"><label>日期</label><input id="f-odate" type="date" value="${td}" onchange="regenNoOnDateChange('odate','ono','SO','sales_orders','order_no')" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
     <div class="fl"><label>選擇客戶</label>
       <div class="ss-wrap" id="ss-cust">
         <input class="ss-input" id="ss-inp-cust" placeholder="輸入姓名搜尋…" autocomplete="off" oninput="ssFilterCust(this.value)" onfocus="ssFilterCust(this.value)" onblur="setTimeout(()=>$('ss-drop-cust')?.classList.remove('open'),200)">

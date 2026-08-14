@@ -166,7 +166,7 @@ async function loadPOForm(poData,itsData){
   const td=today(), no=poData?.po_no||(await genNo('PO','purchase_orders','po_no'));
   return `
   <div class="fg" style="margin-bottom:13px">
-    ${fi('pono','進貨單號','text',no)} ${fi('podt','日期','date',poData?.po_date||td)}
+    ${fi('pono','進貨單號','text',no)} <div class="fl"><label>日期</label><input id="f-podt" type="date" value="${poData?.po_date||td}" ${poData?'':`onchange="regenNoOnDateChange('podt','pono','PO','purchase_orders','po_no')"`} style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
     <div class="fl"><label>選擇廠商</label><select id="f-povend" onchange="pickVend(this.value)"><option value="">選擇廠商…</option>${vOpts}</select></div>
     ${fi('povname','廠商名稱 *','text',poData?.vendor_name)} ${payMethodSel('popay',poData?.payment_method||'交貨付現')}
     ${fi('poinv','發票號碼','text',poData?.invoice_no||'')}
