@@ -104,6 +104,15 @@ function fmtVal(v){
   if(v==null) return '';
   return v;
 }
+// Excel 會把開頭是0的純數字字串自動吃掉開頭0（例如手機0912345678變912345678），
+// 用公式包起來強制當文字處理，避免使用者看到手機號碼開頭0不見。
+const PHONE_LIKE_COLS = new Set(['phone','other_phone','mobile','fax','tax_no','bill_zip','ship_zip']);
+function excelText(v){
+  if(v==null||v==='') return '';
+  const s=String(v);
+  if(/^0\d+$/.test(s)) return '="'+s.replace(/"/g,'""')+'"';
+  return s;
+}
 
 // ── 匯出／備份：全部資料表清單（分類顯示）──
 const EXPORT_TABLES = [
@@ -120,21 +129,18 @@ const EXPORT_TABLES = [
     {t:'store_credit_records',label:'儲值金異動記錄'},
   ]},
   { group:'銷售', tables:[
-    {t:'sales_orders',label:'銷售訂單'},
-    {t:'sales_order_items',label:'銷售訂單品項'},
+    {custom:'salesOrders',label:'銷售訂單（含商品明細）'},
     {t:'promotions',label:'促銷活動/套組'},
     {t:'promotion_items',label:'促銷活動品項'},
   ]},
   { group:'進貨／廠商', tables:[
-    {t:'purchase_orders',label:'進貨單'},
-    {t:'purchase_order_items',label:'進貨單品項'},
+    {custom:'purchaseOrders',label:'進貨單（含商品明細）'},
     {t:'purchase_returns',label:'進貨退貨單'},
     {t:'purchase_return_items',label:'進貨退貨品項'},
     {t:'vendors',label:'廠商'},
   ]},
   { group:'借貨', tables:[
-    {t:'loan_orders',label:'借貨單'},
-    {t:'loan_order_items',label:'借貨單品項'},
+    {custom:'loanOrders',label:'借貨單（含商品明細）'},
     {t:'loan_parties',label:'借貨對象名單'},
   ]},
   { group:'服務管理', tables:[
@@ -143,7 +149,7 @@ const EXPORT_TABLES = [
     {t:'service_roles',label:'服務職位'},
     {t:'service_orders',label:'服務訂單'},
     {t:'service_order_items',label:'服務訂單品項'},
-    {t:'service_inventory',label:'服務庫存（商品撥轉）'},
+    {custom:'serviceInventory',label:'服務庫存（商品撥轉）'},
     {t:'service_transfers',label:'撥轉記錄'},
     {t:'service_consumables',label:'服務專屬耗材'},
     {t:'service_consumable_restocks',label:'服務耗材補貨記錄'},
@@ -157,6 +163,76 @@ const EXPORT_TABLES = [
     {t:'audit_logs',label:'操作記錄'},
   ]},
 ];
+
+// ── 客製合併匯出（訂單主檔+明細合併成一份報表，一列一個品項）──
+const CUSTOM_EXPORTERS = {
+  async salesOrders(){
+    const orders=await fetchAllRows('sales_orders');
+    const items=await fetchAllRows('sales_order_items');
+    orders.sort((a,b)=>(a.order_date||'').localeCompare(b.order_date||'')||(a.order_no||'').localeCompare(b.order_no||''));
+    const itemsByOrder={};
+    items.forEach(i=>{ (itemsByOrder[i.order_no]=itemsByOrder[i.order_no]||[]).push(i); });
+    const rows=[];
+    orders.forEach(o=>{
+      const its=itemsByOrder[o.order_no]||[{}];
+      its.forEach(i=>rows.push({
+        訂單編號:o.order_no, 訂單日期:o.order_date, 客戶編號:o.customer_no, 客戶名稱:o.customer_name,
+        手機:excelText(o.phone), 位階:o.agent_level, 出貨狀態:o.ship_status, 已收款:fmtVal(o.payment_done),
+        收款日期:o.payment_date, 商品名稱:i.product_name||'', 商品編號:i.product_no||'', 數量:i.qty??'',
+        贈品數:i.gift_qty??'', 已出貨數量:i.shipped_qty??'', 單價:i.unit_price??'', 品項金額:i.amount??'',
+        運費:o.shipping_fee, 訂單小計:o.subtotal, 訂單總金額:o.total, 付款方式:o.payment_method,
+        送貨地址:o.ship_address, 備註:o.note
+      }));
+    });
+    return rows;
+  },
+  async purchaseOrders(){
+    const orders=await fetchAllRows('purchase_orders');
+    const items=await fetchAllRows('purchase_order_items');
+    orders.sort((a,b)=>(a.po_date||'').localeCompare(b.po_date||'')||(a.po_no||'').localeCompare(b.po_no||''));
+    const itemsByOrder={};
+    items.forEach(i=>{ (itemsByOrder[i.po_no]=itemsByOrder[i.po_no]||[]).push(i); });
+    const rows=[];
+    orders.forEach(o=>{
+      const its=itemsByOrder[o.po_no]||[{}];
+      its.forEach(i=>rows.push({
+        進貨單號:o.po_no, 進貨日期:o.po_date, 廠商編號:o.vendor_no, 廠商名稱:o.vendor_name, 狀態:o.status,
+        商品名稱:i.product_name||'', 商品編號:i.product_no||'', 數量:i.qty??'', 贈品數:i.gift_qty??'',
+        已收貨數量:i.received_qty??'', 單價:i.unit_price??'', 品項金額:i.amount??'',
+        運費:o.shipping_fee, 進貨小計:o.subtotal, 進貨總金額:o.total, 付款方式:o.payment_method,
+        發票號碼:o.invoice_no, 完成:fmtVal(o.done), 收貨狀態:o.receipt_status, 備註:o.note
+      }));
+    });
+    return rows;
+  },
+  async loanOrders(){
+    const orders=await fetchAllRows('loan_orders');
+    const items=await fetchAllRows('loan_order_items');
+    orders.sort((a,b)=>(a.loan_date||'').localeCompare(b.loan_date||'')||(a.loan_no||'').localeCompare(b.loan_no||''));
+    const itemsByOrder={};
+    items.forEach(i=>{ (itemsByOrder[i.loan_no]=itemsByOrder[i.loan_no]||[]).push(i); });
+    const rows=[];
+    orders.forEach(o=>{
+      const its=itemsByOrder[o.loan_no]||[{}];
+      its.forEach(i=>rows.push({
+        借貨單號:o.loan_no, 借貨日期:o.loan_date, 方向:o.direction==='out'?'借出':o.direction==='in'?'借入':(o.direction||''),
+        客戶名稱:o.customer_name, 手機:excelText(o.phone), 位階:o.agent_level,
+        商品名稱:i.product_name||'', 商品編號:i.product_no||'', 數量:i.qty??'', 已歸還數量:i.returned_qty??'',
+        歸還狀態:o.return_status, 呆帳:fmtVal(o.bad_debt), 呆帳備註:o.bad_debt_note,
+        送貨方式:o.shipping_method, 地址:o.address, 備註:o.note
+      }));
+    });
+    return rows;
+  },
+  async serviceInventory(){
+    const [inv,prods]=await Promise.all([fetchAllRows('service_inventory'), fetchAllRows('products')]);
+    const nameMap={}; prods.forEach(p=>nameMap[p.product_no]=p.name);
+    return inv.map(r=>({
+      商品編號:r.product_no, 商品名稱:nameMap[r.product_no]||'（找不到商品名稱）',
+      服務庫存數量:r.stock_qty, 更新時間:r.updated_at
+    }));
+  },
+};
 
 // ── CSV / TSV 簡易解析（支援雙引號包欄位、逗號或Tab分隔）──
 function parseCSVText(text){
@@ -250,7 +326,7 @@ function renderExportPage(){
   <div class="tc" style="margin-bottom:14px">
     <div class="tb"><span class="tt">${g.group}</span></div>
     <div style="padding:14px;display:flex;flex-wrap:wrap;gap:8px">
-      ${g.tables.map(x=>`<button class="btn btn-s" onclick="exportOneTable('${x.t}','${x.label}')">${x.label}</button>`).join('')}
+      ${g.tables.map(x=>`<button class="btn btn-s" onclick="exportOneTableIdx('${x.custom||x.t}')">${x.label}</button>`).join('')}
     </div>
   </div>`).join('')}
   <div id="exportLog" style="font-size:12px;color:var(--tx3);margin-top:10px"></div>`;
@@ -266,8 +342,9 @@ function toCSV(rows){
     const s=typeof v==='object'?JSON.stringify(v):String(v);
     return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
   };
+  const cellVal=(h,v)=> PHONE_LIKE_COLS.has(h) ? excelText(fmtVal(v)) : fmtVal(v);
   const lines=[headers.map(labelCol).join(',')];
-  rows.forEach(r=>lines.push(headers.map(h=>esc(fmtVal(r[h]))).join(',')));
+  rows.forEach(r=>lines.push(headers.map(h=>esc(cellVal(h,r[h]))).join(',')));
   return '\uFEFF'+lines.join('\n');
 }
 function downloadCSV(filename, content){
@@ -289,11 +366,18 @@ async function fetchAllRows(table){
   }
   return all;
 }
-async function exportOneTable(table,label){
+function exportOneTableIdx(key){
+  const all=EXPORT_TABLES.flatMap(g=>g.tables);
+  const x=all.find(e=>(e.custom||e.t)===key);
+  if(x) exportOneTable(x);
+}
+window.exportOneTableIdx = exportOneTableIdx;
+async function exportOneTable(x,label){
+  label = label || x.label || x;
   const log=$('exportLog');
   if(log) log.textContent=`匯出「${label}」中…`;
   try{
-    const rows=await fetchAllRows(table);
+    const rows = x.custom ? await CUSTOM_EXPORTERS[x.custom]() : await fetchAllRows(x.t||x);
     if(!rows.length){ toast(`「${label}」目前沒有資料`,'e'); if(log) log.textContent=''; return; }
     downloadCSV(`${label}_${today()}.csv`, toCSV(rows));
     if(log) log.textContent=`✅ 「${label}」匯出完成，共 ${rows.length} 筆`;
@@ -310,13 +394,13 @@ async function exportAllTables(){
   for(const x of all){
     if(log) log.textContent=`匯出中… (${done+1}/${all.length}) ${x.label}`;
     try{
-      const rows=await fetchAllRows(x.t);
+      const rows = x.custom ? await CUSTOM_EXPORTERS[x.custom]() : await fetchAllRows(x.t);
       if(rows.length) downloadCSV(`${x.label}_${today()}.csv`, toCSV(rows));
-    }catch(e){ console.error(x.t, e); }
+    }catch(e){ console.error(x.t||x.custom, e); }
     done++;
     await new Promise(r=>setTimeout(r,250)); // 讓瀏覽器有時間處理下載，避免被擋
   }
-  if(log) log.textContent=`✅ 全部匯出完成（${done} 個資料表，沒有資料的表已自動略過）`;
+  if(log) log.textContent=`✅ 全部匯出完成（${done} 個項目，沒有資料的已自動略過）。如果瀏覽器跳出「這個網站要下載多個檔案」的詢問，記得點「允許」，不然後面的檔案會被瀏覽器擋下來沒有下載到。`;
   toast('全部資料表匯出完成！');
 }
 window.exportAllTables = exportAllTables;
