@@ -7,7 +7,7 @@ async function loadCats() {
   window._cats = [...new Set((data||[]).map(x=>x.category).filter(Boolean))].sort();
   return window._cats;
 }
-var _catTab = 'products'; // products | roles
+var _catTab = 'products'; // products | roles | payment
 
 async function categories() {
   const tab = window._catTab || 'products';
@@ -16,8 +16,10 @@ async function categories() {
   <div class="tab-bar" style="padding:0 16px 10px">
     <div class="tab${tab==='products'?' on':''}" onclick="window._catTab='products';categories()">商品類別</div>
     <div class="tab${tab==='roles'?' on':''}" onclick="window._catTab='roles';categories()">服務職位</div>
+    <div class="tab${tab==='payment'?' on':''}" onclick="window._catTab='payment';categories()">付款方式</div>
   </div>`;
   if(tab==='roles') { await categoriesRoles(); return; }
+  if(tab==='payment') { await categoriesPayment(); return; }
   await categoriesProducts();
 }
 
@@ -200,3 +202,75 @@ window.editRoleModal = editRoleModal;
 window.saveRole = saveRole;
 window.toggleRole = toggleRole;
 window.deleteRole = deleteRole;
+
+// ══════════════════════════════
+// 付款方式管理
+// ══════════════════════════════
+async function categoriesPayment() {
+  const { data } = await sb.from('payment_methods').select('*').order('sort_order').order('name');
+  $('main').innerHTML += `
+  <div class="pc">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <button class="btn btn-p btn-s" onclick="addPayMethodModal()">＋ 新增付款方式</button>
+  </div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理付款方式選項。新增後，訂單/進貨單等表單的付款方式下拉選單會出現這個選項。</div>
+  <div class="tc"><div class="tw"><table style="width:100%">
+    <tr><th>名稱</th><th>排序</th><th>狀態</th><th>操作</th></tr>
+    ${(data||[]).map(p=>`<tr>
+      <td style="font-weight:500">${p.name}</td>
+      <td style="text-align:center">${p.sort_order}</td>
+      <td><span class="badge ${p.is_active?'bg':'br2'}">${p.is_active?'啟用':'停用'}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn btn-s" onclick="editPayMethodModal(${p.id},'${p.name.replace(/'/g,"\\'")}',${p.sort_order},${p.is_active})">編輯</button>
+        <button class="btn btn-s" onclick="togglePayMethod(${p.id},${p.is_active})">${p.is_active?'停用':'啟用'}</button>
+        <button class="btn btn-s btn-r" onclick="deletePayMethod(${p.id},'${p.name.replace(/'/g,"\\'")}')">刪除</button>
+      </div></td>
+    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無付款方式，請先新增</td></tr>'}
+  </table></div></div>`;
+}
+function addPayMethodModal() {
+  OM('新增付款方式', `
+  ${fi('pmname','名稱 *')}
+  ${fi('pmsort','排序','number','99')}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="savePayMethod()">新增</button>`);
+}
+function editPayMethodModal(id,name,sort,active) {
+  OM('編輯付款方式', `
+  ${fi('pmname','名稱 *','text',name)}
+  ${fi('pmsort','排序','number',sort)}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="savePayMethod(${id})">儲存</button>`);
+}
+async function savePayMethod(id) {
+  const name = v('pmname').trim();
+  if(!name) { toast('請輸入名稱','e'); return; }
+  const sort = parseInt(v('pmsort'))||99;
+  const payload = { name, sort_order: sort };
+  if(id) {
+    const { error } = await sb.from('payment_methods').update(payload).eq('id',id);
+    if(error) { toast('更新失敗：'+error.message,'e'); return; }
+  } else {
+    const { error } = await sb.from('payment_methods').insert({...payload, is_active:true});
+    if(error) { toast('新增失敗：'+error.message,'e'); return; }
+  }
+  toast('✅ 已儲存');
+  CM();
+  categoriesPayment();
+}
+async function togglePayMethod(id, current) {
+  await sb.from('payment_methods').update({is_active:!current}).eq('id',id);
+  categoriesPayment();
+}
+async function deletePayMethod(id, name) {
+  if(!confirm(`確定刪除付款方式「${name}」？`)) return;
+  await sb.from('payment_methods').delete().eq('id',id);
+  toast('已刪除');
+  categoriesPayment();
+}
+window.categoriesPayment = categoriesPayment;
+window.addPayMethodModal = addPayMethodModal;
+window.editPayMethodModal = editPayMethodModal;
+window.savePayMethod = savePayMethod;
+window.togglePayMethod = togglePayMethod;
+window.deletePayMethod = deletePayMethod;

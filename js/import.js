@@ -110,7 +110,8 @@ const PHONE_LIKE_COLS = new Set(['phone','other_phone','mobile','fax','tax_no','
 function excelText(v){
   if(v==null||v==='') return '';
   const s=String(v);
-  if(/^0\d+$/.test(s)) return '="'+s.replace(/"/g,'""')+'"';
+  // 純數字字串：開頭是0（會被吃掉）或長度夠長（Excel會顯示科學記號、甚至截斷精度），都強制當文字
+  if(/^\d+$/.test(s) && (s.length>=8 || /^0/.test(s))) return '="'+s.replace(/"/g,'""')+'"';
   return s;
 }
 
