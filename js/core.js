@@ -57,7 +57,8 @@ function _getPages(){
     brands:()=>window.brands?.(),
     categories:()=>window.categories?.(),
     serviceHub:()=>window.serviceHub?.(),
-    dataImport:()=>window.dataImport?.()
+    dataImport:()=>window.dataImport?.(),
+    customerDeposits:()=>window.customerDeposits?.()
   };
 }
 

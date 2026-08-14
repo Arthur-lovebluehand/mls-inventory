@@ -160,7 +160,7 @@ async function svcNewOrder() {
 }
 
 window.svcNewOrder     = svcNewOrder;
-function svcPickCust(sel) {
+async function svcPickCust(sel) {
   const opt = sel.options[sel.selectedIndex];
   if(opt.value) {
     $('f-sv-cname').value = opt.text;
@@ -173,6 +173,29 @@ function svcPickCust(sel) {
           $('f-sv-cname').parentNode.appendChild(hint); }
         hint.innerHTML=`<div style="font-size:11px;color:${bal>0?'var(--ac)':'var(--tx3)'};margin-top:4px">儲值餘額：${fM(bal)}</div>`;
       });
+    // 查這位客戶自己的寄放商品，加進耗材下拉選單
+    const deposits = await window.getCustomerDeposits?.(opt.value) || [];
+    const sel2 = $('sv-prod');
+    if(sel2) {
+      let depGroup = sel2.querySelector('optgroup[label="客戶寄放商品"]');
+      if(depGroup) depGroup.remove();
+      if(deposits.length) {
+        const og = document.createElement('optgroup');
+        og.label = '客戶寄放商品';
+        deposits.forEach(d=>{
+          const remain = (d.total_qty||0)-(d.used_qty||0);
+          const o = document.createElement('option');
+          o.value = 'DEP:'+d.id;
+          o.dataset.type = 'deposit';
+          o.dataset.id = d.id;
+          o.dataset.unit = d.unit;
+          o.dataset.cost = 0;
+          o.text = `${d.product_name}（她寄放剩 ${remain} ${d.unit}）`;
+          og.appendChild(o);
+        });
+        sel2.appendChild(og);
+      }
+    }
   }
 }
 
@@ -218,7 +241,18 @@ function svcAddConsumable() {
   const svcPrice = parseFloat(document.getElementById('sv-prodprice').value)||0;
   const type = opt.dataset.type||'product';
 
-  if(type==='consumable') {
+  if(type==='deposit') {
+    // 客戶自己寄放的商品：不算成本（已經是她的東西），扣的是她自己的寄放庫存，不動店裡庫存
+    window._svcItems.push({
+      id: Date.now(), item_type:'consumable', source:'deposit',
+      item_name: opt.text.split('（')[0],
+      deposit_id: parseInt(opt.dataset.id),
+      qty, unit:opt.dataset.unit||'組',
+      unit_price: svcPrice,
+      cost: 0,
+      subtotal: svcPrice * qty
+    });
+  } else if(type==='consumable') {
     // 服務專屬耗材：成本已是「每服務單位」，不用換算
     const costPerSvcUnit = parseFloat(opt.dataset.cost)||0;
     window._svcItems.push({
@@ -321,14 +355,15 @@ async function saveSvcOrder() {
   // 2. 建品項
   const items = window._svcItems.map(i=>({
     order_no:no, item_type:i.item_type, item_name:i.item_name,
-    product_no:i.product_no||null, consumable_id:i.consumable_id||null, qty:i.qty, unit:i.unit,
+    product_no:i.product_no||null, consumable_id:i.consumable_id||null, deposit_id:i.deposit_id||null,
+    qty:i.qty, unit:i.unit,
     unit_price:i.unit_price, cost:i.cost, subtotal:i.subtotal,
     technician_id:i.technician_id||null, technician_name:i.technician_name||null,
     technician_pay:i.technician_pay||0
   }));
   await sb.from('service_order_items').insert(items);
 
-  // 3. 扣服務庫存（商品撥轉耗材 → service_inventory；服務專屬耗材 → service_consumables）
+  // 3. 扣服務庫存（商品撥轉耗材 → service_inventory；服務專屬耗材 → service_consumables；客戶寄放商品 → customer_deposits，並留使用記錄）
   for(const item of window._svcItems.filter(i=>i.item_type==='consumable'&&i.product_no)) {
     const { data:inv } = await sb.from('service_inventory').select('stock_qty').eq('product_no',item.product_no).single();
     if(inv) {
@@ -341,6 +376,15 @@ async function saveSvcOrder() {
     if(sc) {
       const newQty = Math.max(0, (sc.stock_qty||0)-item.qty);
       await sb.from('service_consumables').update({stock_qty:newQty,updated_at:new Date().toISOString()}).eq('id',item.consumable_id);
+    }
+  }
+  for(const item of window._svcItems.filter(i=>i.item_type==='consumable'&&i.deposit_id)) {
+    const { data:dep } = await sb.from('customer_deposits').select('used_qty').eq('id',item.deposit_id).single();
+    if(dep) {
+      await sb.from('customer_deposits').update({used_qty:(dep.used_qty||0)+item.qty, updated_at:new Date().toISOString()}).eq('id',item.deposit_id);
+      await sb.from('customer_deposit_usages').insert({
+        deposit_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no
+      });
     }
   }
 
