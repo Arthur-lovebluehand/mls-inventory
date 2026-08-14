@@ -25,41 +25,16 @@ async function categories() {
 
 async function categoriesProducts() {
   const cats = await loadCats();
-  $('main').innerHTML = `
-  <div class="ph"><div><div class="pt">類別管理</div><div class="ps">${cats.length} 個類別</div></div>
-    <div class="ha"><button class="btn btn-p btn-s" onclick="addCategoryModal()">＋ 新增類別</button></div></div>
-  <div class="pc">
-    <div class="al al-w" style="font-size:12px">
-      管理商品類別。類別名稱修改後，現有商品的類別不會自動更新，請至商品列表手動更新。
-    </div>
-    <div class="tc"><div class="tb"><span class="tt">類別列表</span></div>
-    <div class="tw"><table style="width:100%">
-      <tr><th>類別名稱</th><th>商品數量</th><th>操作</th></tr>
-      ${cats.map(c => {
-        const cnt = 0; // 可以另外查
-        return `<tr>
-          <td style="font-weight:500;font-size:14px">${c}</td>
-          <td><span class="badge bg" style="font-size:11px">${c}</span></td>
-          <td><div style="display:flex;gap:4px">
-            <button class="btn btn-s" onclick="renameCategoryModal('${c.replace(/'/g,"\\'")}')">改名</button>
-          </div></td>
-        </tr>`;
-      }).join('')}
-    </table></div></div>
-  </div>`;
-  
-  // 補上各類別商品數量
   const { data: cnts } = await sb.from('products').select('category').eq('is_active',true);
   const catCount = {};
   (cnts||[]).forEach(x => { if(x.category) catCount[x.category] = (catCount[x.category]||0)+1; });
-  
-  // 重新渲染（含數量）
+
   $('main').innerHTML += `
   <div class="pc">
   <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
     <button class="btn btn-p btn-s" onclick="addCategoryModal()">＋ 新增類別</button>
   </div>
-  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理商品類別。新增類別後，在編輯商品時可從下拉選單選擇。</div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理商品類別。新增類別後，在編輯商品時可從下拉選單選擇；類別名稱修改後，現有商品的類別不會自動更新，請至商品列表手動更新。</div>
     <div class="tc"><div class="tb"><span class="tt">類別列表</span></div>
     <div class="tw"><table style="width:100%">
       <tr><th>類別名稱</th><th>使用中商品</th><th>操作</th></tr>
@@ -67,7 +42,7 @@ async function categoriesProducts() {
         <td style="font-weight:500;font-size:15px">${c}</td>
         <td style="text-align:center"><span class="badge bg">${catCount[c]||0} 項</span></td>
         <td><button class="btn btn-s" onclick="renameCategoryModal('${c.replace(/'/g,"\\'")}')">改名</button></td>
-      </tr>`).join('')}
+      </tr>`).join('') || '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">尚無類別</td></tr>'}
     </table></div></div>
   </div>`;
 }
