@@ -120,16 +120,32 @@ async function cdPickOrder(orderNo) {
   ]);
   if(!o) return;
   window._cdOrder = o;
+
+  // 撈這些商品的服務單位換算設定（1庫存單位=幾個服務單位），跟撥轉同一套邏輯
+  const productNos = [...new Set((its||[]).map(i=>i.product_no).filter(Boolean))];
+  let prodMap = {};
+  if(productNos.length) {
+    const { data:prods } = await sb.from('products').select('product_no,service_unit,service_units_per_stock').in('product_no',productNos);
+    (prods||[]).forEach(p=>prodMap[p.product_no]=p);
+  }
+
   $('cd-order-results').innerHTML = `<div class="al al-w" style="font-size:12px">已選：<b>${o.order_no}</b>（${o.customer_name}）</div>`;
   $('cd-order-items').innerHTML = `
   <div class="fl" style="margin-bottom:6px"><label>這張單裡要寄放的商品</label></div>
+  <div class="al al-w" style="font-size:11px;margin-bottom:8px">已依商品的「服務單位換算」設定自動算好寄放數量，可以手動調整。</div>
   <table class="itb"><tr><th>商品</th><th>訂購數量</th><th>寄放數量</th><th>單位</th></tr>
-    ${(its||[]).map((i,idx)=>`<tr>
-      <td style="font-size:12px">${i.product_name}</td>
+    ${(its||[]).map((i,idx)=>{
+      const prod = prodMap[i.product_no];
+      const perStock = parseFloat(prod?.service_units_per_stock)||1;
+      const svcUnit = prod?.service_unit||'組';
+      const defQty = Math.round((i.qty||0)*perStock*100)/100;
+      return `<tr>
+      <td style="font-size:12px">${i.product_name}${perStock>1?`<div style="font-size:10px;color:var(--tx3)">1${i.unit||'個'}=${perStock}${svcUnit}</div>`:''}</td>
       <td class="num">${i.qty}</td>
-      <td><input type="number" id="cd-itqty-${idx}" value="0" min="0" max="${i.qty}" step="1" style="width:60px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
-      <td><input type="text" id="cd-itunit-${idx}" value="組" style="width:50px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
-    </tr>`).join('')}
+      <td><input type="number" id="cd-itqty-${idx}" value="${defQty}" min="0" step="0.5" style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
+      <td><input type="text" id="cd-itunit-${idx}" value="${svcUnit}" style="width:50px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
+    </tr>`;
+    }).join('')}
   </table>`;
   window._cdOrderItems = its||[];
 }
