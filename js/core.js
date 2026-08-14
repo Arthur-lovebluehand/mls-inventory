@@ -56,7 +56,8 @@ function _getPages(){
     auditLogs:()=>window.auditLogs?.(),
     brands:()=>window.brands?.(),
     categories:()=>window.categories?.(),
-    serviceHub:()=>window.serviceHub?.()
+    serviceHub:()=>window.serviceHub?.(),
+    dataImport:()=>window.dataImport?.()
   };
 }
 
