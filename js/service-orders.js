@@ -213,7 +213,7 @@ async function svcNewOrder(editNo) {
       style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none;resize:vertical">${existingOrder?.note?.replace(/（服務對象：[^）]*）/,'').replace(/^服務對象：.*/,'')||''}</textarea>
   </div>`,
   `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveSvcOrder()">${editNo?'儲存修改':'建立服務單'}</button>`,true);
+   <button class="btn btn-p" id="sv-savebtn" onclick="saveSvcOrder()">${editNo?'儲存修改':'建立服務單'}</button>`,true);
 
   window.svcFilterCust = q=>{
     const fil = q ? window._svcAllCusts.filter(c=>c.name.includes(q)||(c.phone||'').includes(q)) : window._svcAllCusts;
@@ -300,6 +300,9 @@ function svcAddServiceItem() {
     is_gift:isGift, technician_id:techId, technician_name:techName, technician_pay:techPay
   });
   const giftCb = document.getElementById('sv-sigift'); if(giftCb) giftCb.checked=false;
+  sel.selectedIndex = 0;
+  document.getElementById('sv-siqty').value = 1;
+  document.getElementById('sv-siprice').value = '';
   renderSvcItems();
 }
 
@@ -361,6 +364,9 @@ function svcAddConsumable() {
       subtotal: svcPrice * qty
     });
   }
+  sel.selectedIndex = 0;
+  document.getElementById('sv-prodqty').value = 1;
+  document.getElementById('sv-prodprice').value = 0;
   renderSvcItems();
 }
 
@@ -433,7 +439,10 @@ async function saveSvcOrder() {
                person ? `服務對象：${person}` : noteRaw || null;
   if(!no||!date||!custName){ toast('請填寫單號、日期、客戶','e'); return; }
   if(!window._svcItems.length){ toast('請加入至少一個品項','e'); return; }
+  const btn = $('sv-savebtn');
+  if(btn){ btn.disabled=true; btn.dataset.origText=btn.textContent; btn.textContent='儲存中…'; btn.style.opacity='.6'; }
 
+  try {
   const total = window._svcItems.reduce((s,i)=>s+i.subtotal,0);
   const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable'||i.item_type==='gift_product').reduce((s,i)=>s+i.cost,0);
 
@@ -470,38 +479,40 @@ async function saveSvcOrder() {
   }));
   await sb.from('service_order_items').insert(items);
 
-  // 3. 扣服務庫存（商品撥轉耗材 → service_inventory；服務專屬耗材 → service_consumables；客戶寄放商品 → customer_deposits，並留使用記錄）
-  for(const item of window._svcItems.filter(i=>i.item_type==='consumable'&&i.product_no)) {
+  // 3. 扣服務庫存（商品撥轉耗材 → service_inventory；服務專屬耗材 → service_consumables；客戶寄放商品 → customer_deposits，並留使用記錄）— 平行處理加快速度
+  await Promise.all(window._svcItems.filter(i=>i.item_type==='consumable'&&i.product_no).map(async item=>{
     const { data:inv } = await sb.from('service_inventory').select('stock_qty').eq('product_no',item.product_no).single();
     if(inv) {
       const newQty = Math.max(0, (inv.stock_qty||0)-item.qty);
       await sb.from('service_inventory').update({stock_qty:newQty,updated_at:new Date().toISOString()}).eq('product_no',item.product_no);
     }
-  }
-  for(const item of window._svcItems.filter(i=>i.item_type==='consumable'&&i.consumable_id)) {
+  }));
+  await Promise.all(window._svcItems.filter(i=>i.item_type==='consumable'&&i.consumable_id).map(async item=>{
     const { data:sc } = await sb.from('service_consumables').select('stock_qty').eq('id',item.consumable_id).single();
     if(sc) {
       const newQty = Math.max(0, (sc.stock_qty||0)-item.qty);
       await sb.from('service_consumables').update({stock_qty:newQty,updated_at:new Date().toISOString()}).eq('id',item.consumable_id);
     }
-  }
-  for(const item of window._svcItems.filter(i=>i.item_type==='consumable'&&i.deposit_id)) {
+  }));
+  await Promise.all(window._svcItems.filter(i=>i.item_type==='consumable'&&i.deposit_id).map(async item=>{
     const { data:dep } = await sb.from('customer_deposit_items').select('used_qty').eq('id',item.deposit_id).single();
     if(dep) {
-      await sb.from('customer_deposit_items').update({used_qty:(dep.used_qty||0)+item.qty}).eq('id',item.deposit_id);
-      await sb.from('customer_deposit_usages').insert({
-        deposit_item_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no
-      });
+      await Promise.all([
+        sb.from('customer_deposit_items').update({used_qty:(dep.used_qty||0)+item.qty}).eq('id',item.deposit_id),
+        sb.from('customer_deposit_usages').insert({
+          deposit_item_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no
+        })
+      ]);
     }
-  }
+  }));
   // 贈送商品 → 直接扣「商品列表」的銷售庫存（跟服務庫存分開），已經透過 service_order_items.order_no 連結這張服務單
-  for(const item of window._svcItems.filter(i=>i.item_type==='gift_product'&&i.product_no)) {
+  await Promise.all(window._svcItems.filter(i=>i.item_type==='gift_product'&&i.product_no).map(async item=>{
     const { data:p } = await sb.from('products').select('stock').eq('product_no',item.product_no).single();
     if(p) {
       const newQty = Math.max(0, (p.stock||0)-item.qty);
       await sb.from('products').update({stock:newQty}).eq('product_no',item.product_no);
     }
-  }
+  }));
 
   // 4. 儲值扣款記錄
   if(paidByCredit>0 && custNo) {
@@ -520,6 +531,9 @@ async function saveSvcOrder() {
   window._svcItems=[];
   window._svcEditNo=null;
   svcOrders();
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent=btn.dataset.origText||'建立服務單'; btn.style.opacity=''; }
+  }
 }
 
 window.saveSvcOrder    = saveSvcOrder;
