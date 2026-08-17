@@ -12,16 +12,12 @@ async function svcItems() {
   const cats = [...new Set((data||[]).map(i=>i.category).filter(Boolean))].sort();
   window._svcItemCats = cats;
 
-  $('svc-content').innerHTML = `
-  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
-    <button class="btn btn-p btn-s" onclick="svcNewItemModal()">＋ 新增服務項目</button>
-  </div>
-  <div class="tc"><div class="tb"><span class="tt">服務項目列表</span></div>
-  <div class="tw"><table style="width:100%">
-    <tr><th>名稱</th><th>分類</th><th>預設單價</th><th>單位</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
-    ${(data||[]).map(s=>`<tr style="${s.is_active===false?'opacity:.5':''}">
+  const groups = {};
+  (data||[]).forEach(s=>{ const c=s.category||'未分類'; (groups[c]=groups[c]||[]).push(s); });
+  const groupNames = Object.keys(groups).sort((a,b)=>a==='未分類'?1:b==='未分類'?-1:a.localeCompare(b));
+
+  const rowsHtml = s => `<tr style="${s.is_active===false?'opacity:.5':''}">
       <td style="font-weight:500">${s.name}</td>
-      <td><span class="badge bg" style="font-size:11px">${s.category||'其他'}</span></td>
       <td class="num">${fM(s.default_price)}</td>
       <td>${s.unit||'次'}</td>
       <td style="text-align:center">${s.sort_order}</td>
@@ -31,8 +27,22 @@ async function svcItems() {
         <button class="btn btn-s" onclick="toggleServiceItem(${s.id},${s.is_active!==false})">${s.is_active!==false?'停用':'啟用'}</button>
         <button class="btn btn-s btn-r" onclick="deleteServiceItem(${s.id},'${(s.name||'').replace(/'/g,"\\'")}')">刪除</button>
       </td>
-    </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3)">尚無服務項目，請先新增</td></tr>'}
-  </table></div></div>`;
+    </tr>`;
+
+  $('svc-content').innerHTML = `
+  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+    <button class="btn btn-p btn-s" onclick="svcNewItemModal()">＋ 新增服務項目</button>
+  </div>
+  ${(data||[]).length===0 ? '<div class="tc"><div style="padding:20px;text-align:center;color:var(--tx3)">尚無服務項目，請先新增</div></div>' :
+    groupNames.map(cat=>`
+    <div class="tc" style="margin-bottom:14px">
+      <div class="tb"><span class="tt">${cat}</span><span class="badge bg" style="font-size:11px;margin-left:8px">${groups[cat].length} 項</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>名稱</th><th>預設單價</th><th>單位</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
+        ${groups[cat].map(rowsHtml).join('')}
+      </table></div>
+    </div>`).join('')
+  }`;
   }catch(e){$('svc-content').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
 }
 
