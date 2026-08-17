@@ -39,6 +39,11 @@ async function svcShowOrder(no) {
   const services = (its||[]).filter(i=>i.item_type==='service');
   const consumables = (its||[]).filter(i=>i.item_type==='consumable');
   const gifts = (its||[]).filter(i=>i.item_type==='gift_product');
+  let curBalance = null;
+  if(o.customer_no) {
+    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',o.customer_no).single();
+    curBalance = cr?.balance ?? 0;
+  }
 
   OM(`服務單：${no}`,`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;font-size:13px">
@@ -46,6 +51,7 @@ async function svcShowOrder(no) {
     <div><span style="color:var(--tx3)">客戶：</span>${o.customer_name||'—'}</div>
     <div><span style="color:var(--tx3)">付款：</span>${o.payment_method||''}</div>
     <div><span style="color:var(--tx3)">儲值扣：</span>${fM(o.paid_by_credit)}</div>
+    ${curBalance!=null?`<div style="grid-column:1/-1"><span style="color:var(--tx3)">目前儲值餘額：</span><b style="color:${curBalance>0?'var(--ac)':'var(--rd)'}">${fM(curBalance)}</b></div>`:''}
   </div>
   ${services.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">服務項目</div>
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
