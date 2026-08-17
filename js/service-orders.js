@@ -379,11 +379,11 @@ async function saveSvcOrder() {
     }
   }
   for(const item of window._svcItems.filter(i=>i.item_type==='consumable'&&i.deposit_id)) {
-    const { data:dep } = await sb.from('customer_deposits').select('used_qty').eq('id',item.deposit_id).single();
+    const { data:dep } = await sb.from('customer_deposit_items').select('used_qty').eq('id',item.deposit_id).single();
     if(dep) {
-      await sb.from('customer_deposits').update({used_qty:(dep.used_qty||0)+item.qty, updated_at:new Date().toISOString()}).eq('id',item.deposit_id);
+      await sb.from('customer_deposit_items').update({used_qty:(dep.used_qty||0)+item.qty}).eq('id',item.deposit_id);
       await sb.from('customer_deposit_usages').insert({
-        deposit_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no
+        deposit_item_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no
       });
     }
   }

@@ -1,17 +1,28 @@
 // ═══════════════════════════════════════
 // customer-deposits.js — 客戶寄放庫存
 // 客戶已買斷（走過正常銷售訂單）但物理上放在店裡分次使用/取回的商品
+// 結構比照訂單：一張寄放單（customer_deposits）可以有多個品項（customer_deposit_items）
 // ═══════════════════════════════════════
 
 var cdSearch = '';
 
 async function customerDeposits() {
   let q = sb.from('customer_deposits').select('*').order('is_active',{ascending:false}).order('deposit_date',{ascending:false});
-  if(cdSearch) q = q.or(`customer_name.ilike.%${cdSearch}%,product_name.ilike.%${cdSearch}%`);
-  const { data } = await q;
+  if(cdSearch) q = q.ilike('customer_name',`%${cdSearch}%`);
+  const { data:deposits } = await q;
+  const depositNos = (deposits||[]).map(d=>d.deposit_no);
+  let itemsByDeposit = {};
+  if(depositNos.length) {
+    const { data:items } = await sb.from('customer_deposit_items').select('*').in('deposit_no',depositNos);
+    (items||[]).forEach(i=>{ (itemsByDeposit[i.deposit_no]=itemsByDeposit[i.deposit_no]||[]).push(i); });
+  }
+  let list = deposits||[];
+  if(cdSearch) {
+    list = list.filter(d => d.customer_name.includes(cdSearch) || (itemsByDeposit[d.deposit_no]||[]).some(i=>i.product_name.includes(cdSearch)));
+  }
 
   $('main').innerHTML = `
-  <div class="ph"><div><div class="pt">客戶寄放庫存</div><div class="ps">${(data||[]).length} 筆</div></div>
+  <div class="ph"><div><div class="pt">客戶寄放庫存</div><div class="ps">${list.length} 張</div></div>
     <div class="ha"><button class="btn btn-p btn-s" onclick="addDepositModal()">＋ 新增寄放記錄</button></div></div>
   <div class="pc">
     <div class="al al-w" style="font-size:12px;margin-bottom:12px">
@@ -23,24 +34,25 @@ async function customerDeposits() {
         <input placeholder="客戶姓名/商品名稱…（輸入後按 Enter 搜尋）" value="${cdSearch}" onkeydown="if(event.key==='Enter'){cdSearch=this.value;customerDeposits();}"></div>
       </div>
       <div class="tw"><table style="width:100%">
-        <tr><th>客戶</th><th>商品</th><th>寄放日</th><th style="text-align:center">總量</th><th style="text-align:center">已用/取回</th><th style="text-align:center">剩餘</th><th>來源訂單</th><th>狀態</th><th>操作</th></tr>
-        ${(data||[]).map(d=>{
-          const remain = (d.total_qty||0)-(d.used_qty||0);
+        <tr><th>單號</th><th>客戶</th><th>商品摘要</th><th>寄放日</th><th>來源訂單</th><th>狀態</th><th>操作</th></tr>
+        ${list.map(d=>{
+          const its = itemsByDeposit[d.deposit_no]||[];
+          const totalRemain = its.reduce((s,i)=>s+((i.total_qty||0)-(i.used_qty||0)),0);
+          const summary = its.map(i=>i.product_name).join('、')||'—';
+          const status = d.is_active===false ? '已關閉' : totalRemain<=0 ? '已用完' : '寄放中';
           return `<tr style="${d.is_active===false?'opacity:.5':''}">
+            <td style="font-size:12px;color:var(--tx3)">${d.deposit_no}</td>
             <td style="font-weight:500">${d.customer_name}</td>
-            <td>${d.product_name}</td>
+            <td style="font-size:13px">${summary}</td>
             <td style="font-size:12px">${fD(d.deposit_date)}</td>
-            <td style="text-align:center">${d.total_qty} ${d.unit}</td>
-            <td style="text-align:center;color:var(--tx3)">${d.used_qty||0} ${d.unit}</td>
-            <td style="text-align:center;font-weight:700;color:${remain>0?'var(--ac)':'var(--rd)'}">${remain} ${d.unit}</td>
             <td style="font-size:11px;color:var(--tx3)">${d.source_order_no||'手動登記'}</td>
-            <td><span class="badge ${remain>0&&d.is_active!==false?'bg':'br2'}">${remain<=0?'已用完':d.is_active===false?'已關閉':'寄放中'}</span></td>
+            <td><span class="badge ${status==='寄放中'?'bg':'br2'}">${status}</span></td>
             <td style="white-space:nowrap">
-              ${remain>0?`<button class="btn btn-s" onclick="useDepositModal(${d.id})">登記使用/取回</button>`:''}
-              <button class="btn btn-s" onclick="viewDepositHistory(${d.id})">記錄</button>
+              ${totalRemain>0?`<button class="btn btn-s" onclick="useDepositModal('${d.deposit_no}')">登記使用/取回</button>`:''}
+              <button class="btn btn-s" onclick="viewDepositDetail('${d.deposit_no}')">明細</button>
             </td>
           </tr>`;
-        }).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--tx3)">尚無寄放記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3)">尚無寄放記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;
@@ -119,14 +131,12 @@ async function cdPickOrder(orderNo) {
     sb.from('sales_order_items').select('*').eq('order_no',orderNo),
   ]);
   if(!o) return;
-  // 訂單本身若缺客戶編號，嘗試用姓名比對客戶清單補上，這樣之後服務單才抓得到她的寄放品項
   if(!o.customer_no && o.customer_name) {
     const { data:cm } = await sb.from('customers').select('customer_no').eq('name',o.customer_name).maybeSingle();
     if(cm?.customer_no) o.customer_no = cm.customer_no;
   }
   window._cdOrder = o;
 
-  // 撈這些商品的服務單位換算設定（1庫存單位=幾個服務單位），跟撥轉同一套邏輯
   const productNos = [...new Set((its||[]).map(i=>i.product_no).filter(Boolean))];
   let prodMap = {};
   if(productNos.length) {
@@ -135,18 +145,21 @@ async function cdPickOrder(orderNo) {
   }
 
   $('cd-order-results').innerHTML = `<div class="al al-w" style="font-size:12px">已選：<b>${o.order_no}</b>（${o.customer_name}）</div>`;
+  window._cdOrderMeta = {};
   $('cd-order-items').innerHTML = `
   <div class="fl" style="margin-bottom:6px"><label>這張單裡要寄放的商品</label></div>
-  <div class="al al-w" style="font-size:11px;margin-bottom:8px">已依商品的「服務單位換算」設定自動算好寄放數量，可以手動調整。</div>
-  <table class="itb"><tr><th>商品</th><th>訂購數量</th><th>寄放數量</th><th>單位</th></tr>
+  <div class="al al-w" style="font-size:11px;margin-bottom:8px">已依商品的「服務單位換算」設定自動算好寄放數量（含贈品），可以手動調整。建立後，這張銷售訂單對應的出貨進度也會一併更新，不會再一直卡在「待出貨」。</div>
+  <table class="itb"><tr><th>商品</th><th>訂購+贈品</th><th>寄放數量</th><th>單位</th></tr>
     ${(its||[]).map((i,idx)=>{
       const prod = prodMap[i.product_no];
       const perStock = parseFloat(prod?.service_units_per_stock)||1;
       const svcUnit = prod?.service_unit||'組';
-      const defQty = Math.round((i.qty||0)*perStock*100)/100;
+      const saleQtyTotal = (i.qty||0)+(i.gift_qty||0);
+      const defQty = Math.round(saleQtyTotal*perStock*100)/100;
+      window._cdOrderMeta[idx] = { product_no:i.product_no, item_id:i.id, perStock, saleQtyTotal, alreadyShipped:i.shipped_qty||0 };
       return `<tr>
-      <td style="font-size:12px">${i.product_name}${perStock>1?`<div style="font-size:10px;color:var(--tx3)">1${i.unit||'個'}=${perStock}${svcUnit}</div>`:''}</td>
-      <td class="num">${i.qty}</td>
+      <td style="font-size:12px">${i.product_name}${i.gift_qty?`<div style="font-size:10px;color:var(--am)">含贈品${i.gift_qty}${i.unit||'個'}</div>`:''}${perStock>1?`<div style="font-size:10px;color:var(--tx3)">1${i.unit||'個'}=${perStock}${svcUnit}</div>`:''}</td>
+      <td class="num">${saleQtyTotal}${i.unit||'個'}</td>
       <td><input type="number" id="cd-itqty-${idx}" value="${defQty}" min="0" step="0.5" style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
       <td><input type="text" id="cd-itunit-${idx}" value="${svcUnit}" style="width:50px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
     </tr>`;
@@ -178,122 +191,185 @@ window.cdPickCust = cdPickCust;
 
 async function saveDeposit() {
   const mode = window._cdMode || 'order';
-  const rows = [];
+  const depositDate = mode==='order' ? today() : (v('cd-date')||today());
+  const depositNo = 'CD-'+depositDate.replace(/-/g,'')+'-'+Date.now().toString().slice(-4)+Math.floor(Math.random()*10);
+  let headerPayload, itemRows = [], shipmentUpdates = [];
+
   if(mode==='order') {
     if(!window._cdOrder) { toast('請先搜尋並選擇一張銷售單','e'); return; }
     (window._cdOrderItems||[]).forEach((i,idx)=>{
       const qty = parseFloat($('cd-itqty-'+idx)?.value)||0;
-      if(qty>0) rows.push({
-        customer_no: window._cdOrder.customer_no, customer_name: window._cdOrder.customer_name,
-        product_no: i.product_no, product_name: i.product_name,
-        unit: $('cd-itunit-'+idx)?.value||'組', total_qty: qty, used_qty:0,
-        source_order_no: window._cdOrder.order_no, deposit_date: today(), is_active:true
+      if(qty<=0) return;
+      const meta = (window._cdOrderMeta||{})[idx] || {};
+      itemRows.push({
+        deposit_no: depositNo, product_no: i.product_no, product_name: i.product_name,
+        unit: $('cd-itunit-'+idx)?.value||'組', total_qty: qty, used_qty: 0
       });
+      const perStock = meta.perStock||1;
+      const saleQtyFromDeposit = Math.round((qty/perStock)*100)/100;
+      const newShipped = Math.min(meta.saleQtyTotal||0, (meta.alreadyShipped||0)+saleQtyFromDeposit);
+      if(meta.item_id) shipmentUpdates.push({ item_id: meta.item_id, newShipped, alreadyShipped: meta.alreadyShipped||0 });
     });
-    if(!rows.length) { toast('請至少填一項寄放數量','e'); return; }
+    if(!itemRows.length) { toast('請至少填一項寄放數量','e'); return; }
+    headerPayload = {
+      deposit_no: depositNo, customer_no: window._cdOrder.customer_no||null, customer_name: window._cdOrder.customer_name,
+      source_order_no: window._cdOrder.order_no, deposit_date: depositDate, is_active:true
+    };
   } else {
     const custNo = v('cd-cust-no'), custName = v('cd-cust-name')||$('cd-cust-inp')?.value;
     const pname = v('cd-pname'), qty = parseFloat(v('cd-qty'))||0;
     if(!custName) { toast('請選擇客戶','e'); return; }
     if(!pname || qty<=0) { toast('請填寫商品名稱與寄放數量','e'); return; }
-    rows.push({
-      customer_no: custNo||null, customer_name: custName,
-      product_no: null, product_name: pname, unit: v('cd-unit')||'組',
-      total_qty: qty, used_qty:0, source_order_no: null,
-      deposit_date: v('cd-date')||today(), note: v('cd-note')||null, is_active:true
-    });
+    itemRows.push({ deposit_no: depositNo, product_no:null, product_name: pname, unit: v('cd-unit')||'組', total_qty: qty, used_qty:0 });
+    headerPayload = {
+      deposit_no: depositNo, customer_no: custNo||null, customer_name: custName,
+      source_order_no: null, deposit_date: depositDate, note: v('cd-note')||null, is_active:true
+    };
   }
 
-  for(const r of rows) {
-    const depositNo = 'CD-'+r.deposit_date.replace(/-/g,'')+'-'+Date.now().toString().slice(-4)+Math.floor(Math.random()*10);
-    const { error } = await sb.from('customer_deposits').insert({...r, deposit_no: depositNo});
-    if(error) { toast('建立失敗：'+error.message,'e'); return; }
+  const { error:hErr } = await sb.from('customer_deposits').insert(headerPayload);
+  if(hErr) { toast('建立失敗：'+hErr.message,'e'); return; }
+  const { error:iErr } = await sb.from('customer_deposit_items').insert(itemRows);
+  if(iErr) { toast('品項建立失敗：'+iErr.message,'e'); return; }
+
+  if(shipmentUpdates.length && window._cdOrder) {
+    for(const u of shipmentUpdates) {
+      await sb.from('sales_order_items').update({shipped_qty:u.newShipped}).eq('id',u.item_id);
+    }
+    const { data:allIts } = await sb.from('sales_order_items').select('qty,gift_qty,shipped_qty').eq('order_no',window._cdOrder.order_no);
+    const allDone = (allIts||[]).every(i=>(i.shipped_qty||0)>=(i.qty||0)+(i.gift_qty||0));
+    const partDone = (allIts||[]).some(i=>(i.shipped_qty||0)>0);
+    const shipStatus = allDone?'全部出貨':partDone?'部分出貨':'待出貨';
+    const { data:ord } = await sb.from('sales_orders').select('note,stock_deducted_at_creation').eq('order_no',window._cdOrder.order_no).single();
+    const newNote = (ord?.note?ord.note+'\n':'')+`已轉客戶寄放（寄放單：${depositNo}）`;
+    await sb.from('sales_orders').update({ ship_status:shipStatus, note:newNote }).eq('order_no',window._cdOrder.order_no);
+    if(ord && ord.stock_deducted_at_creation===false) {
+      for(const u of shipmentUpdates) {
+        const item = (window._cdOrderItems||[]).find(i=>i.id===u.item_id);
+        if(item?.product_no) {
+          const deductQty = u.newShipped - u.alreadyShipped;
+          if(deductQty>0) {
+            const { data:p } = await sb.from('products').select('stock').eq('product_no',item.product_no).single();
+            if(p) await sb.from('products').update({stock:Math.max(0,(p.stock||0)-deductQty)}).eq('product_no',item.product_no);
+          }
+        }
+      }
+    }
   }
-  toast(`✅ 已建立 ${rows.length} 筆寄放記錄`);
-  window._cdOrder = null; window._cdOrderItems = null;
+
+  toast(`✅ 已建立寄放單 ${depositNo}`);
+  window._cdOrder = null; window._cdOrderItems = null; window._cdOrderMeta = null;
   CM();
   customerDeposits();
 }
 window.saveDeposit = saveDeposit;
 
-// ── 登記使用/取回 ──
-async function useDepositModal(id) {
-  const { data:d } = await sb.from('customer_deposits').select('*').eq('id',id).single();
+// ── 登記使用/取回（一張寄放單裡的所有品項一次登記，跟出貨記錄同邏輯）──
+async function useDepositModal(depositNo) {
+  const [{ data:d },{ data:its }] = await Promise.all([
+    sb.from('customer_deposits').select('*').eq('deposit_no',depositNo).single(),
+    sb.from('customer_deposit_items').select('*').eq('deposit_no',depositNo),
+  ]);
   if(!d) return;
-  const remain = (d.total_qty||0)-(d.used_qty||0);
-  OM(`登記使用／取回：${d.customer_name} - ${d.product_name}`, `
-  <div class="al al-w" style="font-size:12px;margin-bottom:12px">目前剩餘 ${remain} ${d.unit}</div>
+  const rows = its.map(i=>{
+    const remain = (i.total_qty||0)-(i.used_qty||0);
+    return `<tr>
+      <td style="font-size:12px">${i.product_name}</td>
+      <td class="num">${i.total_qty} ${i.unit}</td>
+      <td class="num ok">${i.used_qty||0} ${i.unit}</td>
+      <td class="num" style="font-weight:700">${remain} ${i.unit}</td>
+      <td><input type="number" id="cd-use-${i.id}" value="0" min="0" max="${remain}" step="0.5" ${remain<=0?'disabled':''}
+        style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px${remain<=0?';opacity:.4':''}"></td>
+    </tr>`;
+  }).join('');
+  OM(`登記使用／取回：${d.customer_name}（${depositNo}）`, `
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('ud-date','日期','date',today())}
-    ${fi('ud-qty','數量 *','number','1')}
+    <div class="fl"><label>類型</label>
+      <select id="f-ud-type" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
+        <option value="服務使用">服務使用（店內幫她用掉）</option>
+        <option value="客戶取回">客戶取回（自己拿回家）</option>
+        <option value="其他">其他</option>
+      </select>
+    </div>
   </div>
-  <div class="fl" style="margin-bottom:10px"><label>類型</label>
-    <select id="f-ud-type" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
-      <option value="服務使用">服務使用（店內幫她用掉）</option>
-      <option value="客戶取回">客戶取回（自己拿回家）</option>
-      <option value="其他">其他</option>
-    </select>
-  </div>
-  ${fi('ud-note','備註（選填）')}`,
+  <table class="itb"><tr><th>商品</th><th>總量</th><th>已用/取回</th><th>剩餘</th><th>本次數量</th></tr>${rows}</table>
+  <div style="margin-top:10px">${fi('ud-note','備註（選填）')}</div>`,
   `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveDepositUsage(${id})">確認</button>`);
+   <button class="btn btn-p" onclick="saveDepositUsage('${depositNo}')">確認</button>`);
+  window._udItems = its;
 }
 window.useDepositModal = useDepositModal;
 
-async function saveDepositUsage(id) {
-  const { data:d } = await sb.from('customer_deposits').select('*').eq('id',id).single();
-  if(!d) return;
-  const qty = parseFloat(v('ud-qty'))||0;
-  const remain = (d.total_qty||0)-(d.used_qty||0);
-  if(qty<=0){ toast('請填寫數量','e'); return; }
-  if(qty>remain){ toast(`超過剩餘數量（剩 ${remain} ${d.unit}）`,'e'); return; }
-
-  await sb.from('customer_deposit_usages').insert({
-    deposit_id:id, use_date:v('ud-date')||today(), qty_used:qty,
-    use_type:v('ud-type')||'服務使用', note:v('ud-note')||null
-  });
-  await sb.from('customer_deposits').update({
-    used_qty:(d.used_qty||0)+qty, updated_at:new Date().toISOString()
-  }).eq('id',id);
-
+async function saveDepositUsage(depositNo) {
+  const date = v('ud-date')||today();
+  const type = v('ud-type')||'服務使用';
+  const note = v('ud-note')||null;
+  const items = window._udItems||[];
+  let any=false;
+  for(const i of items) {
+    const qty = parseFloat($('cd-use-'+i.id)?.value)||0;
+    if(qty<=0) continue;
+    const remain = (i.total_qty||0)-(i.used_qty||0);
+    if(qty>remain) { toast(`「${i.product_name}」超過剩餘數量`,'e'); return; }
+    any=true;
+    await sb.from('customer_deposit_usages').insert({
+      deposit_item_id:i.id, use_date:date, qty_used:qty, use_type:type, note
+    });
+    await sb.from('customer_deposit_items').update({used_qty:(i.used_qty||0)+qty}).eq('id',i.id);
+  }
+  if(!any){ toast('請至少填一項數量','e'); return; }
   toast('✅ 已登記');
   CM();
   customerDeposits();
 }
 window.saveDepositUsage = saveDepositUsage;
 
-async function viewDepositHistory(id) {
-  const [{ data:d },{ data:uses }] = await Promise.all([
-    sb.from('customer_deposits').select('*').eq('id',id).single(),
-    sb.from('customer_deposit_usages').select('*').eq('deposit_id',id).order('use_date',{ascending:false}),
+async function viewDepositDetail(depositNo) {
+  const [{ data:d },{ data:its }] = await Promise.all([
+    sb.from('customer_deposits').select('*').eq('deposit_no',depositNo).single(),
+    sb.from('customer_deposit_items').select('*').eq('deposit_no',depositNo),
   ]);
   if(!d) return;
-  const remain = (d.total_qty||0)-(d.used_qty||0);
-  OM(`寄放記錄：${d.customer_name} - ${d.product_name}`, `
+  const itemIds = its.map(i=>i.id);
+  const usesRes = itemIds.length ? await sb.from('customer_deposit_usages').select('*').in('deposit_item_id',itemIds).order('use_date',{ascending:false}) : {data:[]};
+  const uses = usesRes.data;
+  const itemMap = {}; its.forEach(i=>itemMap[i.id]=i);
+  OM(`寄放明細：${d.customer_name}（${depositNo}）`, `
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;font-size:13px">
     <div><span style="color:var(--tx3)">寄放日期：</span>${fD(d.deposit_date)}</div>
     <div><span style="color:var(--tx3)">來源：</span>${d.source_order_no||'手動登記'}</div>
-    <div><span style="color:var(--tx3)">總量：</span>${d.total_qty} ${d.unit}</div>
-    <div><span style="color:var(--tx3)">剩餘：</span><b style="color:${remain>0?'var(--ac)':'var(--rd)'}">${remain} ${d.unit}</b></div>
   </div>
   ${d.note?`<div class="al al-w" style="font-size:12px;margin-bottom:12px">備註：${d.note}</div>`:''}
-  <table class="itb"><tr><th>日期</th><th>類型</th><th>數量</th><th>備註</th></tr>
-    ${(uses||[]).map(u=>`<tr>
+  <table class="itb"><tr><th>商品</th><th>總量</th><th>已用/取回</th><th>剩餘</th></tr>
+    ${its.map(i=>`<tr>
+      <td style="font-size:12px">${i.product_name}</td>
+      <td class="num">${i.total_qty} ${i.unit}</td>
+      <td class="num">${i.used_qty||0} ${i.unit}</td>
+      <td class="num" style="font-weight:700">${(i.total_qty||0)-(i.used_qty||0)} ${i.unit}</td>
+    </tr>`).join('')}
+  </table>
+  <div style="margin-top:14px;font-size:13px;font-weight:600">使用/取回記錄</div>
+  <table class="itb"><tr><th>日期</th><th>商品</th><th>類型</th><th>數量</th><th>備註</th></tr>
+    ${(uses||[]).map(u=>{ const it=itemMap[u.deposit_item_id]; return `<tr>
       <td style="font-size:12px">${fD(u.use_date)}</td>
+      <td style="font-size:12px">${it?.product_name||'—'}</td>
       <td><span class="badge ${u.use_type==='服務使用'?'bg':'ba'}" style="font-size:10px">${u.use_type}</span></td>
-      <td class="num">${u.qty_used} ${d.unit}</td>
+      <td class="num">${u.qty_used} ${it?.unit||''}</td>
       <td style="font-size:12px;color:var(--tx3)">${u.note||u.service_order_no||'—'}</td>
-    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--tx3)">尚無使用記錄</td></tr>'}
+    </tr>`;}).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">尚無使用記錄</td></tr>'}
   </table>`,
   `<button class="btn" onclick="CM()">關閉</button>`);
 }
-window.viewDepositHistory = viewDepositHistory;
+window.viewDepositDetail = viewDepositDetail;
 
-// 供 service-orders.js 呼叫：抓某客戶目前有剩餘的寄放品項
+// 供 service-orders.js 呼叫：抓某客戶目前有剩餘的寄放品項（回傳的是「品項」，id 是 customer_deposit_items.id）
 async function getCustomerDeposits(customerNo) {
   if(!customerNo) return [];
-  const { data } = await sb.from('customer_deposits').select('*')
-    .eq('customer_no',customerNo).eq('is_active',true);
-  return (data||[]).filter(d=>(d.total_qty||0)-(d.used_qty||0)>0);
+  const { data:deposits } = await sb.from('customer_deposits').select('deposit_no').eq('customer_no',customerNo).eq('is_active',true);
+  const depositNos = (deposits||[]).map(d=>d.deposit_no);
+  if(!depositNos.length) return [];
+  const { data:items } = await sb.from('customer_deposit_items').select('*').in('deposit_no',depositNos);
+  return (items||[]).filter(i=>(i.total_qty||0)-(i.used_qty||0)>0);
 }
 window.getCustomerDeposits = getCustomerDeposits;
