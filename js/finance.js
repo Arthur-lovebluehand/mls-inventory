@@ -397,7 +397,7 @@ async function showSvcFinance() {
   const [{ data:orders },{ data:transfers },{ data:items }] = await Promise.all([
     sb.from('service_orders').select('order_date,total,consumable_cost'),
     sb.from('service_transfers').select('transfer_date,total_cost'),
-    sb.from('service_order_items').select('order_date:service_orders(order_date),technician_id,technician_name,technician_pay,item_type,qty,unit_price,subtotal').eq('item_type','service'),
+    sb.from('service_order_items').select('order_no,item_name,order_date:service_orders(order_date),technician_id,technician_name,technician_pay,item_type,qty,unit_price,subtotal').eq('item_type','service'),
   ]);
 
   // 月度彙整
@@ -407,16 +407,18 @@ async function showSvcFinance() {
   (transfers||[]).forEach(t=>{ const ym=(t.transfer_date||'').slice(0,7); if(ym) addM(ym,'trCost',t.total_cost); });
   (items||[]).forEach(i=>{ const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',i.technician_pay); });
 
-  // 技師月薪彙整
+  // 技師月薪彙整（用姓名合併，避免同一人因為技師資料重複ID分成好幾行）
   const techMap = {};
+  window._svcTechDetail = {};
   (items||[]).forEach(i=>{
-    if(!i.technician_id) return;
+    if(!i.technician_name) return;
     const ym=(i.order_date?.order_date||'').slice(0,7);
     if(!ym) return;
-    const key=`${i.technician_id}_${ym}`;
+    const key=`${i.technician_name}_${ym}`;
     if(!techMap[key]) techMap[key]={name:i.technician_name,ym,pay:0,sessions:0};
     techMap[key].pay+=i.technician_pay||0;
     techMap[key].sessions+=i.qty||0;
+    (window._svcTechDetail[key]=window._svcTechDetail[key]||[]).push(i);
   });
 
   const months = Object.keys(mMap).sort().reverse().slice(0,24);
@@ -446,8 +448,8 @@ async function showSvcFinance() {
       <div class="tb"><span class="tt">技師月薪表</span></div>
       <div class="tw"><table style="width:100%">
         <tr><th>月份</th><th>技師</th><th>服務時數/次</th><th>應付薪資</th></tr>
-        ${Object.values(techMap).sort((a,b)=>b.ym.localeCompare(a.ym)||a.name.localeCompare(b.name)).map(t=>`<tr>
-          <td>${t.ym}</td>
+        ${Object.entries(techMap).sort((a,b)=>b[1].ym.localeCompare(a[1].ym)||a[1].name.localeCompare(b[1].name)).map(([key,t])=>`<tr style="cursor:pointer" onclick="techMonthDetail('${key}')" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+          <td style="color:var(--ac);font-weight:600">${t.ym}</td>
           <td style="font-weight:500">${t.name}</td>
           <td style="text-align:center">${t.sessions}</td>
           <td class="num" style="font-weight:700;color:var(--bl)">${fM(t.pay)}</td>
@@ -499,3 +501,28 @@ async function svcMonthDetail(ym) {
   `,`<button class="btn" onclick="CM()">關閉</button>`);
 }
 window.svcMonthDetail = svcMonthDetail;
+
+async function techMonthDetail(key) {
+  const rows = window._svcTechDetail?.[key]||[];
+  if(!rows.length){ toast('無資料','w'); return; }
+  const [name,ym] = [rows[0].technician_name, (rows[0].order_date?.order_date||'').slice(0,7)];
+  const orderNos = [...new Set(rows.map(r=>r.order_no))];
+  const { data:ords } = await sb.from('service_orders').select('order_no,order_date,customer_name').in('order_no',orderNos);
+  const ordMap = {}; (ords||[]).forEach(o=>ordMap[o.order_no]=o);
+  const totalPay = rows.reduce((s,r)=>s+(r.technician_pay||0),0);
+
+  OM(`${ym} ${name} 薪資明細`, `
+  <div style="font-size:16px;font-weight:700;margin-bottom:14px;color:var(--bl)">應付薪資合計：${fM(totalPay)}</div>
+  <table class="itb"><tr><th>服務單</th><th>日期</th><th>客戶</th><th>項目</th><th>數量</th><th>抽成</th></tr>
+    ${rows.map(r=>`<tr>
+      <td><a href="#" onclick="event.preventDefault();CM();setTimeout(()=>svcShowOrder('${r.order_no}'),80)" style="color:var(--ac);font-size:11px;font-family:monospace">${r.order_no}</a></td>
+      <td style="font-size:11px">${fD(ordMap[r.order_no]?.order_date)}</td>
+      <td style="font-size:12px">${ordMap[r.order_no]?.customer_name||'—'}</td>
+      <td style="font-size:12px">${r.item_name||'—'}</td>
+      <td class="num">${r.qty}</td>
+      <td class="num" style="color:var(--bl)">${fM(r.technician_pay)}</td>
+    </tr>`).join('')}
+  </table>`,
+  `<button class="btn" onclick="CM()">關閉</button>`);
+}
+window.techMonthDetail = techMonthDetail;

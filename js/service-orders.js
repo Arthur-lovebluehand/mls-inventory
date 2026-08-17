@@ -55,9 +55,9 @@ async function svcShowOrder(no) {
   </div>
   ${services.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">服務項目</div>
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
-    <tr><th>項目</th><th>數量</th><th>單價</th><th>小計</th></tr>
+    <tr><th>項目</th><th>數量</th><th>單價</th><th>小計</th><th>技師</th></tr>
     ${services.map(i=>`<tr><td>${i.item_name}${i.is_gift?' <span class="badge ba" style="font-size:10px">贈</span>':''}</td><td>${i.qty}${i.unit||''}</td>
-      <td class="num">${fM(i.unit_price)}</td><td class="num">${fM(i.subtotal)}</td></tr>`).join('')}
+      <td class="num">${fM(i.unit_price)}</td><td class="num">${fM(i.subtotal)}</td><td style="font-size:12px">${i.technician_name||'—'}</td></tr>`).join('')}
   </table></div></div>`:''}
   ${consumables.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">耗材</div>
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
@@ -78,11 +78,22 @@ async function svcShowOrder(no) {
     <span style="color:var(--tx3);font-weight:600">備註：</span>${o.note}
   </div>`:''}`,
   `<button class="btn" onclick="CM()">關閉</button>
+   <button class="btn btn-p" onclick="CM();svcNewOrder('${no}')">修改</button>
    <button class="btn btn-r" onclick="deleteSvcOrder('${no}')">刪除</button>`);
 }
 
 window.svcShowOrder    = svcShowOrder;
-async function svcNewOrder() {
+async function svcNewOrder(editNo) {
+  let existingOrder=null, existingItems=[];
+  if(editNo) {
+    const [{ data:o },{ data:its }] = await Promise.all([
+      sb.from('service_orders').select('*').eq('order_no',editNo).single(),
+      sb.from('service_order_items').select('*').eq('order_no',editNo),
+    ]);
+    if(!o){ toast('找不到訂單','e'); return; }
+    existingOrder=o; existingItems=its||[];
+    await reverseSvcOrderEffects(editNo); // 先還原庫存/耗材/寄放/儲值，等一下存檔時會重新照畫面內容扣一次
+  }
   // 抓服務項目、服務庫存商品、客戶、完整商品清單（供贈品用）
   const [{ data:sitems },{ data:sinv },{ data:sconsum },{ data:custs },{ data:techs },{ data:allProds }] = await Promise.all([
     sb.from('service_items').select('*').eq('is_active',true).order('sort_order'),
@@ -97,9 +108,16 @@ async function svcNewOrder() {
   const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-name="${t.name}">${t.name}（${t.role||'技師'}，抽成 ${Math.round(t.commission_rate*100)}%）</option>`).join('');
 
   const today2 = new Date().toISOString().split('T')[0];
-  const orderNo = await genNo('SV','service_orders','order_no');
+  const orderNo = editNo || await genNo('SV','service_orders','order_no');
+  window._svcEditNo = editNo || null;
 
-  window._svcItems = []; // 服務訂單品項暫存
+  // 編輯模式：把原本的品項轉回畫面用的格式，讓使用者可以直接看到、增減調整
+  window._svcItems = existingItems.map(i=>({
+    id: Date.now()+Math.random(), item_type:i.item_type, item_name:i.item_name,
+    product_no:i.product_no||null, consumable_id:i.consumable_id||null, deposit_id:i.deposit_id||null,
+    qty:i.qty, unit:i.unit, unit_price:i.unit_price, cost:i.cost, subtotal:i.subtotal, is_gift:i.is_gift||false,
+    technician_id:i.technician_id||null, technician_name:i.technician_name||null, technician_pay:i.technician_pay||0
+  }));
 
   const catGroups = {};
   (sitems||[]).forEach(s=>{ const c=s.category||'其他項目'; if(!catGroups[c]) catGroups[c]=[]; catGroups[c].push(s); });
@@ -114,22 +132,22 @@ async function svcNewOrder() {
     `<option value="${c.item_no}" data-type="consumable" data-id="${c.id}" data-unit="${c.unit}" data-cost="${c.cost||0}">${c.name}（庫存 ${c.stock_qty} ${c.unit}）</option>`
   ).join('');
 
-  OM('新增服務單', `
+  OM(editNo?`編輯服務單：${editNo}`:'新增服務單', `
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
     ${fi('sv-no','服務單號','text',orderNo)}
-    <div class="fl"><label>日期</label><input id="f-sv-date" type="date" value="${today2}" onchange="regenNoOnDateChange('sv-date','sv-no','SV','service_orders','order_no')" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
+    <div class="fl"><label>日期</label><input id="f-sv-date" type="date" value="${existingOrder?.order_date||today2}" ${editNo?'':`onchange="regenNoOnDateChange('sv-date','sv-no','SV','service_orders','order_no')"`} style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
     <div class="fl"><label>選擇客戶</label>
       <div class="ss-wrap" id="ss-svcust">
-        <input class="ss-input" id="ss-inp-svcust" placeholder="輸入姓名搜尋…" autocomplete="off"
+        <input class="ss-input" id="ss-inp-svcust" placeholder="輸入姓名搜尋…" autocomplete="off" value="${existingOrder?.customer_name||''}"
           oninput="svcFilterCust(this.value)" onfocus="svcFilterCust(this.value)"
           onblur="setTimeout(()=>$('ss-drop-svcust')?.classList.remove('open'),200)">
-        <input type="hidden" id="f-sv-cust">
+        <input type="hidden" id="f-sv-cust" value="${existingOrder?.customer_no||''}">
         <div class="ss-drop" id="ss-drop-svcust"></div>
       </div>
     </div>
-    ${fi('sv-cname','客戶姓名 *')}
+    ${fi('sv-cname','客戶姓名 *','text',existingOrder?.customer_name||'')}
   </div>
   <div style="margin-bottom:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
     <div style="font-weight:600;margin-bottom:8px;font-size:13px">加入服務項目（人工）</div>
@@ -186,16 +204,16 @@ async function svcNewOrder() {
   </div>
   <div id="sv-items-area" style="margin-bottom:14px"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fs('sv-pay','付款方式',['現金','銀行轉帳','LINE Pay','儲值扣款','現金+儲值'],'現金')}
-    ${fi('sv-person','實際服務對象（選填）','text','')}
+    ${fs('sv-pay','付款方式',['現金','銀行轉帳','LINE Pay','儲值扣款','現金+儲值'],existingOrder?.payment_method||'現金')}
+    ${fi('sv-person','實際服務對象（選填）','text', existingOrder?.note?.match(/服務對象：([^）]*)/)?.[1]||'')}
   </div>
   <div class="fl" style="margin-bottom:10px">
     <label style="font-weight:600">備註</label>
     <textarea id="f-sv-note" rows="2" placeholder="例如：使用王太太儲值金，實際服務對象：王小姐"
-      style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none;resize:vertical"></textarea>
+      style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none;resize:vertical">${existingOrder?.note?.replace(/（服務對象：[^）]*）/,'').replace(/^服務對象：.*/,'')||''}</textarea>
   </div>`,
   `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveSvcOrder()">建立服務單</button>`,true);
+   <button class="btn btn-p" onclick="saveSvcOrder()">${editNo?'儲存修改':'建立服務單'}</button>`,true);
 
   window.svcFilterCust = q=>{
     const fil = q ? window._svcAllCusts.filter(c=>c.name.includes(q)||(c.phone||'').includes(q)) : window._svcAllCusts;
@@ -215,6 +233,9 @@ async function svcNewOrder() {
     $('sv-giftpno').value = pno;
     $('ss-drop-svgift')?.classList.remove('open');
   };
+
+  renderSvcItems();
+  if(existingOrder?.customer_no) svcPickCust(existingOrder.customer_no, existingOrder.customer_name);
 }
 
 window.svcNewOrder     = svcNewOrder;
@@ -425,14 +446,18 @@ async function saveSvcOrder() {
     else if(payMethod==='現金+儲值') { paidByCredit=Math.min(bal,total); paidByCash=Math.max(0,total-paidByCredit); }
   }
 
-  // 1. 建服務訂單
-  const { error:e1 } = await sb.from('service_orders').insert({
+  // 1. 建/更新服務訂單
+  const editNo = window._svcEditNo;
+  const payload = {
     order_no:no, order_date:date, customer_no:custNo, customer_name:custName,
     total, consumable_cost:consumableCost,
     paid_by_credit:paidByCredit, paid_by_cash:paidByCash,
     payment_method:payMethod, note:note||null
-  });
-  if(e1){ toast('建立失敗：'+e1.message,'e'); return; }
+  };
+  const { error:e1 } = editNo
+    ? await sb.from('service_orders').update(payload).eq('order_no',editNo)
+    : await sb.from('service_orders').insert(payload);
+  if(e1){ toast((editNo?'更新失敗：':'建立失敗：')+e1.message,'e'); return; }
 
   // 2. 建品項
   const items = window._svcItems.map(i=>({
@@ -489,18 +514,53 @@ async function saveSvcOrder() {
     });
   }
 
-  await logAction('create','service_orders',no,`新增服務單 ${no}，客戶：${custName}，金額：${fM(total)}`,null,{total});
-  toast('✅ 服務單建立成功');
+  await logAction(editNo?'update':'create','service_orders',no,`${editNo?'修改':'新增'}服務單 ${no}，客戶：${custName}，金額：${fM(total)}`,null,{total});
+  toast(editNo?'✅ 服務單已更新':'✅ 服務單建立成功');
   CM();
   window._svcItems=[];
+  window._svcEditNo=null;
   svcOrders();
 }
 
 window.saveSvcOrder    = saveSvcOrder;
+// 還原一張服務單造成的所有影響（庫存/耗材/客戶寄放/儲值），供刪除、編輯共用
+async function reverseSvcOrderEffects(no) {
+  const [{ data:o },{ data:its }] = await Promise.all([
+    sb.from('service_orders').select('*').eq('order_no',no).single(),
+    sb.from('service_order_items').select('*').eq('order_no',no),
+  ]);
+  for(const item of (its||[]).filter(i=>i.item_type==='consumable'&&i.product_no)) {
+    const { data:inv } = await sb.from('service_inventory').select('stock_qty').eq('product_no',item.product_no).single();
+    if(inv) await sb.from('service_inventory').update({stock_qty:(inv.stock_qty||0)+item.qty,updated_at:new Date().toISOString()}).eq('product_no',item.product_no);
+  }
+  for(const item of (its||[]).filter(i=>i.item_type==='consumable'&&i.consumable_id)) {
+    const { data:sc } = await sb.from('service_consumables').select('stock_qty').eq('id',item.consumable_id).single();
+    if(sc) await sb.from('service_consumables').update({stock_qty:(sc.stock_qty||0)+item.qty,updated_at:new Date().toISOString()}).eq('id',item.consumable_id);
+  }
+  for(const item of (its||[]).filter(i=>i.item_type==='consumable'&&i.deposit_id)) {
+    const { data:dep } = await sb.from('customer_deposit_items').select('used_qty').eq('id',item.deposit_id).single();
+    if(dep) await sb.from('customer_deposit_items').update({used_qty:Math.max(0,(dep.used_qty||0)-item.qty)}).eq('id',item.deposit_id);
+  }
+  await sb.from('customer_deposit_usages').delete().eq('service_order_no',no);
+  for(const item of (its||[]).filter(i=>i.item_type==='gift_product'&&i.product_no)) {
+    const { data:p } = await sb.from('products').select('stock').eq('product_no',item.product_no).single();
+    if(p) await sb.from('products').update({stock:(p.stock||0)+item.qty}).eq('product_no',item.product_no);
+  }
+  if(o?.paid_by_credit>0 && o?.customer_no) {
+    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',o.customer_no).single();
+    if(cr) await sb.from('store_credits').update({balance:(cr.balance||0)+o.paid_by_credit,updated_at:new Date().toISOString()}).eq('customer_no',o.customer_no);
+    await sb.from('store_credit_records').delete().eq('order_no',no);
+    if(o.customer_no) await window.recomputeCreditChain?.(o.customer_no);
+  }
+  await sb.from('service_order_items').delete().eq('order_no',no);
+}
+window.reverseSvcOrderEffects = reverseSvcOrderEffects;
+
 async function deleteSvcOrder(no) {
-  if(!confirm(`確定刪除服務單 ${no}？`)) return;
+  if(!confirm(`確定刪除服務單 ${no}？\n\n會一併還原這張單扣掉的庫存/耗材/客戶寄放數量，以及退回儲值扣款。`)) return;
+  await reverseSvcOrderEffects(no);
   await sb.from('service_orders').delete().eq('order_no',no);
-  toast('已刪除');
+  toast('已刪除，相關庫存與儲值已還原');
   CM();
   svcOrders();
 }
