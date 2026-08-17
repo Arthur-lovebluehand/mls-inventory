@@ -39,7 +39,7 @@ window.addEventListener('error',e=>{
       showLoginPage();
       return;
     }
-    loadPayMethods().then(() => go('dashboard'));
+    Promise.all([loadPayMethods(),loadShipMethods()]).then(() => go('dashboard'));
   };
   s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
   document.head.appendChild(s);
@@ -360,6 +360,16 @@ async function loadPayMethods(){
 
 function payMethodSel(id,val){
   return `<div class="fl"><label>付款方式</label><select id="f-${id}">${_payMethods.map(m=>`<option value="${m}" ${m===val?'selected':''}>${m}</option>`).join('')}</select></div>`;
+}
+
+var _shipMethods = ['郵寄','超商取貨','親送','自取'];
+async function loadShipMethods(){
+  const{data}=await sb.from('shipping_methods').select('name').eq('is_active',true).order('sort_order');
+  if(data&&data.length) _shipMethods=data.map(x=>x.name);
+}
+
+function shipMethodSel(id,val){
+  return `<div class="fl"><label>寄送方式</label><select id="f-${id}">${_shipMethods.map(m=>`<option value="${m}" ${m===val?'selected':''}>${m}</option>`).join('')}</select></div>`;
 }
 
 // expose for inline — 已移至各模組自行 expose

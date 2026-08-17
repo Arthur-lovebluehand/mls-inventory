@@ -17,9 +17,11 @@ async function categories() {
     <div class="tab${tab==='products'?' on':''}" onclick="window._catTab='products';categories()">商品類別</div>
     <div class="tab${tab==='roles'?' on':''}" onclick="window._catTab='roles';categories()">服務職位</div>
     <div class="tab${tab==='payment'?' on':''}" onclick="window._catTab='payment';categories()">付款方式</div>
+    <div class="tab${tab==='shipping'?' on':''}" onclick="window._catTab='shipping';categories()">寄送方式</div>
   </div>`;
   if(tab==='roles') { await categoriesRoles(); return; }
   if(tab==='payment') { await categoriesPayment(); return; }
+  if(tab==='shipping') { await categoriesShipping(); return; }
   await categoriesProducts();
 }
 
@@ -247,6 +249,81 @@ async function deletePayMethod(id, name) {
   categories();
 }
 window.categoriesPayment = categoriesPayment;
+
+// ══════════════════════════════
+// 寄送方式管理
+// ══════════════════════════════
+async function categoriesShipping() {
+  const { data } = await sb.from('shipping_methods').select('*').order('sort_order').order('name');
+  $('main').innerHTML += `
+  <div class="pc">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <button class="btn btn-p btn-s" onclick="addShipMethodModal()">＋ 新增寄送方式</button>
+  </div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理寄送方式選項。新增後，客戶資料/訂單等表單的寄送方式下拉選單會出現這個選項。</div>
+  <div class="tc"><div class="tw"><table style="width:100%">
+    <tr><th>名稱</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
+    ${(data||[]).map(p=>`<tr>
+      <td style="font-weight:500">${p.name}</td>
+      <td style="text-align:center">${p.sort_order}</td>
+      <td><span class="badge ${p.is_active?'bg':'br2'}">${p.is_active?'啟用':'停用'}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn btn-s" onclick="editShipMethodModal(${p.id},'${p.name.replace(/'/g,"\\'")}',${p.sort_order},${p.is_active})">編輯</button>
+        <button class="btn btn-s" onclick="toggleShipMethod(${p.id},${p.is_active})">${p.is_active?'停用':'啟用'}</button>
+        <button class="btn btn-s btn-r" onclick="deleteShipMethod(${p.id},'${p.name.replace(/'/g,"\\'")}')">刪除</button>
+      </div></td>
+    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無寄送方式，請先新增</td></tr>'}
+  </table></div></div>`;
+}
+function addShipMethodModal() {
+  OM('新增寄送方式', `
+  ${fi('smname','名稱 *')}
+  ${fi('smsort','排序','number','99')}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveShipMethod()">新增</button>`);
+}
+function editShipMethodModal(id,name,sort,active) {
+  OM('編輯寄送方式', `
+  ${fi('smname','名稱 *','text',name)}
+  ${fi('smsort','排序','number',sort)}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveShipMethod(${id})">儲存</button>`);
+}
+async function saveShipMethod(id) {
+  const name = v('smname').trim();
+  if(!name) { toast('請輸入名稱','e'); return; }
+  const sort = parseInt(v('smsort'))||99;
+  const payload = { name, sort_order: sort };
+  if(id) {
+    const { error } = await sb.from('shipping_methods').update(payload).eq('id',id);
+    if(error) { toast('更新失敗：'+error.message,'e'); return; }
+  } else {
+    const { error } = await sb.from('shipping_methods').insert({...payload, is_active:true});
+    if(error) { toast('新增失敗：'+error.message,'e'); return; }
+  }
+  toast('✅ 已儲存');
+  CM();
+  await loadShipMethods();
+  categories();
+}
+async function toggleShipMethod(id, current) {
+  await sb.from('shipping_methods').update({is_active:!current}).eq('id',id);
+  await loadShipMethods();
+  categories();
+}
+async function deleteShipMethod(id, name) {
+  if(!confirm(`確定刪除寄送方式「${name}」？`)) return;
+  await sb.from('shipping_methods').delete().eq('id',id);
+  toast('已刪除');
+  await loadShipMethods();
+  categories();
+}
+window.categoriesShipping = categoriesShipping;
+window.addShipMethodModal = addShipMethodModal;
+window.editShipMethodModal = editShipMethodModal;
+window.saveShipMethod = saveShipMethod;
+window.toggleShipMethod = toggleShipMethod;
+window.deleteShipMethod = deleteShipMethod;
 window.addPayMethodModal = addPayMethodModal;
 window.editPayMethodModal = editPayMethodModal;
 window.savePayMethod = savePayMethod;

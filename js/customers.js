@@ -91,7 +91,7 @@ function custForm(c){
     ${fi('cph','手機','text',c.phone)} ${fi('ceml','Email','text',c.email)}
     ${fi('cbday','生日','text',c.birthday)} ${fi('clmk','13月亮印記','text',c.lunar_mark)}
     ${payMethodSel('cpay',c.payment_method||'')}
-    ${fi('cshp','寄送方式','text',c.shipping_method)}
+    ${shipMethodSel('cshp',c.shipping_method||'')}
     <div class="fl fw">${fi('caddr','送貨地址','text',c.ship_full_address||c.ship_address)}</div>
     <div class="fl fw">${fa('cnote','備註',c.note)}</div>
   </div>`;

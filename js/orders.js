@@ -152,14 +152,17 @@ async function addOrder(){
   <div class="fg" style="margin-bottom:13px">
     ${fi('ono','訂單編號','text',no)} <div class="fl"><label>日期</label><input id="f-odate" type="date" value="${td}" onchange="regenNoOnDateChange('odate','ono','SO','sales_orders','order_no')" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
     <div class="fl"><label>選擇客戶</label>
-      <div class="ss-wrap" id="ss-cust">
-        <input class="ss-input" id="ss-inp-cust" placeholder="輸入姓名搜尋…" autocomplete="off" oninput="ssFilterCust(this.value)" onfocus="ssFilterCust(this.value)" onblur="setTimeout(()=>$('ss-drop-cust')?.classList.remove('open'),200)">
-        <input type="hidden" id="ss-val-cust">
-        <div class="ss-drop" id="ss-drop-cust"></div>
+      <div style="display:flex;gap:6px">
+        <div class="ss-wrap" id="ss-cust" style="flex:1">
+          <input class="ss-input" id="ss-inp-cust" placeholder="輸入姓名搜尋…" autocomplete="off" oninput="ssFilterCust(this.value)" onfocus="ssFilterCust(this.value)" onblur="setTimeout(()=>$('ss-drop-cust')?.classList.remove('open'),200)">
+          <input type="hidden" id="ss-val-cust">
+          <div class="ss-drop" id="ss-drop-cust"></div>
+        </div>
+        <button type="button" class="btn btn-s" style="flex-shrink:0" onclick="quickAddCustomer()">＋ 新增客戶</button>
       </div>
     </div>
     ${fi('oname','客戶名稱 *')} ${fi('ophone','手機')}
-    ${fs('oshp','寄送方式',['郵寄','超商取貨','親送','自取'],'郵寄')}
+    ${shipMethodSel('oshp','郵寄')}
     ${fi('oaddr','送貨地址')}
     ${payMethodSel('opay','')}
     ${fi('ofee','運費','number','0')}
@@ -203,6 +206,36 @@ async function addOrder(){
   };
   renderItems();
 }
+window.quickAddCustomer = function(){
+  OM2('新增客戶（快速）', `
+  <div class="fg">
+    ${fi('qc-name','姓名 *')}
+    ${fi('qc-phone','手機')}
+    <div class="fl"><label>位階</label><select id="f-qc-lv">${LEVELS.map(l=>`<option>${l}</option>`).join('')}</select></div>
+    ${shipMethodSel('qc-shp','郵寄')}
+    <div class="fl fw">${fi('qc-addr','送貨地址')}</div>
+  </div>`,
+  `<button class="btn" onclick="CM2()">取消</button>
+   <button class="btn btn-p" onclick="saveQuickCustomer()">新增並帶入訂單</button>`);
+};
+window.saveQuickCustomer = async function(){
+  const nm=v('qc-name');
+  if(!nm){ toast('請填寫姓名','e'); return; }
+  const{data:last}=await sb.from('customers').select('customer_no').like('customer_no','C-0____').order('customer_no',{ascending:false}).limit(5);
+  let nextNo='C-00001';
+  if(last&&last.length){
+    const nums=last.map(r=>{const m=r.customer_no?.match(/^C-0(\d{4})$/);return m?parseInt('0'+m[1]):0;}).filter(n=>n>0&&n<10000);
+    if(nums.length){const mx=Math.max(...nums);nextNo='C-'+String(mx+1).padStart(5,'0');}
+  }
+  const addr=v('qc-addr');
+  const obj={customer_no:nextNo,name:nm,agent_level:v('qc-lv'),phone:v('qc-phone'),shipping_method:v('qc-shp')||null,ship_address:addr,ship_full_address:addr};
+  const{error}=await sb.from('customers').insert(obj);
+  if(error){ toast('新增客戶失敗：'+error.message,'e'); return; }
+  toast('✅ 客戶已新增');
+  _allCusts.push({customer_no:nextNo,name:nm,agent_level:obj.agent_level,phone:obj.phone,ship_full_address:addr});
+  CM2();
+  pickCust(nextNo);
+};
 function updateItemPricesByLevel(lv){
   const col=LEVEL_COLS[lv]||'price_retail';
   _items.forEach(item=>{
@@ -306,7 +339,7 @@ async function editOrder(no){
   <div class="fg" style="margin-bottom:13px">
     ${fi('ono','訂單編號','text',no)} ${fi('odate','日期','date',fD(o?.order_date))}
     ${fi('oname','客戶名稱 *','text',o?.customer_name)} ${fi('ophone','手機','text',o?.phone)}
-    ${fs('oshp','寄送方式',['郵寄','超商取貨','親送','自取'],o?.shipping_method)}
+    ${shipMethodSel('oshp',o?.shipping_method||'')}
     ${fi('oaddr','送貨地址','text',o?.ship_address)}
     ${payMethodSel('opay',o?.payment_method||'')}
     ${fi('ofee','運費','number',o?.shipping_fee||0)}
