@@ -516,3 +516,60 @@ window.svcItemChange = svcItemChange;
 
 window.svcOrders = svcOrders;
 window.renderSvcItems = renderSvcItems;
+
+// ══════════════════════════════
+// 服務贈品總覽（合併：服務單贈送商品 + 儲值贈送商品，方便看庫存去了哪）
+// ══════════════════════════════
+async function svcGifts() {
+  const [{ data:svcGiftItems },{ data:crGiftRecs }] = await Promise.all([
+    sb.from('service_order_items').select('order_no,item_name,product_no,qty,unit,cost').eq('item_type','gift_product').order('order_no',{ascending:false}),
+    sb.from('store_credit_records').select('id,customer_no,customer_name,record_date,product_no,product_name,product_qty,note').eq('type','gift').order('record_date',{ascending:false}),
+  ]);
+
+  // 服務單贈品需要另外查訂單資訊（日期、客戶）
+  const orderNos = [...new Set((svcGiftItems||[]).map(i=>i.order_no))];
+  let orderMap = {};
+  if(orderNos.length) {
+    const { data:ords } = await sb.from('service_orders').select('order_no,order_date,customer_name').in('order_no',orderNos);
+    (ords||[]).forEach(o=>orderMap[o.order_no]=o);
+  }
+
+  const rows = [
+    ...(svcGiftItems||[]).map(i=>({
+      date: orderMap[i.order_no]?.order_date||'', customer: orderMap[i.order_no]?.customer_name||'—',
+      product: i.item_name, qty: i.qty, unit: i.unit||'個', cost: i.cost,
+      source:'服務單', sourceNo: i.order_no
+    })),
+    ...(crGiftRecs||[]).map(r=>({
+      date: r.record_date, customer: r.customer_name||r.customer_no,
+      product: r.product_name, qty: r.product_qty, unit:'個', cost: null,
+      source:'儲值贈品', sourceNo: null
+    })),
+  ].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  const totalCost = rows.reduce((s,r)=>s+(r.cost||0),0);
+
+  $('svc-content').innerHTML = `
+  <div class="al al-w" style="font-size:12px;margin-bottom:12px">
+    這裡彙整所有「送給客戶帶走的商品」——包含服務單裡的贈送商品、儲值時附送的商品，兩邊都會直接扣商品列表的庫存，這裡讓你一次看清楚庫存都去哪了。
+  </div>
+  <div class="tc"><div class="tb"><span class="tt">服務贈品記錄</span><span class="badge bg" style="font-size:11px;margin-left:8px">共 ${rows.length} 筆</span></div>
+  <div class="tw"><table style="width:100%">
+    <tr><th>日期</th><th>客戶</th><th>商品</th><th>數量</th><th>成本</th><th>來源</th></tr>
+    ${rows.map(r=>`<tr>
+      <td style="font-size:12px">${fD(r.date)}</td>
+      <td style="font-weight:500">${r.customer}</td>
+      <td>${r.product||'—'}</td>
+      <td class="num">${r.qty||0} ${r.unit}</td>
+      <td class="num" style="color:var(--rd)">${r.cost!=null?fM(r.cost):'—'}</td>
+      <td>
+        ${r.source==='服務單'
+          ? `<a href="#" onclick="event.preventDefault();svcShowOrder('${r.sourceNo}')" style="color:var(--ac);font-size:11px">服務單：${r.sourceNo}</a>`
+          : `<span class="badge ba" style="font-size:10px">儲值贈品</span>`}
+      </td>
+    </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無服務贈品記錄</td></tr>'}
+  </table></div>
+  ${totalCost>0?`<div style="padding:10px 16px;text-align:right;font-size:13px;color:var(--tx3)">已知成本合計（不含未計成本的儲值贈品）：<b style="color:var(--rd)">${fM(totalCost)}</b></div>`:''}
+  </div>`;
+}
+window.svcGifts = svcGifts;

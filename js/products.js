@@ -446,19 +446,25 @@ window.showProdPage = showProdPage;
 async function showProd(no) {
   // 分開查詢（不用 FK join，避免 Supabase 關聯查詢失敗）
   const { data: p } = await sb.from('products').select('*').eq('product_no', no).single();
-  const { data: soItems } = await sb.from('sales_order_items').select('order_no,qty,unit_price,amount,gift_qty').eq('product_no',no).order('order_no',{ascending:false}).limit(15);
-  const { data: poItems } = await sb.from('purchase_order_items').select('po_no,qty,gift_qty,unit_price,amount,received_qty').eq('product_no',no).order('po_no',{ascending:false}).limit(10);
+  // 先抓較大批次（不依賴單號文字排序，因為單號日期常跟真實訂單日期對不上），之後依真實日期排序再截取顯示筆數
+  const { data: soItemsRaw } = await sb.from('sales_order_items').select('order_no,qty,unit_price,amount,gift_qty').eq('product_no',no).limit(300);
+  const { data: poItemsRaw } = await sb.from('purchase_order_items').select('po_no,qty,gift_qty,unit_price,amount,received_qty').eq('product_no',no).limit(300);
   const { data: lnItems } = await sb.from('loan_order_items').select('loan_no,qty,returned_qty').eq('product_no',no).order('loan_no',{ascending:false}).limit(10);
   const { data: adjLogs } = await sb.from('audit_logs').select('description,created_at,operator').eq('table_name','products').eq('record_id',no).eq('action','adjust').order('created_at',{ascending:false}).limit(10);
   const { data: transfers } = await sb.from('service_transfers').select('transfer_date,qty_stock,qty_service,note').eq('product_no',no).order('transfer_date',{ascending:false}).limit(20);
   // 批次取相關主表資訊
-  const soNos=(soItems||[]).map(x=>x.order_no).filter(Boolean);
-  const poNos=(poItems||[]).map(x=>x.po_no).filter(Boolean);
+  const soNosAll=(soItemsRaw||[]).map(x=>x.order_no).filter(Boolean);
+  const poNosAll=(poItemsRaw||[]).map(x=>x.po_no).filter(Boolean);
   const lnNos=(lnItems||[]).map(x=>x.loan_no).filter(Boolean);
   const [soMap,poMap,lnMap]=[{},{},{}];
-  if(soNos.length){const{data:sos}=await sb.from('sales_orders').select('order_no,order_date,customer_name,payment_done').in('order_no',soNos);(sos||[]).forEach(x=>soMap[x.order_no]=x);}
-  if(poNos.length){const{data:pos}=await sb.from('purchase_orders').select('po_no,po_date,vendor_name,receipt_status').in('po_no',poNos);(pos||[]).forEach(x=>poMap[x.po_no]=x);}
+  if(soNosAll.length){const{data:sos}=await sb.from('sales_orders').select('order_no,order_date,customer_name,payment_done').in('order_no',soNosAll);(sos||[]).forEach(x=>soMap[x.order_no]=x);}
+  if(poNosAll.length){const{data:pos}=await sb.from('purchase_orders').select('po_no,po_date,vendor_name,receipt_status').in('po_no',poNosAll);(pos||[]).forEach(x=>poMap[x.po_no]=x);}
   if(lnNos.length){const{data:lns}=await sb.from('loan_orders').select('loan_no,loan_date,customer_name,direction,return_status').in('loan_no',lnNos);(lns||[]).forEach(x=>lnMap[x.loan_no]=x);}
+  // 依真實日期排序（新到舊），再截取要顯示的筆數
+  const soItemsSorted=(soItemsRaw||[]).slice().sort((a,b)=>(soMap[b.order_no]?.order_date||'').localeCompare(soMap[a.order_no]?.order_date||''));
+  const poItemsSorted=(poItemsRaw||[]).slice().sort((a,b)=>(poMap[b.po_no]?.po_date||'').localeCompare(poMap[a.po_no]?.po_date||''));
+  const soItems=soItemsSorted.slice(0,15), poItems=poItemsSorted.slice(0,10);
+  const soTotalCount=soItemsRaw?.length||0, poTotalCount=poItemsRaw?.length||0;
   const its=soItems; const poIts=poItems; const loanIts=lnItems;
 
   const priceRows = [
@@ -494,8 +500,8 @@ async function showProd(no) {
     }).join('')}
   </div>
   <div style="display:flex;gap:2px;border-bottom:1px solid var(--bd);margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch">
-    <div class="tab on" id="ptab-s" onclick="switchProdTab('s')" style="white-space:nowrap">銷貨</div>
-    <div class="tab" id="ptab-p" onclick="switchProdTab('p')" style="white-space:nowrap">進貨</div>
+    <div class="tab on" id="ptab-s" onclick="switchProdTab('s')" style="white-space:nowrap">銷貨${soTotalCount>15?`（近15/共${soTotalCount}）`:''}</div>
+    <div class="tab" id="ptab-p" onclick="switchProdTab('p')" style="white-space:nowrap">進貨${poTotalCount>10?`（近10/共${poTotalCount}）`:''}</div>
     <div class="tab" id="ptab-l" onclick="switchProdTab('l')" style="white-space:nowrap">借貨</div>
     <div class="tab" id="ptab-a" onclick="switchProdTab('a')" style="white-space:nowrap">庫存調整</div>
     <div class="tab" id="ptab-t" onclick="switchProdTab('t')" style="white-space:nowrap">🛁 服務撥轉</div>
@@ -592,17 +598,19 @@ window.showProd = showProd;
 async function showMobileProd(no) {
   $('main').innerHTML='<div class="ld"><div class="sp"></div>載入中…</div>';
   const { data: p } = await sb.from('products').select('*').eq('product_no', no).single();
-  const { data: soItems } = await sb.from('sales_order_items').select('order_no,qty,unit_price,amount,gift_qty').eq('product_no',no).order('order_no',{ascending:false}).limit(15);
-  const { data: poItems } = await sb.from('purchase_order_items').select('po_no,qty,gift_qty,unit_price,amount,received_qty').eq('product_no',no).order('po_no',{ascending:false}).limit(10);
+  const { data: soItemsRaw } = await sb.from('sales_order_items').select('order_no,qty,unit_price,amount,gift_qty').eq('product_no',no).limit(300);
+  const { data: poItemsRaw } = await sb.from('purchase_order_items').select('po_no,qty,gift_qty,unit_price,amount,received_qty').eq('product_no',no).limit(300);
   const { data: lnItems } = await sb.from('loan_order_items').select('loan_no,qty,returned_qty').eq('product_no',no).order('loan_no',{ascending:false}).limit(10);
   const { data: adjLogs } = await sb.from('audit_logs').select('description,created_at,operator').eq('table_name','products').eq('record_id',no).eq('action','adjust').order('created_at',{ascending:false}).limit(10);
-  const soNos=(soItems||[]).map(x=>x.order_no).filter(Boolean);
-  const poNos=(poItems||[]).map(x=>x.po_no).filter(Boolean);
+  const soNosAll=(soItemsRaw||[]).map(x=>x.order_no).filter(Boolean);
+  const poNosAll=(poItemsRaw||[]).map(x=>x.po_no).filter(Boolean);
   const lnNos=(lnItems||[]).map(x=>x.loan_no).filter(Boolean);
   const [soMap,poMap,lnMap]=[{},{},{}];
-  if(soNos.length){const{data:sos}=await sb.from('sales_orders').select('order_no,order_date,customer_name,payment_done').in('order_no',soNos);(sos||[]).forEach(x=>soMap[x.order_no]=x);}
-  if(poNos.length){const{data:pos}=await sb.from('purchase_orders').select('po_no,po_date,vendor_name,receipt_status').in('po_no',poNos);(pos||[]).forEach(x=>poMap[x.po_no]=x);}
+  if(soNosAll.length){const{data:sos}=await sb.from('sales_orders').select('order_no,order_date,customer_name,payment_done').in('order_no',soNosAll);(sos||[]).forEach(x=>soMap[x.order_no]=x);}
+  if(poNosAll.length){const{data:pos}=await sb.from('purchase_orders').select('po_no,po_date,vendor_name,receipt_status').in('po_no',poNosAll);(pos||[]).forEach(x=>poMap[x.po_no]=x);}
   if(lnNos.length){const{data:lns}=await sb.from('loan_orders').select('loan_no,loan_date,customer_name,direction,return_status').in('loan_no',lnNos);(lns||[]).forEach(x=>lnMap[x.loan_no]=x);}
+  const soItems=(soItemsRaw||[]).slice().sort((a,b)=>(soMap[b.order_no]?.order_date||'').localeCompare(soMap[a.order_no]?.order_date||'')).slice(0,15);
+  const poItems=(poItemsRaw||[]).slice().sort((a,b)=>(poMap[b.po_no]?.po_date||'').localeCompare(poMap[a.po_no]?.po_date||'')).slice(0,10);
   showProdPage(p, soItems, poItems, lnItems, adjLogs, soMap, poMap, lnMap);
 }
 window.showMobileProd = showMobileProd;

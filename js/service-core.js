@@ -9,6 +9,7 @@ var _svcItemCat = '全部';
 function serviceHub() {
   const tabs = [
     { id:'orders',    label:'服務訂單' },
+    { id:'gifts',     label:'服務贈品' },
     { id:'inventory', label:'服務庫存' },
     { id:'consumables', label:'服務耗材' },
     { id:'transfer',  label:'撥轉記錄' },
@@ -27,6 +28,7 @@ function serviceHub() {
   </div>
   <div class="pc" id="svc-content">載入中…</div>`;
   if(svcTab==='orders')      window.svcOrders?.();
+  if(svcTab==='gifts')       window.svcGifts?.();
   if(svcTab==='inventory')   window.svcInventory?.();
   if(svcTab==='consumables') window.svcConsumables?.();
   if(svcTab==='transfer')    window.svcTransfers?.();
