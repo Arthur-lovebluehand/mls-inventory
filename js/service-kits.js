@@ -134,7 +134,9 @@ async function saveSvcKit() {
     if(error){ toast('建立失敗：'+error.message,'e'); return; }
     kitId = data.id;
   }
-  await sb.from('service_kit_items').insert(window._skItems.map(i=>({...i, kit_id:kitId})));
+  const cleanItems = window._skItems.map(({id:_omit, kit_id:_omit2, ...rest})=>({...rest, kit_id:kitId}));
+  const { error:insErr } = await sb.from('service_kit_items').insert(cleanItems);
+  if(insErr){ toast('品項儲存失敗：'+insErr.message,'e'); return; }
   toast('✅ 已儲存');
   CM();
   svcKits();
