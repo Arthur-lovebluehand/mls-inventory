@@ -12,9 +12,13 @@ async function svcItems() {
   const cats = [...new Set((data||[]).map(i=>i.category).filter(Boolean))].sort();
   window._svcItemCats = cats;
 
+  let catOrd = {};
+  try{ const{data:co}=await sb.from('settings').select('value').eq('key','svc_item_cat_order').single(); if(co?.value) catOrd=JSON.parse(co.value); }catch(e){}
+  window._svcCatOrd = catOrd;
+
   const groups = {};
   (data||[]).forEach(s=>{ const c=s.category||'未分類'; (groups[c]=groups[c]||[]).push(s); });
-  const groupNames = Object.keys(groups).sort((a,b)=>a==='未分類'?1:b==='未分類'?-1:a.localeCompare(b));
+  const groupNames = Object.keys(groups).sort((a,b)=>(catOrd[a]||99)-(catOrd[b]||99) || a.localeCompare(b));
 
   const rowsHtml = s => `<tr style="${s.is_active===false?'opacity:.5':''}">
       <td style="font-weight:500">${s.name}</td>
@@ -30,7 +34,8 @@ async function svcItems() {
     </tr>`;
 
   $('svc-content').innerHTML = `
-  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+  <div style="margin-bottom:12px;display:flex;justify-content:flex-end;gap:8px">
+    ${groupNames.length>1?'<button class="btn btn-s" onclick="showSvcCatOrder()">⚙ 分類排序</button>':''}
     <button class="btn btn-p btn-s" onclick="svcNewItemModal()">＋ 新增服務項目</button>
   </div>
   ${(data||[]).length===0 ? '<div class="tc"><div style="padding:20px;text-align:center;color:var(--tx3)">尚無服務項目，請先新增</div></div>' :
@@ -45,6 +50,37 @@ async function svcItems() {
   }`;
   }catch(e){$('svc-content').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
 }
+
+// ── 分類排序設定 ──
+function showSvcCatOrder() {
+  const cats = window._svcItemCats || [];
+  const ord = window._svcCatOrd || {};
+  const displayCats = [...new Set(cats.concat(Object.keys(ord)))];
+  const list = displayCats.length ? displayCats : cats;
+  const sorted = list.slice().sort((a,b)=>(ord[a]||99)-(ord[b]||99) || a.localeCompare(b));
+  const rows = sorted.map(c=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bd)">
+      <input type="number" id="scord-${c}" value="${ord[c]||99}" min="1" max="99"
+        style="width:46px;padding:4px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;text-align:center">
+      <span style="font-weight:500;flex:1">${c}</span>
+    </div>`).join('');
+  OM('服務項目分類排序', `
+  <div style="font-size:12px;color:var(--tx3);margin-bottom:12px">數字設排序（1=最前），數字愈小愈前面，可以重複時就照名稱排。</div>
+  ${rows}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveSvcCatOrder()">儲存</button>`);
+}
+window.showSvcCatOrder = showSvcCatOrder;
+async function saveSvcCatOrder() {
+  const cats = window._svcItemCats || [];
+  const newOrd = {};
+  cats.forEach(c=>{ const el=document.getElementById('scord-'+c); if(el) newOrd[c]=parseInt(el.value)||99; });
+  await sb.from('settings').upsert({key:'svc_item_cat_order', value:JSON.stringify(newOrd), updated_at:new Date().toISOString()});
+  toast('✅ 排序已儲存');
+  CM();
+  svcItems();
+}
+window.saveSvcCatOrder = saveSvcCatOrder;
 
 window.svcItems = svcItems;
 function svcItemCatSelect(currentVal) {
