@@ -11,6 +11,7 @@ function serviceHub() {
     { id:'orders',    label:'服務訂單' },
     { id:'gifts',     label:'服務贈品' },
     { id:'inventory', label:'服務庫存' },
+    { id:'kits',      label:'耗材套組' },
     { id:'consumables', label:'服務耗材' },
     { id:'transfer',  label:'撥轉記錄' },
     { id:'credits',   label:'儲值管理' },
@@ -29,6 +30,7 @@ function serviceHub() {
   <div class="pc" id="svc-content">載入中…</div>`;
   if(svcTab==='orders')      window.svcOrders?.();
   if(svcTab==='gifts')       window.svcGifts?.();
+  if(svcTab==='kits')        window.svcKits?.();
   if(svcTab==='inventory')   window.svcInventory?.();
   if(svcTab==='consumables') window.svcConsumables?.();
   if(svcTab==='transfer')    window.svcTransfers?.();

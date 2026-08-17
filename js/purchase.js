@@ -162,7 +162,7 @@ async function loadPOForm(poData,itsData){
   _poProds=pr||[]; _vends2=vn||[];
   if(itsData) _poItems=itsData.map((i,idx)=>({id:idx+1,pno:i.product_no,_pname:i.product_name||'',qty:i.qty||0,price:i.unit_price||0,giftQty:i.gift_qty||0,amt:i.amount||0}));
   else _poItems=[{id:1,pno:'',qty:1,price:0,amt:0}];
-  const vOpts=_vends2.map(v=>`<option value="${v.vendor_no}">${v.name}</option>`).join('');
+  const vOpts=_vends2.map(v=>`<option value="${v.vendor_no}" ${v.name===poData?.vendor_name?'selected':''}>${v.name}</option>`).join('');
   const td=today(), no=poData?.po_no||(await genNo('PO','purchase_orders','po_no'));
   return `
   <div class="fg" style="margin-bottom:13px">

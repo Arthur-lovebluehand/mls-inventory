@@ -95,16 +95,18 @@ async function svcNewOrder(editNo) {
     await reverseSvcOrderEffects(editNo); // 先還原庫存/耗材/寄放/儲值，等一下存檔時會重新照畫面內容扣一次
   }
   // 抓服務項目、服務庫存商品、客戶、完整商品清單（供贈品用）
-  const [{ data:sitems },{ data:sinv },{ data:sconsum },{ data:custs },{ data:techs },{ data:allProds }] = await Promise.all([
+  const [{ data:sitems },{ data:sinv },{ data:sconsum },{ data:custs },{ data:techs },{ data:allProds },kitsList] = await Promise.all([
     sb.from('service_items').select('*').eq('is_active',true).order('sort_order'),
     sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty,service_units_per_stock,cost)').gt('stock_qty',0),
     sb.from('service_consumables').select('*').eq('is_active',true).gt('stock_qty',0).order('name'),
     sb.from('customers').select('customer_no,name,phone').order('name'),
     sb.from('technicians').select('*').eq('is_active',true).order('name'),
     sb.from('products').select('product_no,name,spec,stock,cost').eq('is_active',true).order('name'),
+    window.getSvcKitsList?.() || Promise.resolve([]),
   ]);
   window._svcAllCusts = custs||[];
   window._svcAllProds = allProds||[];
+  window._svcKitsList = kitsList||[];
   const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-name="${t.name}">${t.name}（${t.role||'技師'}，抽成 ${Math.round(t.commission_rate*100)}%）</option>`).join('');
 
   const today2 = new Date().toISOString().split('T')[0];
@@ -171,7 +173,13 @@ async function svcNewOrder(editNo) {
     <div style="font-size:11px;color:var(--tx3);margin-top:4px">可在單價欄位覆蓋預設價格</div>
   </div>
   <div style="margin-bottom:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
-    <div style="font-weight:600;margin-bottom:8px;font-size:13px">加入耗材（服務庫存）</div>
+    <div style="font-weight:600;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+      <span>加入耗材（服務庫存）</span>
+      <select id="sv-kitsel" style="padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:11px" onchange="if(this.value)svcApplyKit(this.value);this.selectedIndex=0;">
+        <option value="">套用套組…</option>
+        ${(window._svcKitsList||[]).map(k=>`<option value="${k.id}">${k.name}</option>`).join('')}
+      </select>
+    </div>
     <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:end">
       <select id="sv-prod" onchange="svcProdChange(this)" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
         <option value="">— 選耗材 —</option>
@@ -390,6 +398,32 @@ function svcAddGiftProduct() {
   renderSvcItems();
 }
 window.svcAddGiftProduct = svcAddGiftProduct;
+
+async function svcApplyKit(kitId) {
+  if(!window.resolveSvcKitItems) { toast('套組功能載入中，請稍後再試','e'); return; }
+  const { items, warnings } = await window.resolveSvcKitItems(parseInt(kitId));
+  items.forEach(i=>{
+    if(i.type==='product') {
+      window._svcItems.push({
+        id: Date.now()+Math.random(), item_type:'consumable', source:'product',
+        item_name: i.item_name, product_no: i.product_no,
+        qty: i.qty, unit: i.unit||'次', unit_price: 0,
+        cost: Math.round((i.cost||0) * i.qty * 100)/100, subtotal: 0
+      });
+    } else {
+      window._svcItems.push({
+        id: Date.now()+Math.random(), item_type:'consumable', source:'consumable',
+        item_name: i.item_name, consumable_id: i.consumable_id,
+        qty: i.qty, unit: i.unit||'個', unit_price: 0,
+        cost: Math.round((i.cost||0) * i.qty * 100)/100, subtotal: 0
+      });
+    }
+  });
+  renderSvcItems();
+  if(items.length) toast(`✅ 已套用套組，加入 ${items.length} 項`);
+  if(warnings.length) toast(`⚠️ 以下品項庫存不足，未加入：${warnings.join('、')}`,'e');
+}
+window.svcApplyKit = svcApplyKit;
 
 function renderSvcItems() {
   const area = document.getElementById('sv-items-area');
