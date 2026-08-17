@@ -97,7 +97,7 @@ async function svcNewOrder() {
   const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-name="${t.name}">${t.name}（${t.role||'技師'}，抽成 ${Math.round(t.commission_rate*100)}%）</option>`).join('');
 
   const today2 = new Date().toISOString().split('T')[0];
-  const orderNo = 'SV-'+today2.replace(/-/g,'')+'-001';
+  const orderNo = await genNo('SV','service_orders','order_no');
 
   window._svcItems = []; // 服務訂單品項暫存
 
@@ -117,7 +117,7 @@ async function svcNewOrder() {
   OM('新增服務單', `
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
     ${fi('sv-no','服務單號','text',orderNo)}
-    ${fi('sv-date','日期','date',today2)}
+    <div class="fl"><label>日期</label><input id="f-sv-date" type="date" value="${today2}" onchange="regenNoOnDateChange('sv-date','sv-no','SV','service_orders','order_no')" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
     <div class="fl"><label>選擇客戶</label>
