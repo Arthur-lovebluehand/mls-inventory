@@ -521,10 +521,12 @@ window.renderSvcItems = renderSvcItems;
 // 服務贈品總覽（合併：服務單贈送商品 + 儲值贈送商品，方便看庫存去了哪）
 // ══════════════════════════════
 async function svcGifts() {
-  const [{ data:svcGiftItems },{ data:crGiftRecs }] = await Promise.all([
+  const [{ data:svcGiftItems, error:e1 },{ data:crGiftRecs, error:e2 }] = await Promise.all([
     sb.from('service_order_items').select('order_no,item_name,product_no,qty,unit,cost').eq('item_type','gift_product').order('order_no',{ascending:false}),
-    sb.from('store_credit_records').select('id,customer_no,customer_name,record_date,product_no,product_name,product_qty,note').eq('type','gift').order('record_date',{ascending:false}),
+    sb.from('store_credit_records').select('id,customer_no,record_date,product_no,product_name,product_qty,note').eq('type','gift').order('record_date',{ascending:false}),
   ]);
+  if(e1) console.error('svcGifts service_order_items error', e1);
+  if(e2) console.error('svcGifts store_credit_records error', e2);
 
   // 服務單贈品需要另外查訂單資訊（日期、客戶）
   const orderNos = [...new Set((svcGiftItems||[]).map(i=>i.order_no))];
@@ -532,6 +534,13 @@ async function svcGifts() {
   if(orderNos.length) {
     const { data:ords } = await sb.from('service_orders').select('order_no,order_date,customer_name').in('order_no',orderNos);
     (ords||[]).forEach(o=>orderMap[o.order_no]=o);
+  }
+  // 儲值贈品記錄只有 customer_no，另外查客戶姓名
+  const custNos = [...new Set((crGiftRecs||[]).map(r=>r.customer_no).filter(Boolean))];
+  let custMap = {};
+  if(custNos.length) {
+    const { data:custs } = await sb.from('customers').select('customer_no,name').in('customer_no',custNos);
+    (custs||[]).forEach(c=>custMap[c.customer_no]=c.name);
   }
 
   const rows = [
@@ -541,7 +550,7 @@ async function svcGifts() {
       source:'服務單', sourceNo: i.order_no
     })),
     ...(crGiftRecs||[]).map(r=>({
-      date: r.record_date, customer: r.customer_name||r.customer_no,
+      date: r.record_date, customer: custMap[r.customer_no]||r.customer_no,
       product: r.product_name, qty: r.product_qty, unit:'個', cost: null,
       source:'儲值贈品', sourceNo: null
     })),
