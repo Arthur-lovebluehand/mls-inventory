@@ -53,18 +53,18 @@ async function svcTransfers() {
 
 window.svcTransfers    = svcTransfers;
 async function svcNewTransfer() {
-  // 抓有服務設定的銷售庫存商品
+  // 抓有服務設定的銷售庫存商品（不管商品是否停用——停用只代表廠商不再供貨，現有庫存還是要能繼續撥轉使用完）
   const { data:prods } = await sb.from('products')
-    .select('product_no,name,spec,stock,service_unit,service_units_per_stock')
-    .eq('is_active',true)
+    .select('product_no,name,spec,stock,service_unit,service_units_per_stock,is_active')
     .not('service_unit','is',null)
-    .gt('stock',0);
+    .gt('stock',0)
+    .order('is_active',{ascending:false});
 
   const today2 = new Date().toISOString().split('T')[0];
   const opts = (prods||[]).map(p=>
     `<option value="${p.product_no}" data-stock="${p.stock}"
       data-units="${p.service_units_per_stock||1}" data-unit="${p.service_unit||'次'}">
-      ${p.name}${p.spec?` (${p.spec})`:''} — 庫存 ${p.stock}</option>`).join('');
+      ${p.name}${p.spec?` (${p.spec})`:''} — 庫存 ${p.stock}${p.is_active===false?'（已停用/不再進貨）':''}</option>`).join('');
 
   if(!opts){ toast('沒有設定服務單位的商品，請先在商品編輯頁設定服務單位','w'); return; }
 
