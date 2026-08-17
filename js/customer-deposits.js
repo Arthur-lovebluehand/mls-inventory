@@ -397,21 +397,67 @@ window.viewDepositDetail = viewDepositDetail;
 async function editDepositItemModal(itemId, depositNo) {
   const { data:i } = await sb.from('customer_deposit_items').select('*').eq('id',itemId).single();
   if(!i) return;
+
+  // 如果這個品項有連到真正的商品，改成「幾瓶/幾盒」直接自動換算，不用手動算ml/組數
+  let prod = null;
+  if(i.product_no) {
+    const { data:p } = await sb.from('products').select('service_unit,service_units_per_stock,unit').eq('product_no',i.product_no).maybeSingle();
+    prod = p;
+  }
+
+  if(prod && prod.service_unit && prod.service_units_per_stock) {
+    const perStock = parseFloat(prod.service_units_per_stock)||1;
+    const stockQtyGuess = Math.round((i.total_qty/perStock)*100)/100;
+    OM(`編輯品項：${i.product_name}`, `
+    <div class="al al-w" style="font-size:12px;margin-bottom:10px">
+      已使用/取回 ${i.used_qty||0} ${i.unit}。這個商品有設定換算比例（1${prod.unit||'瓶'}＝${perStock}${prod.service_unit}），填「幾${prod.unit||'瓶'}」，系統會自動換算成正確的寄放總量。
+    </div>
+    ${fi('edi-name','商品名稱','text',i.product_name)}
+    <div class="fl" style="margin-top:10px">
+      <label>寄放幾${prod.unit||'瓶'}（1${prod.unit||'瓶'}＝${perStock}${prod.service_unit}）</label>
+      <input type="number" id="f-edi-stockqty" value="${stockQtyGuess}" min="0.1" step="0.5" oninput="ediCalcFromStock(${perStock},'${prod.service_unit}')"
+        style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
+    </div>
+    <div id="edi-calc-result" style="font-size:13px;color:var(--ac);margin-top:8px;font-weight:600">＝ ${i.total_qty} ${i.unit}</div>
+    <input type="hidden" id="f-edi-qty" value="${i.total_qty}">
+    <input type="hidden" id="f-edi-unit" value="${prod.service_unit}">`,
+    `<button class="btn" onclick="CM()">取消</button>
+     <button class="btn btn-p" onclick="saveDepositItemEdit(${itemId},'${depositNo}')">儲存</button>`);
+    return;
+  }
+
+  // 沒有連結商品（純手動輸入的自訂項目）：維持手動輸入數量+單位
   OM(`編輯品項：${i.product_name}`, `
   <div class="al al-w" style="font-size:12px;margin-bottom:10px">已使用/取回 ${i.used_qty||0} ${i.unit}，總量不能改到比已使用的還少。</div>
   ${fi('edi-name','商品名稱','text',i.product_name)}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
     ${fi('edi-qty','寄放總量','number',i.total_qty)}
     <div class="fl"><label>單位</label>
-      <select id="f-edi-unit" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
+      <select id="f-edi-unit" data-orig="${i.unit}" onchange="ediUnitWarn(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
         ${['組','ml','片','次','顆','瓶','盒'].map(u=>`<option value="${u}" ${u===i.unit?'selected':''}>${u}</option>`).join('')}
       </select>
     </div>
-  </div>`,
+  </div>
+  <div id="edi-unit-warn" style="font-size:11px;color:var(--rd);margin-top:6px;display:none">⚠️ 改單位不會自動換算上面的數量，記得手動把「寄放總量」也一起改成正確的（例如1瓶=30ml，改成ml就要把總量改成30）。</div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveDepositItemEdit(${itemId},'${depositNo}')">儲存</button>`);
 }
 window.editDepositItemModal = editDepositItemModal;
+
+function ediCalcFromStock(perStock, unit) {
+  const stockQty = parseFloat($('f-edi-stockqty')?.value)||0;
+  const total = Math.round(stockQty*perStock*100)/100;
+  $('f-edi-qty').value = total;
+  $('f-edi-unit').value = unit;
+  const r = $('edi-calc-result'); if(r) r.textContent = `＝ ${total} ${unit}`;
+}
+window.ediCalcFromStock = ediCalcFromStock;
+
+function ediUnitWarn(sel) {
+  const warn = $('edi-unit-warn');
+  if(warn) warn.style.display = sel.value===sel.dataset.orig ? 'none' : 'block';
+}
+window.ediUnitWarn = ediUnitWarn;
 
 async function saveDepositItemEdit(itemId, depositNo) {
   const { data:i } = await sb.from('customer_deposit_items').select('used_qty').eq('id',itemId).single();
@@ -433,6 +479,14 @@ async function getCustomerDeposits(customerNo) {
   const depositNos = (deposits||[]).map(d=>d.deposit_no);
   if(!depositNos.length) return [];
   const { data:items } = await sb.from('customer_deposit_items').select('*').in('deposit_no',depositNos);
-  return (items||[]).filter(i=>(i.total_qty||0)-(i.used_qty||0)>0);
+  const avail = (items||[]).filter(i=>(i.total_qty||0)-(i.used_qty||0)>0);
+  // 帶出關聯商品的「每次預設用量」，讓服務單選了之後能自動帶入正確用量
+  const prodNos = [...new Set(avail.map(i=>i.product_no).filter(Boolean))];
+  if(prodNos.length) {
+    const { data:prods } = await sb.from('products').select('product_no,default_service_qty').in('product_no',prodNos);
+    const defQtyMap = {}; (prods||[]).forEach(p=>defQtyMap[p.product_no]=p.default_service_qty);
+    avail.forEach(i=>{ i.default_service_qty = i.product_no ? (defQtyMap[i.product_no]||1) : 1; });
+  }
+  return avail;
 }
 window.getCustomerDeposits = getCustomerDeposits;

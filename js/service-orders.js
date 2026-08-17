@@ -282,6 +282,7 @@ async function svcPickCust(custNo, custName) {
           o.dataset.id = d.id;
           o.dataset.unit = d.unit;
           o.dataset.cost = 0;
+          o.dataset.defqty = d.default_service_qty||1;
           o.text = `${d.product_name}（她寄放剩 ${remain} ${d.unit}）`;
           og.appendChild(o);
         });
@@ -321,11 +322,7 @@ function svcProdChange(sel) {
   const opt = sel.options[sel.selectedIndex];
   const qtyEl = document.getElementById('sv-prodqty');
   if(!qtyEl || !opt.value) return;
-  if(opt.dataset.type==='product' && opt.dataset.defqty) {
-    qtyEl.value = opt.dataset.defqty;
-  } else {
-    qtyEl.value = 1;
-  }
+  qtyEl.value = opt.dataset.defqty || 1;
 }
 
 window.svcProdChange = svcProdChange;
