@@ -7,6 +7,7 @@ async function orders(){
     let q=sb.from('sales_orders').select('order_no,order_date,customer_name,agent_level,subtotal,total,payment_done,is_return,status,ship_status',{count:'exact'}).order('order_date',{ascending:false}).order('order_no',{ascending:false});
     if(oS) q=q.or(`order_no.ilike.%${oS}%,customer_name.ilike.%${oS}%`);
     if(oF==='unpaid') q=q.eq('payment_done',false);
+    if(oF==='unshipped') q=q.neq('ship_status','全部出貨');
     if(oF==='return') q=q.eq('is_return',true);
     const{data,count}=await q.range((oP-1)*30,oP*30-1);
     const tp=Math.ceil((count||0)/30);
@@ -17,6 +18,7 @@ async function orders(){
       <div class="tab-bar">
         <div class="tab ${oF==='all'?'on':''}" onclick="oF='all';oP=1;orders()">全部</div>
         <div class="tab ${oF==='unpaid'?'on':''}" onclick="oF='unpaid';oP=1;orders()">未收款</div>
+        <div class="tab ${oF==='unshipped'?'on':''}" onclick="oF='unshipped';oP=1;orders()">未出貨</div>
         <div class="tab ${oF==='return'?'on':''}" onclick="oF='return';oP=1;orders()">退貨</div>
       </div>
       <div class="tc">
