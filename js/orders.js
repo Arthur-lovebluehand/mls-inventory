@@ -256,10 +256,13 @@ async function saveOrder(editNo){
   if(!its.length){toast('請至少選一項商品','e');return;}
   const sub=its.reduce((s,i)=>s+i.amt,0),fee=n('ofee')||0,tax=0,total=sub+fee;
   const payload={order_date:dt,customer_name:nm,phone:v('ophone'),ship_address:v('oaddr'),payment_method:v('opay'),shipping_method:v('oshp'),shipping_fee:fee,note:v('onote'),agent_level:v('oalv'),invoice_no:v('oinv')||null,subtotal:sub,tax,total,payment_done:editNo?undefined:false,products_summary:its.map(i=>(_allProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、')};
+  const custNoEl=document.getElementById('ss-val-cust');
+  if(custNoEl) payload.customer_no=custNoEl.value||null; // 只有新增畫面才有搜尋框，避免修改時誤把已存的客戶編號覆蓋掉
   if(editNo){
     await sb.from('sales_order_items').delete().eq('order_no',editNo);
     const{error}=await sb.from('sales_orders').update(payload).eq('order_no',editNo);
     if(error){toast('修改失敗：'+error.message,'e');return;}
+    await syncOrderCreditDeduction(editNo);
   } else {
     payload.order_no=no;payload.payment_done=false;payload.stock_deducted_at_creation=false;
     const{error}=await sb.from('sales_orders').insert(payload);
@@ -328,10 +331,52 @@ async function editOrder(no){
   `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveOrder('${no}')">儲存修改</button>`,true);
   renderItems();
 }
+// 舊訂單如果沒存customer_no，用姓名去客戶清單比對一次
+async function resolveCustNoByName(name) {
+  if(!name) return null;
+  const { data } = await sb.from('customers').select('customer_no').eq('name',name).maybeSingle();
+  return data?.customer_no || null;
+}
+
+// 統一處理：確保「已收款 + 儲值扣款」跟「儲值記錄」永遠一致。
+// 不管是標記收款、取消收款、還是單純編輯改了付款方式，存檔後都呼叫這個來對齊。
+async function syncOrderCreditDeduction(no) {
+  const { data:o } = await sb.from('sales_orders').select('payment_method,payment_done,customer_no,customer_name,total,payment_date,order_date').eq('order_no',no).single();
+  if(!o) return;
+  const { data:existing } = await sb.from('store_credit_records').select('id').eq('order_no',no).maybeSingle();
+  const shouldDeduct = o.payment_done && (o.payment_method||'').includes('儲值');
+
+  if(shouldDeduct && !existing) {
+    // 應該扣但還沒扣：補扣
+    const custNo = o.customer_no || await resolveCustNoByName(o.customer_name);
+    if(!custNo) { toast('⚠️ 這位客戶在客戶清單裡找不到對應資料，儲值金無法自動扣款，請手動處理','e'); return; }
+    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
+    const newBal = (cr?.balance||0)-(o.total||0);
+    if(cr) await sb.from('store_credits').update({balance:newBal,updated_at:new Date().toISOString()}).eq('customer_no',custNo);
+    else await sb.from('store_credits').insert({customer_no:custNo,customer_name:o.customer_name,balance:newBal});
+    await sb.from('store_credit_records').insert({
+      customer_no:custNo, record_date:o.payment_date||o.order_date||today(), type:'deduct',
+      amount:-(o.total||0), balance_after:newBal, note:`銷售單 ${no}`, order_no:no
+    });
+    if(custNo) await window.recomputeCreditChain?.(custNo);
+  } else if(!shouldDeduct && existing) {
+    // 不該扣了（取消收款，或改成別的付款方式）但之前扣過：還原
+    const custNo = o.customer_no || await resolveCustNoByName(o.customer_name);
+    if(custNo) {
+      const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
+      if(cr) await sb.from('store_credits').update({balance:(cr.balance||0)+(o.total||0),updated_at:new Date().toISOString()}).eq('customer_no',custNo);
+      await sb.from('store_credit_records').delete().eq('order_no',no);
+      await window.recomputeCreditChain?.(custNo);
+    }
+  }
+  // 兩種都不成立（該扣的已經扣了、不該扣的也沒扣）就什麼都不用做
+}
+window.syncOrderCreditDeduction = syncOrderCreditDeduction;
+
 async function togglePay(no,done){
   if(done){
-    // 取消收款直接執行
     await sb.from('sales_orders').update({payment_done:false,payment_date:null}).eq('order_no',no);
+    await syncOrderCreditDeduction(no);
     orders(); return;
   }
   // 標記收款：先問收款日期（預設訂單日期）
@@ -352,6 +397,7 @@ async function togglePay(no,done){
 async function confirmPay(no){
   const payDate = document.getElementById('pay-date')?.value || today();
   await sb.from('sales_orders').update({payment_done:true,payment_date:payDate}).eq('order_no',no);
+  await syncOrderCreditDeduction(no);
   toast('已標記收款');
   CM(); orders();
 }
