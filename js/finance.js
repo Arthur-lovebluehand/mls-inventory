@@ -460,13 +460,16 @@ async function showSvcFinance() {
 window.showSvcFinance = showSvcFinance;
 
 async function svcMonthDetail(ym) {
-  const [{ data:orders },{ data:transfers }] = await Promise.all([
-    sb.from('service_orders').select('order_no,order_date,customer_name,total,consumable_cost').gte('order_date',ym+'-01').lt('order_date',ym+'-32').order('order_date'),
-    sb.from('service_transfers').select('transfer_date,product_name,qty_stock,qty_service,total_cost').gte('transfer_date',ym+'-01').lt('transfer_date',ym+'-32').order('transfer_date'),
+  const [y,m] = ym.split('-').map(Number);
+  const nextYm = (m===12 ? (y+1)+'-01' : y+'-'+String(m+1).padStart(2,'0'))+'-01';
+  const [{ data:orders, error:e1 },{ data:transfers, error:e2 }] = await Promise.all([
+    sb.from('service_orders').select('order_no,order_date,customer_name,total,consumable_cost').gte('order_date',ym+'-01').lt('order_date',nextYm).order('order_date'),
+    sb.from('service_transfers').select('transfer_date,product_name,qty_stock,qty_service,total_cost').gte('transfer_date',ym+'-01').lt('transfer_date',nextYm).order('transfer_date'),
   ]);
+  if(e1) console.error('svcMonthDetail orders error',e1);
+  if(e2) console.error('svcMonthDetail transfers error',e2);
   const revTotal=(orders||[]).reduce((s,o)=>s+(o.total||0),0);
   const costTotal=(orders||[]).reduce((s,o)=>s+(o.consumable_cost||0),0);
-  const trTotal=(transfers||[]).reduce((s,t)=>s+(t.total_cost||0),0);
 
   OM(`${ym} 服務明細`, `
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:14px">
@@ -474,8 +477,8 @@ async function svcMonthDetail(ym) {
       <div style="font-size:10px;color:var(--tx3);margin-bottom:2px">服務收入</div><div style="font-weight:700;color:var(--ac)">${fM(revTotal)}</div></div>
     <div style="background:var(--sf2);border-radius:var(--r);padding:8px 10px;text-align:center">
       <div style="font-size:10px;color:var(--tx3);margin-bottom:2px">耗材成本</div><div style="font-weight:700;color:var(--rd)">${fM(costTotal)}</div></div>
-    <div style="background:var(--sf2);border-radius:var(--r);padding:8px 10px;text-align:center">
-      <div style="font-size:10px;color:var(--tx3);margin-bottom:2px">撥轉成本（參考）</div><div style="font-weight:700;color:var(--am)">${fM(trTotal)}</div></div>
+    <div style="background:var(--acl);border-radius:var(--r);padding:8px 10px;text-align:center;border:1px solid var(--ac)">
+      <div style="font-size:10px;color:var(--tx3);margin-bottom:2px">淨利</div><div style="font-weight:700;font-size:16px;color:${(revTotal-costTotal)>=0?'var(--ac)':'var(--rd)'}">${fM(revTotal-costTotal)}</div></div>
   </div>
   ${orders?.length?`<div class="sh">服務單（${orders.length}筆）</div>
   <div style="overflow-x:auto"><table class="itb" style="min-width:300px">
@@ -485,13 +488,13 @@ async function svcMonthDetail(ym) {
       <td class="num">${fM(o.total)}</td>
       <td class="num" style="color:var(--rd)">${fM(o.consumable_cost)}</td></tr>`).join('')}
   </table></div>`:'<div style="text-align:center;color:var(--tx3);padding:16px 0">本月無服務單</div>'}
-  ${transfers?.length?`<div class="sh" style="margin-top:10px">撥轉記錄（${transfers.length}筆，參考用）</div>
+  ${transfers?.length?`<div class="sh" style="margin-top:10px">撥轉記錄（${transfers.length}筆，純參考——把商品搬進服務庫存的動作，不算真正花費，不影響淨利）</div>
   <div style="overflow-x:auto"><table class="itb" style="min-width:280px">
-    <tr><th>日期</th><th>商品</th><th>撥轉量</th><th>換算</th><th>金額</th></tr>
+    <tr><th>日期</th><th>商品</th><th>撥轉量</th><th>換算</th><th>參考金額</th></tr>
     ${transfers.map(t=>`<tr>
       <td style="font-size:11px">${fD(t.transfer_date)}</td><td style="font-size:12px">${t.product_name||'—'}</td>
       <td class="num">${t.qty_stock}</td><td class="num" style="color:var(--ac)">${t.qty_service}</td>
-      <td class="num" style="color:var(--am)">${fM(t.total_cost)}</td></tr>`).join('')}
+      <td class="num" style="color:var(--tx3)">${fM(t.total_cost)}</td></tr>`).join('')}
   </table></div>`:''}
   `,`<button class="btn" onclick="CM()">關閉</button>`);
 }
