@@ -425,11 +425,12 @@ async function showSvcFinance() {
   <div class="pc">
     <div class="tc" style="margin-bottom:16px">
       <div class="tb"><span class="tt">月度服務財報</span></div>
+      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">「撥轉成本」只是參考用（那是把商品搬去服務庫存的當下金額，不是真的花費），實際成本已經在「耗材成本」裡算過了（服務真正用掉的那一刻才算），所以淨利不會扣撥轉成本，避免重複扣兩次。</div>
       <div class="tw"><table style="width:100%">
         <tr><th>月份</th><th>服務收入</th><th>耗材成本</th><th>撥轉成本</th><th>技師薪資</th><th>服務淨利</th></tr>
         ${months.map(ym=>{
           const d=mMap[ym];
-          const net=d.rev-d.cost-d.trCost-d.techPay;
+          const net=d.rev-d.cost-d.techPay;
           return `<tr>
             <td style="color:var(--ac);font-weight:600;cursor:pointer" onclick="svcMonthDetail('${ym}')">${ym}</td>
             <td class="num" style="color:var(--ac)">${fM(d.rev)}</td>
@@ -457,3 +458,41 @@ async function showSvcFinance() {
 }
 
 window.showSvcFinance = showSvcFinance;
+
+async function svcMonthDetail(ym) {
+  const [{ data:orders },{ data:transfers }] = await Promise.all([
+    sb.from('service_orders').select('order_no,order_date,customer_name,total,consumable_cost').gte('order_date',ym+'-01').lt('order_date',ym+'-32').order('order_date'),
+    sb.from('service_transfers').select('transfer_date,product_name,qty_stock,qty_service,total_cost').gte('transfer_date',ym+'-01').lt('transfer_date',ym+'-32').order('transfer_date'),
+  ]);
+  const revTotal=(orders||[]).reduce((s,o)=>s+(o.total||0),0);
+  const costTotal=(orders||[]).reduce((s,o)=>s+(o.consumable_cost||0),0);
+  const trTotal=(transfers||[]).reduce((s,t)=>s+(t.total_cost||0),0);
+
+  OM(`${ym} 服務明細`, `
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:14px">
+    <div style="background:var(--sf2);border-radius:var(--r);padding:8px 10px;text-align:center">
+      <div style="font-size:10px;color:var(--tx3);margin-bottom:2px">服務收入</div><div style="font-weight:700;color:var(--ac)">${fM(revTotal)}</div></div>
+    <div style="background:var(--sf2);border-radius:var(--r);padding:8px 10px;text-align:center">
+      <div style="font-size:10px;color:var(--tx3);margin-bottom:2px">耗材成本</div><div style="font-weight:700;color:var(--rd)">${fM(costTotal)}</div></div>
+    <div style="background:var(--sf2);border-radius:var(--r);padding:8px 10px;text-align:center">
+      <div style="font-size:10px;color:var(--tx3);margin-bottom:2px">撥轉成本（參考）</div><div style="font-weight:700;color:var(--am)">${fM(trTotal)}</div></div>
+  </div>
+  ${orders?.length?`<div class="sh">服務單（${orders.length}筆）</div>
+  <div style="overflow-x:auto"><table class="itb" style="min-width:300px">
+    <tr><th>單號</th><th>日期</th><th>客戶</th><th>金額</th><th>耗材成本</th></tr>
+    ${orders.map(o=>`<tr><td><a href="#" onclick="event.preventDefault();CM();setTimeout(()=>svcShowOrder('${o.order_no}'),80)" style="color:var(--ac);font-size:11px;font-family:monospace">${o.order_no}</a></td>
+      <td style="font-size:11px">${fD(o.order_date)}</td><td style="font-size:12px">${o.customer_name||'—'}</td>
+      <td class="num">${fM(o.total)}</td>
+      <td class="num" style="color:var(--rd)">${fM(o.consumable_cost)}</td></tr>`).join('')}
+  </table></div>`:'<div style="text-align:center;color:var(--tx3);padding:16px 0">本月無服務單</div>'}
+  ${transfers?.length?`<div class="sh" style="margin-top:10px">撥轉記錄（${transfers.length}筆，參考用）</div>
+  <div style="overflow-x:auto"><table class="itb" style="min-width:280px">
+    <tr><th>日期</th><th>商品</th><th>撥轉量</th><th>換算</th><th>金額</th></tr>
+    ${transfers.map(t=>`<tr>
+      <td style="font-size:11px">${fD(t.transfer_date)}</td><td style="font-size:12px">${t.product_name||'—'}</td>
+      <td class="num">${t.qty_stock}</td><td class="num" style="color:var(--ac)">${t.qty_service}</td>
+      <td class="num" style="color:var(--am)">${fM(t.total_cost)}</td></tr>`).join('')}
+  </table></div>`:''}
+  `,`<button class="btn" onclick="CM()">關閉</button>`);
+}
+window.svcMonthDetail = svcMonthDetail;
