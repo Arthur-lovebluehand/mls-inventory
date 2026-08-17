@@ -371,12 +371,13 @@ async function viewDepositDetail(depositNo) {
     <div><span style="color:var(--tx3)">來源：</span>${d.source_order_no||'手動登記'}</div>
   </div>
   ${d.note?`<div class="al al-w" style="font-size:12px;margin-bottom:12px">備註：${d.note}</div>`:''}
-  <table class="itb"><tr><th>商品</th><th>總量</th><th>已用/取回</th><th>剩餘</th></tr>
+  <table class="itb"><tr><th>商品</th><th>總量</th><th>已用/取回</th><th>剩餘</th><th></th></tr>
     ${its.map(i=>`<tr>
       <td style="font-size:12px">${i.product_name}</td>
       <td class="num">${i.total_qty} ${i.unit}</td>
       <td class="num">${i.used_qty||0} ${i.unit}</td>
       <td class="num" style="font-weight:700">${(i.total_qty||0)-(i.used_qty||0)} ${i.unit}</td>
+      <td><button class="btn btn-s" onclick="editDepositItemModal(${i.id},'${depositNo}')">編輯</button></td>
     </tr>`).join('')}
   </table>
   <div style="margin-top:14px;font-size:13px;font-weight:600">使用/取回記錄</div>
@@ -392,6 +393,34 @@ async function viewDepositDetail(depositNo) {
   `<button class="btn" onclick="CM()">關閉</button>`);
 }
 window.viewDepositDetail = viewDepositDetail;
+
+async function editDepositItemModal(itemId, depositNo) {
+  const { data:i } = await sb.from('customer_deposit_items').select('*').eq('id',itemId).single();
+  if(!i) return;
+  OM(`編輯品項：${i.product_name}`, `
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">已使用/取回 ${i.used_qty||0} ${i.unit}，總量不能改到比已使用的還少。</div>
+  ${fi('edi-name','商品名稱','text',i.product_name)}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+    ${fi('edi-qty','寄放總量','number',i.total_qty)}
+    ${fi('edi-unit','單位','text',i.unit)}
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveDepositItemEdit(${itemId},'${depositNo}')">儲存</button>`);
+}
+window.editDepositItemModal = editDepositItemModal;
+
+async function saveDepositItemEdit(itemId, depositNo) {
+  const { data:i } = await sb.from('customer_deposit_items').select('used_qty').eq('id',itemId).single();
+  const qty = parseFloat(v('edi-qty'))||0;
+  if(qty < (i?.used_qty||0)) { toast(`總量不能小於已使用的 ${i.used_qty} ${''}`,'e'); return; }
+  await sb.from('customer_deposit_items').update({
+    product_name: v('edi-name'), total_qty: qty, unit: v('edi-unit')||'組'
+  }).eq('id',itemId);
+  toast('✅ 已更新');
+  CM();
+  viewDepositDetail(depositNo);
+}
+window.saveDepositItemEdit = saveDepositItemEdit;
 
 // 供 service-orders.js 呼叫：抓某客戶目前有剩餘的寄放品項（回傳的是「品項」，id 是 customer_deposit_items.id）
 async function getCustomerDeposits(customerNo) {
