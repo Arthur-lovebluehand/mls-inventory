@@ -38,6 +38,7 @@ async function svcShowOrder(no) {
   if(!o){ toast('找不到訂單','e'); return; }
   const services = (its||[]).filter(i=>i.item_type==='service');
   const consumables = (its||[]).filter(i=>i.item_type==='consumable');
+  const gifts = (its||[]).filter(i=>i.item_type==='gift_product');
 
   OM(`服務單：${no}`,`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;font-size:13px">
@@ -58,6 +59,12 @@ async function svcShowOrder(no) {
     ${consumables.map(i=>`<tr><td>${i.item_name}</td><td>${i.qty}${i.unit||''}</td>
       <td class="num">${fM(i.unit_price)}</td><td class="num" style="color:var(--rd)">${fM(i.cost)}</td></tr>`).join('')}
   </table></div></div>`:''}
+  ${gifts.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">贈送商品</div>
+  <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
+    <tr><th>商品</th><th>數量</th><th>成本</th></tr>
+    ${gifts.map(i=>`<tr><td>${i.item_name}</td><td>${i.qty}${i.unit||''}</td>
+      <td class="num" style="color:var(--rd)">${fM(i.cost)}</td></tr>`).join('')}
+  </table></div></div>`:''}
   <div style="text-align:right;font-size:15px;font-weight:700;border-top:1px solid var(--bd);padding-top:10px">
     服務收入：${fM(o.total)}
   </div>
@@ -70,14 +77,17 @@ async function svcShowOrder(no) {
 
 window.svcShowOrder    = svcShowOrder;
 async function svcNewOrder() {
-  // 抓服務項目、服務庫存商品、客戶
-  const [{ data:sitems },{ data:sinv },{ data:sconsum },{ data:custs },{ data:techs }] = await Promise.all([
+  // 抓服務項目、服務庫存商品、客戶、完整商品清單（供贈品用）
+  const [{ data:sitems },{ data:sinv },{ data:sconsum },{ data:custs },{ data:techs },{ data:allProds }] = await Promise.all([
     sb.from('service_items').select('*').eq('is_active',true).order('sort_order'),
     sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty,service_units_per_stock,cost)').gt('stock_qty',0),
     sb.from('service_consumables').select('*').eq('is_active',true).gt('stock_qty',0).order('name'),
-    sb.from('customers').select('customer_no,name').order('name').limit(200),
+    sb.from('customers').select('customer_no,name,phone').order('name'),
     sb.from('technicians').select('*').eq('is_active',true).order('name'),
+    sb.from('products').select('product_no,name,spec,stock,cost').eq('is_active',true).order('name'),
   ]);
+  window._svcAllCusts = custs||[];
+  window._svcAllProds = allProds||[];
   const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-name="${t.name}">${t.name}（${t.role||'技師'}，抽成 ${Math.round(t.commission_rate*100)}%）</option>`).join('');
 
   const today2 = new Date().toISOString().split('T')[0];
@@ -85,7 +95,6 @@ async function svcNewOrder() {
 
   window._svcItems = []; // 服務訂單品項暫存
 
-  const custOpts = (custs||[]).map(c=>`<option value="${c.customer_no}">${c.name}</option>`).join('');
   const catGroups = {};
   (sitems||[]).forEach(s=>{ const c=s.category||'其他項目'; if(!catGroups[c]) catGroups[c]=[]; catGroups[c].push(s); });
   const svcOpts = Object.entries(catGroups).map(([cat,items])=>
@@ -106,9 +115,13 @@ async function svcNewOrder() {
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
     <div class="fl"><label>選擇客戶</label>
-      <select id="f-sv-cust" onchange="svcPickCust(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf)">
-        <option value="">— 選擇客戶 —</option>${custOpts}
-      </select>
+      <div class="ss-wrap" id="ss-svcust">
+        <input class="ss-input" id="ss-inp-svcust" placeholder="輸入姓名搜尋…" autocomplete="off"
+          oninput="svcFilterCust(this.value)" onfocus="svcFilterCust(this.value)"
+          onblur="setTimeout(()=>$('ss-drop-svcust')?.classList.remove('open'),200)">
+        <input type="hidden" id="f-sv-cust">
+        <div class="ss-drop" id="ss-drop-svcust"></div>
+      </div>
     </div>
     ${fi('sv-cname','客戶姓名 *')}
   </div>
@@ -145,6 +158,22 @@ async function svcNewOrder() {
     </div>
     <div style="font-size:11px;color:var(--tx3);margin-top:4px">用量＝這次實際用掉多少（會扣庫存、算成本）。「加收費用」是要另外跟客人收的錢，通常留 0 表示已包含在服務費裡，成本會照樣被記錄。</div>
   </div>
+  <div style="margin-bottom:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
+    <div style="font-weight:600;margin-bottom:8px;font-size:13px">贈送商品（會直接扣銷售商品庫存，自動連結這張服務單）</div>
+    <div style="display:grid;grid-template-columns:2fr auto;gap:6px;align-items:end">
+      <div class="ss-wrap" id="ss-svgift">
+        <input class="ss-input" id="ss-inp-svgift" placeholder="輸入商品名稱搜尋…" autocomplete="off"
+          oninput="svcFilterGiftProd(this.value)" onfocus="svcFilterGiftProd(this.value)"
+          onblur="setTimeout(()=>$('ss-drop-svgift')?.classList.remove('open'),200)">
+        <input type="hidden" id="sv-giftpno">
+        <div class="ss-drop" id="ss-drop-svgift"></div>
+      </div>
+      <input type="number" id="sv-giftqty" value="1" min="1" step="1" placeholder="數量"
+        style="width:60px;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+      <button class="btn btn-s" onclick="svcAddGiftProduct()">＋ 加入</button>
+    </div>
+    <div style="font-size:11px;color:var(--tx3);margin-top:4px">給客戶帶走的贈品（不是服務用掉的耗材），會直接扣「商品列表」的庫存，成本記在這張服務單裡。</div>
+  </div>
   <div id="sv-items-area" style="margin-bottom:14px"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fs('sv-pay','付款方式',['現金','銀行轉帳','LINE Pay','儲值扣款','現金+儲值'],'現金')}
@@ -157,15 +186,37 @@ async function svcNewOrder() {
   </div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveSvcOrder()">建立服務單</button>`,true);
+
+  window.svcFilterCust = q=>{
+    const fil = q ? window._svcAllCusts.filter(c=>c.name.includes(q)||(c.phone||'').includes(q)) : window._svcAllCusts;
+    const drop = $('ss-drop-svcust'); if(!drop) return;
+    drop.classList.add('open');
+    drop.innerHTML = fil.slice(0,30).map(c=>`<div class="ss-opt" onmousedown="svcPickCustSearch('${c.customer_no}','${(c.name||'').replace(/'/g,"\\'")}')">${c.name} · ${c.phone||'—'}</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
+  };
+  window.svcFilterGiftProd = q=>{
+    if(!q){ $('ss-drop-svgift').classList.remove('open'); return; }
+    const fil = window._svcAllProds.filter(p=>p.name.includes(q));
+    const drop = $('ss-drop-svgift'); if(!drop) return;
+    drop.classList.add('open');
+    drop.innerHTML = fil.slice(0,30).map(p=>`<div class="ss-opt" onmousedown="svcPickGiftProd('${p.product_no}','${(p.name||'').replace(/'/g,"\\'")}')">${p.name}${p.spec?`（${p.spec}）`:''} [庫${p.stock}]</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
+  };
+  window.svcPickGiftProd = (pno,name)=>{
+    $('ss-inp-svgift').value = name;
+    $('sv-giftpno').value = pno;
+    $('ss-drop-svgift')?.classList.remove('open');
+  };
 }
 
 window.svcNewOrder     = svcNewOrder;
-async function svcPickCust(sel) {
-  const opt = sel.options[sel.selectedIndex];
-  if(opt.value) {
-    $('f-sv-cname').value = opt.text;
+window.svcPickCust     = svcPickCust;
+async function svcPickCust(custNo, custName) {
+  if(custNo) {
+    $('f-sv-cust').value = custNo;
+    $('ss-inp-svcust').value = custName;
+    $('f-sv-cname').value = custName;
+    $('ss-drop-svcust')?.classList.remove('open');
     // 查儲值餘額
-    sb.from('store_credits').select('balance').eq('customer_no',opt.value).single()
+    sb.from('store_credits').select('balance').eq('customer_no',custNo).single()
       .then(({data})=>{
         const bal = data?.balance||0;
         let hint = document.getElementById('sv-credit-hint');
@@ -174,7 +225,7 @@ async function svcPickCust(sel) {
         hint.innerHTML=`<div style="font-size:11px;color:${bal>0?'var(--ac)':'var(--tx3)'};margin-top:4px">儲值餘額：${fM(bal)}</div>`;
       });
     // 查這位客戶自己的寄放商品，加進耗材下拉選單
-    const deposits = await window.getCustomerDeposits?.(opt.value) || [];
+    const deposits = await window.getCustomerDeposits?.(custNo) || [];
     const sel2 = $('sv-prod');
     if(sel2) {
       let depGroup = sel2.querySelector('optgroup[label="客戶寄放商品"]');
@@ -198,8 +249,7 @@ async function svcPickCust(sel) {
     }
   }
 }
-
-window.svcPickCust     = svcPickCust;
+window.svcPickCustSearch = svcPickCust;
 function svcAddServiceItem() {
   const sel = document.getElementById('sv-sitem');
   const opt = sel.options[sel.selectedIndex];
@@ -282,23 +332,43 @@ function svcAddConsumable() {
 }
 
 window.svcAddConsumable  = svcAddConsumable;
+
+function svcAddGiftProduct() {
+  const pno = $('sv-giftpno')?.value;
+  const name = $('ss-inp-svgift')?.value;
+  if(!pno){ toast('請搜尋並選擇商品','e'); return; }
+  const qty = parseFloat($('sv-giftqty')?.value)||1;
+  const prod = (window._svcAllProds||[]).find(p=>p.product_no===pno);
+  window._svcItems.push({
+    id: Date.now(), item_type:'gift_product', source:'gift_product',
+    item_name: name, product_no: pno,
+    qty, unit:'個',
+    unit_price: 0,
+    cost: Math.round((prod?.cost||0) * qty * 100)/100,
+    subtotal: 0
+  });
+  $('ss-inp-svgift').value=''; $('sv-giftpno').value=''; $('sv-giftqty').value=1;
+  renderSvcItems();
+}
+window.svcAddGiftProduct = svcAddGiftProduct;
+
 function renderSvcItems() {
   const area = document.getElementById('sv-items-area');
   if(!area) return;
   if(!window._svcItems.length){ area.innerHTML=''; return; }
   const total = window._svcItems.reduce((s,i)=>s+i.subtotal,0);
-  const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable').reduce((s,i)=>s+i.cost,0);
+  const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable'||i.item_type==='gift_product').reduce((s,i)=>s+i.cost,0);
   area.innerHTML = `
   <div class="tc">
     <div class="tb"><span class="tt">訂單品項</span></div>
     <div class="tw"><table style="width:100%">
       <tr><th>類型</th><th>項目</th><th>數量</th><th>單價</th><th>成本</th><th>小計</th><th>技師</th><th></th></tr>
       ${window._svcItems.map(i=>`<tr>
-        <td><span class="badge ${i.item_type==='service'?'bg':'br2'}" style="font-size:10px">${i.item_type==='service'?'服務':'耗材'}</span></td>
+        <td><span class="badge ${i.item_type==='service'?'bg':i.item_type==='gift_product'?'ba':'br2'}" style="font-size:10px">${i.item_type==='service'?'服務':i.item_type==='gift_product'?'贈品':'耗材'}</span></td>
         <td style="font-size:13px">${i.item_name}</td>
         <td>${i.qty}${i.unit}</td>
         <td class="num">${fM(i.unit_price)}</td>
-        <td class="num" style="color:${i.item_type==='consumable'?'var(--rd)':'var(--tx3)'}">${i.item_type==='consumable'?fM(i.cost):'—'}</td>
+        <td class="num" style="color:${(i.item_type==='consumable'||i.item_type==='gift_product')?'var(--rd)':'var(--tx3)'}">${(i.item_type==='consumable'||i.item_type==='gift_product')?fM(i.cost):'—'}</td>
         <td class="num"><b>${fM(i.subtotal)}</b></td>
         <td style="font-size:11px;color:var(--tx3)">${i.technician_name||'—'}</td>
         <td><button onclick="rmSvcItem(${i.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:16px">×</button></td>
@@ -332,7 +402,7 @@ async function saveSvcOrder() {
   if(!window._svcItems.length){ toast('請加入至少一個品項','e'); return; }
 
   const total = window._svcItems.reduce((s,i)=>s+i.subtotal,0);
-  const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable').reduce((s,i)=>s+i.cost,0);
+  const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable'||i.item_type==='gift_product').reduce((s,i)=>s+i.cost,0);
 
   // 儲值扣款計算
   let paidByCredit = 0, paidByCash = total;
@@ -385,6 +455,14 @@ async function saveSvcOrder() {
       await sb.from('customer_deposit_usages').insert({
         deposit_item_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no
       });
+    }
+  }
+  // 贈送商品 → 直接扣「商品列表」的銷售庫存（跟服務庫存分開），已經透過 service_order_items.order_no 連結這張服務單
+  for(const item of window._svcItems.filter(i=>i.item_type==='gift_product'&&i.product_no)) {
+    const { data:p } = await sb.from('products').select('stock').eq('product_no',item.product_no).single();
+    if(p) {
+      const newQty = Math.max(0, (p.stock||0)-item.qty);
+      await sb.from('products').update({stock:newQty}).eq('product_no',item.product_no);
     }
   }
 
