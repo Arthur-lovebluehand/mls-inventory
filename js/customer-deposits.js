@@ -402,7 +402,11 @@ async function editDepositItemModal(itemId, depositNo) {
   ${fi('edi-name','商品名稱','text',i.product_name)}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
     ${fi('edi-qty','寄放總量','number',i.total_qty)}
-    ${fi('edi-unit','單位','text',i.unit)}
+    <div class="fl"><label>單位</label>
+      <select id="f-edi-unit" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
+        ${['組','ml','片','次','顆','瓶','盒'].map(u=>`<option value="${u}" ${u===i.unit?'selected':''}>${u}</option>`).join('')}
+      </select>
+    </div>
   </div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveDepositItemEdit(${itemId},'${depositNo}')">儲存</button>`);
