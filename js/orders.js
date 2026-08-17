@@ -308,7 +308,7 @@ async function editOrder(no){
     ${fi('oname','客戶名稱 *','text',o?.customer_name)} ${fi('ophone','手機','text',o?.phone)}
     ${fs('oshp','寄送方式',['郵寄','超商取貨','親送','自取'],o?.shipping_method)}
     ${fi('oaddr','送貨地址','text',o?.ship_address)}
-    ${fs('opay','付款方式',['付款交單 (D/P)','匯款','信用卡','現金'],o?.payment_method)}
+    ${payMethodSel('opay',o?.payment_method||'')}
     ${fi('ofee','運費','number',o?.shipping_fee||0)}
     ${fi('oinv','發票號碼','text',o?.invoice_no||'')}
     <div class="fl"><label>位階</label><select id="f-oalv" onchange="updateItemPricesByLevel(this.value)">${LEVELS.map(l=>`<option ${l===o?.agent_level?'selected':''}>${l}</option>`).join('')}</select></div>
