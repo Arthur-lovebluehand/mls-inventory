@@ -72,7 +72,7 @@ function addDepositModal() {
       <input id="f-cd-ordersearch" type="text" placeholder="例如 SO-20260813-001 或 王小姐" oninput="cdSearchOrders(this.value)"
         style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
     </div>
-    <div id="cd-order-results" style="max-height:160px;overflow-y:auto;margin-bottom:10px"></div>
+    <div id="cd-order-results" style="max-height:320px;overflow-y:auto;margin-bottom:10px"></div>
     <div id="cd-order-items"></div>
   </div>
   <div id="cd-mode-manual" style="display:none">
@@ -121,14 +121,17 @@ let cdSearchTimer;
 function cdSearchOrders(kw) {
   clearTimeout(cdSearchTimer);
   if(!kw || kw.trim().length<2) { $('cd-order-results').innerHTML=''; return; }
+  $('cd-order-results').innerHTML = '<div style="font-size:12px;color:var(--tx3)">搜尋中…</div>';
   cdSearchTimer = setTimeout(async ()=>{
     const { data } = await sb.from('sales_orders').select('order_no,order_date,customer_no,customer_name')
-      .or(`order_no.ilike.%${kw}%,customer_name.ilike.%${kw}%`).order('order_date',{ascending:false}).limit(15);
-    $('cd-order-results').innerHTML = (data||[]).map(o=>
+      .or(`order_no.ilike.%${kw}%,customer_name.ilike.%${kw}%`).order('order_date',{ascending:false}).limit(150);
+    $('cd-order-results').innerHTML =
+      `<div style="font-size:11px;color:var(--tx3);margin-bottom:4px">共找到 ${(data||[]).length} 筆${(data||[]).length>=150?'（已達顯示上限，可縮小搜尋範圍例如打全名）':''}</div>`
+      + ((data||[]).map(o=>
       `<div style="padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);margin-bottom:4px;cursor:pointer;font-size:12px" onclick="cdPickOrder('${o.order_no}')">
         <b>${o.order_no}</b>　${fD(o.order_date)}　${o.customer_name}
       </div>`
-    ).join('') || '<div style="font-size:12px;color:var(--tx3)">查無符合的訂單</div>';
+    ).join('') || '<div style="font-size:12px;color:var(--tx3)">查無符合的訂單</div>');
   }, 350);
 }
 window.cdSearchOrders = cdSearchOrders;
