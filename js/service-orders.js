@@ -56,7 +56,7 @@ async function svcShowOrder(no) {
   ${services.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">服務項目</div>
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
     <tr><th>項目</th><th>數量</th><th>單價</th><th>小計</th></tr>
-    ${services.map(i=>`<tr><td>${i.item_name}</td><td>${i.qty}${i.unit||''}</td>
+    ${services.map(i=>`<tr><td>${i.item_name}${i.is_gift?' <span class="badge ba" style="font-size:10px">贈</span>':''}</td><td>${i.qty}${i.unit||''}</td>
       <td class="num">${fM(i.unit_price)}</td><td class="num">${fM(i.subtotal)}</td></tr>`).join('')}
   </table></div></div>`:''}
   ${consumables.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">耗材</div>
@@ -133,7 +133,7 @@ async function svcNewOrder() {
   </div>
   <div style="margin-bottom:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
     <div style="font-weight:600;margin-bottom:8px;font-size:13px">加入服務項目（人工）</div>
-    <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:end">
+    <div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:6px;align-items:end">
       <select id="sv-sitem" onchange="svcItemChange(this)" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
         <option value="">— 選服務項目 —</option>${svcOpts}
       </select>
@@ -146,6 +146,10 @@ async function svcNewOrder() {
       </select>
       <button class="btn btn-s" onclick="svcAddServiceItem()">＋ 加入</button>
     </div>
+    <label style="display:flex;align-items:center;gap:5px;margin-top:6px;font-size:12px;cursor:pointer">
+      <input type="checkbox" id="sv-sigift" style="width:14px;height:14px">
+      <span>贈送這次服務（不收費，這筆金額自動算 $0，單價照樣保留紀錄）</span>
+    </label>
     <div style="font-size:11px;color:var(--tx3);margin-top:4px">可在單價欄位覆蓋預設價格</div>
   </div>
   <div style="margin-bottom:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
@@ -262,6 +266,7 @@ function svcAddServiceItem() {
   if(!opt.value){ toast('請選擇服務項目','e'); return; }
   const qty = parseFloat(document.getElementById('sv-siqty').value)||1;
   const price = parseFloat(document.getElementById('sv-siprice').value)||parseFloat(opt.dataset.price)||0;
+  const isGift = document.getElementById('sv-sigift')?.checked||false;
   const techSel = document.getElementById('sv-tech');
   const techOpt = techSel?.options[techSel.selectedIndex];
   const techId = techOpt?.value ? parseInt(techOpt.value) : null;
@@ -270,9 +275,10 @@ function svcAddServiceItem() {
   const techPay = techId ? Math.round(qty * price * techRate * 100)/100 : 0;
   window._svcItems.push({
     id: Date.now(), item_type:'service', item_name:opt.text.split('（')[0],
-    qty, unit:opt.dataset.unit||'次', unit_price:price, cost:0, subtotal:qty*price,
-    technician_id:techId, technician_name:techName, technician_pay:techPay
+    qty, unit:opt.dataset.unit||'次', unit_price:price, cost:0, subtotal:isGift?0:qty*price,
+    is_gift:isGift, technician_id:techId, technician_name:techName, technician_pay:techPay
   });
+  const giftCb = document.getElementById('sv-sigift'); if(giftCb) giftCb.checked=false;
   renderSvcItems();
 }
 
@@ -371,7 +377,7 @@ function renderSvcItems() {
       <tr><th>類型</th><th>項目</th><th>數量</th><th>單價</th><th>成本</th><th>小計</th><th>技師</th><th></th></tr>
       ${window._svcItems.map(i=>`<tr>
         <td><span class="badge ${i.item_type==='service'?'bg':i.item_type==='gift_product'?'ba':'br2'}" style="font-size:10px">${i.item_type==='service'?'服務':i.item_type==='gift_product'?'贈品':'耗材'}</span></td>
-        <td style="font-size:13px">${i.item_name}</td>
+        <td style="font-size:13px">${i.item_name}${i.is_gift?' <span class="badge ba" style="font-size:10px">贈</span>':''}</td>
         <td>${i.qty}${i.unit}</td>
         <td class="num">${fM(i.unit_price)}</td>
         <td class="num" style="color:${(i.item_type==='consumable'||i.item_type==='gift_product')?'var(--rd)':'var(--tx3)'}">${(i.item_type==='consumable'||i.item_type==='gift_product')?fM(i.cost):'—'}</td>
@@ -431,7 +437,7 @@ async function saveSvcOrder() {
   // 2. 建品項
   const items = window._svcItems.map(i=>({
     order_no:no, item_type:i.item_type, item_name:i.item_name,
-    product_no:i.product_no||null, consumable_id:i.consumable_id||null, deposit_id:i.deposit_id||null,
+    product_no:i.product_no||null, consumable_id:i.consumable_id||null, deposit_id:i.deposit_id||null, is_gift:i.is_gift||false,
     qty:i.qty, unit:i.unit,
     unit_price:i.unit_price, cost:i.cost, subtotal:i.subtotal,
     technician_id:i.technician_id||null, technician_name:i.technician_name||null,
