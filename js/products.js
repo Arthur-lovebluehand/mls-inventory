@@ -1,6 +1,6 @@
 // Tab 切換（商品詳情 Modal）
 function switchProdTab(tab){
-  ['s','p','l','a','t'].forEach(t=>{
+  ['s','p','l','a','t','g'].forEach(t=>{
     const btn=document.getElementById('ptab-'+t);
     const con=document.getElementById('ptab-'+t+'-con');
     if(btn) btn.className='tab'+(t===tab?' on':'');
@@ -452,6 +452,18 @@ async function showProd(no) {
   const { data: lnItems } = await sb.from('loan_order_items').select('loan_no,qty,returned_qty').eq('product_no',no).order('loan_no',{ascending:false}).limit(10);
   const { data: adjLogs } = await sb.from('audit_logs').select('description,created_at,operator').eq('table_name','products').eq('record_id',no).eq('action','adjust').order('created_at',{ascending:false}).limit(10);
   const { data: transfers } = await sb.from('service_transfers').select('transfer_date,qty_stock,qty_service,note').eq('product_no',no).order('transfer_date',{ascending:false}).limit(20);
+  // 這個商品的贈品記錄（服務單贈送 + 儲值贈送）
+  const { data: svcGiftIts } = await sb.from('service_order_items').select('order_no,qty,unit,cost').eq('item_type','gift_product').eq('product_no',no).order('order_no',{ascending:false});
+  const { data: crGiftRecs } = await sb.from('store_credit_records').select('customer_no,record_date,product_qty,note').eq('type','gift').eq('product_no',no).order('record_date',{ascending:false});
+  const giftOrderNos=[...new Set((svcGiftIts||[]).map(x=>x.order_no))];
+  const giftCustNos=[...new Set((crGiftRecs||[]).map(x=>x.customer_no).filter(Boolean))];
+  const [giftOrderMap,giftCustMap]=[{},{}];
+  if(giftOrderNos.length){const{data:gords}=await sb.from('service_orders').select('order_no,order_date,customer_name').in('order_no',giftOrderNos);(gords||[]).forEach(x=>giftOrderMap[x.order_no]=x);}
+  if(giftCustNos.length){const{data:gcusts}=await sb.from('customers').select('customer_no,name').in('customer_no',giftCustNos);(gcusts||[]).forEach(x=>giftCustMap[x.customer_no]=x.name);}
+  const giftRows=[
+    ...(svcGiftIts||[]).map(i=>({date:giftOrderMap[i.order_no]?.order_date||'',customer:giftOrderMap[i.order_no]?.customer_name||'—',qty:i.qty,unit:i.unit||'個',cost:i.cost,source:'服務單',no:i.order_no})),
+    ...(crGiftRecs||[]).map(r=>({date:r.record_date,customer:giftCustMap[r.customer_no]||r.customer_no,qty:r.product_qty,unit:'個',cost:null,source:'儲值贈品',no:null})),
+  ].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   // 批次取相關主表資訊
   const soNosAll=(soItemsRaw||[]).map(x=>x.order_no).filter(Boolean);
   const poNosAll=(poItemsRaw||[]).map(x=>x.po_no).filter(Boolean);
@@ -505,6 +517,7 @@ async function showProd(no) {
     <div class="tab" id="ptab-l" onclick="switchProdTab('l')" style="white-space:nowrap">借貨</div>
     <div class="tab" id="ptab-a" onclick="switchProdTab('a')" style="white-space:nowrap">庫存調整</div>
     <div class="tab" id="ptab-t" onclick="switchProdTab('t')" style="white-space:nowrap">🛁 服務撥轉</div>
+    <div class="tab" id="ptab-g" onclick="switchProdTab('g')" style="white-space:nowrap">🎁 贈品${giftRows.length?`（${giftRows.length}）`:''}</div>
   </div>
   <div id="ptab-content">
   <!-- 銷貨 -->
@@ -578,6 +591,18 @@ async function showProd(no) {
       </tr>`).join('')}
     </table>` : '<div style="padding:20px;text-align:center;color:var(--tx3)">尚無撥轉記錄</div>'}` :
     `<div style="padding:20px;text-align:center;color:var(--tx3)">此商品尚未設定服務單位<br><small>請點「編輯商品」→ 填寫服務用途設定</small></div>`}
+  </div>
+  <div id="ptab-g-con" style="display:none">
+    <div style="font-size:12px;color:var(--tx3);margin-bottom:10px">送給客戶帶走的這個商品，來源包含服務單的贈送商品、儲值時附送的商品。</div>
+    ${giftRows.length ? `<table class="itb"><tr><th>日期</th><th>客戶</th><th>數量</th><th>成本</th><th>來源</th></tr>
+      ${giftRows.map(g=>`<tr>
+        <td style="font-size:12px">${fD(g.date)}</td>
+        <td>${g.customer}</td>
+        <td class="num">${g.qty} ${g.unit}</td>
+        <td class="num" style="color:var(--rd)">${g.cost!=null?fM(g.cost):'—'}</td>
+        <td style="font-size:11px">${g.source==='服務單'?`<a href="#" onclick="event.preventDefault();CM();setTimeout(()=>svcShowOrder('${g.no}'),80)" style="color:var(--ac)">服務單：${g.no}</a>`:'<span class="badge ba" style="font-size:10px">儲值贈品</span>'}</td>
+      </tr>`).join('')}
+    </table>` : '<div style="padding:20px;text-align:center;color:var(--tx3)">尚無贈品記錄</div>'}
   </div>
   <div id="ptab-a-con" style="display:none">
   <table class="itb">
