@@ -451,8 +451,13 @@ async function saveSvcOrder() {
   if(payMethod.includes('儲值') && custNo) {
     const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
     const bal = cr?.balance||0;
-    if(payMethod==='儲值扣款') { paidByCredit=Math.min(bal,total); paidByCash=Math.max(0,total-paidByCredit); }
-    else if(payMethod==='現金+儲值') { paidByCredit=Math.min(bal,total); paidByCash=Math.max(0,total-paidByCredit); }
+    if(payMethod==='儲值扣款') {
+      // 純儲值扣款：這筆錢就是要從儲值扣，餘額不夠也照扣，允許變成負數（代表客戶已經欠款，之後補儲值時會自動抵掉）
+      paidByCredit = total; paidByCash = 0;
+    } else if(payMethod==='現金+儲值') {
+      // 現金+儲值：儲值有多少先扣多少，不夠的部分才用現金補，這個模式不會讓餘額變負
+      paidByCredit=Math.min(bal,total); paidByCash=Math.max(0,total-paidByCredit);
+    }
   }
 
   // 1. 建/更新服務訂單
