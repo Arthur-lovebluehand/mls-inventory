@@ -3,15 +3,20 @@
 // ══════════════════════════════
 
 async function svcInventory() {
-  const { data } = await sb.from('service_inventory')
+  const { data:allData } = await sb.from('service_inventory')
     .select('*, products(name,spec,service_unit,service_units_per_stock)')
     .order('product_no');
+  const kw = window._svcInvSearch||'';
+  const data = kw ? (allData||[]).filter(i=>(i.products?.name||'').includes(kw)||(i.products?.spec||'').includes(kw)) : allData;
 
   $('svc-content').innerHTML = `
   <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
     <button class="btn btn-p btn-s" onclick="svcNewTransfer()">＋ 撥轉商品到服務庫存</button>
   </div>
-  <div class="tc"><div class="tb"><span class="tt">服務庫存</span></div>
+  <div class="tc"><div class="tb"><span class="tt">服務庫存</span>
+    <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    <input placeholder="商品名稱/規格…（輸入後按 Enter 搜尋）" value="${kw}" onkeydown="if(event.key==='Enter'){window._svcInvSearch=this.value;svcInventory();}"></div>
+  </div>
   <div class="tw"><table style="width:100%">
     <tr><th>商品</th><th>規格</th><th style="text-align:center">庫存（服務單位）</th><th style="text-align:center">換算（銷售單位）</th></tr>
     ${(data||[]).map(i=>{
@@ -25,7 +30,7 @@ async function svcInventory() {
         </td>
         <td style="text-align:center;font-size:12px;color:var(--tx3)">≈ ${salesQty.toFixed(2)} 盒/瓶</td>
       </tr>`;
-    }).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無服務庫存，請先撥轉商品</td></tr>'}
+    }).join('')||`<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">${kw?'查無符合的商品':'尚無服務庫存，請先撥轉商品'}</td></tr>`}
   </table></div></div>`;
 }
 

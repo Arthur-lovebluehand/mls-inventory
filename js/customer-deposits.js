@@ -61,6 +61,7 @@ window.customerDeposits = customerDeposits;
 
 // ── 新增寄放記錄（從銷售單建立 / 手動登記）──
 function addDepositModal() {
+  window._cdManualProdNo = null;
   OM('新增寄放記錄', `
   <div class="tab-bar" style="margin-bottom:14px">
     <div class="tab on" id="cd-tab-order" onclick="cdSwitchMode('order')">從銷售單建立</div>
@@ -85,10 +86,17 @@ function addDepositModal() {
         <div id="cd-cust-drop" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px">
-      ${fi('cd-pname','商品名稱 *')}
-      ${fi('cd-unit','單位','text','組')}
+    <div class="fl" style="margin-bottom:10px"><label>商品</label>
+      <div style="position:relative">
+        <input type="text" id="cd-pname" placeholder="輸入商品名稱搜尋，或直接手動輸入自訂名稱…" autocomplete="off"
+          style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"
+          oninput="cdFilterManualProd(this.value)" onfocus="cdFilterManualProd(this.value)"
+          onblur="setTimeout(()=>$('cd-pname-drop')?.classList.remove('open'),300)">
+        <div id="cd-pname-drop" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+      </div>
+      <div style="font-size:11px;color:var(--tx3);margin-top:4px">從清單選商品會自動帶入正確的服務單位；找不到商品也可以直接手動輸入名稱。</div>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">${fi('cd-unit','單位','text','組')}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       ${fi('cd-qty','寄放總量 *','number','1')}
       ${fi('cd-date','寄放日期','date',today())}
@@ -182,6 +190,28 @@ function cdFilterCust(kw) {
   }, 300);
 }
 window.cdFilterCust = cdFilterCust;
+
+function cdFilterManualProd(kw) {
+  const drop = $('cd-pname-drop');
+  if(!kw){ drop.classList.remove('open'); return; }
+  clearTimeout(window._cdProdTimer);
+  window._cdProdTimer = setTimeout(async ()=>{
+    const { data } = await sb.from('products').select('product_no,name,service_unit,default_service_qty').eq('is_active',true).ilike('name',`%${kw}%`).limit(15);
+    drop.innerHTML = (data||[]).map(p=>
+      `<div style="padding:7px 8px;cursor:pointer;font-size:13px" onmousedown="cdPickManualProd('${p.product_no}','${p.name.replace(/'/g,"\\'")}','${p.service_unit||'組'}',${p.default_service_qty||1})">${p.name}${p.service_unit?`（服務單位：${p.service_unit}）`:''}</div>`
+    ).join('') || '<div style="padding:7px 8px;font-size:12px;color:var(--tx3)">查無商品，可直接手動輸入名稱</div>';
+    drop.classList.add('open');
+  }, 300);
+}
+window.cdFilterManualProd = cdFilterManualProd;
+function cdPickManualProd(pno,name,unit,defQty) {
+  $('cd-pname').value = name;
+  $('f-cd-unit').value = unit;
+  if($('f-cd-qty')) $('f-cd-qty').value = defQty;
+  window._cdManualProdNo = pno;
+  $('cd-pname-drop')?.classList.remove('open');
+}
+window.cdPickManualProd = cdPickManualProd;
 function cdPickCust(no,name) {
   $('cd-cust-no').value = no; $('cd-cust-name').value = name;
   $('cd-cust-inp').value = name;
@@ -220,7 +250,7 @@ async function saveDeposit() {
     const pname = v('cd-pname'), qty = parseFloat(v('cd-qty'))||0;
     if(!custName) { toast('請選擇客戶','e'); return; }
     if(!pname || qty<=0) { toast('請填寫商品名稱與寄放數量','e'); return; }
-    itemRows.push({ deposit_no: depositNo, product_no:null, product_name: pname, unit: v('cd-unit')||'組', total_qty: qty, used_qty:0 });
+    itemRows.push({ deposit_no: depositNo, product_no:window._cdManualProdNo||null, product_name: pname, unit: v('cd-unit')||'組', total_qty: qty, used_qty:0 });
     headerPayload = {
       deposit_no: depositNo, customer_no: custNo||null, customer_name: custName,
       source_order_no: null, deposit_date: depositDate, note: v('cd-note')||null, is_active:true
