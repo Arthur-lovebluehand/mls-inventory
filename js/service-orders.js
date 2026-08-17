@@ -92,7 +92,9 @@ async function svcNewOrder(editNo) {
     ]);
     if(!o){ toast('找不到訂單','e'); return; }
     existingOrder=o; existingItems=its||[];
-    await reverseSvcOrderEffects(editNo); // 先還原庫存/耗材/寄放/儲值，等一下存檔時會重新照畫面內容扣一次
+    // 注意：這裡「不」立即還原庫存/儲值影響——只是把既有品項讀出來放進畫面讓你編輯。
+    // 真正的「還原舊的、套用新的」要等使用者按下「儲存修改」才會一起執行，
+    // 這樣光是打開編輯畫面、或中途取消，都不會動到任何實際資料。
   }
   // 抓服務項目、服務庫存商品、客戶、完整商品清單（供贈品用）
   const [{ data:sitems },{ data:sinv },{ data:sconsum },{ data:custs },{ data:techs },{ data:allProds },kitsList] = await Promise.all([
@@ -477,6 +479,11 @@ async function saveSvcOrder() {
   if(btn){ btn.disabled=true; btn.dataset.origText=btn.textContent; btn.textContent='儲存中…'; btn.style.opacity='.6'; }
 
   try {
+  // 編輯模式：先還原這張單原本造成的庫存/耗材/寄放/儲值影響，緊接著馬上重新套用畫面上目前的內容——
+  // 兩件事在同一次「儲存」裡連續完成，不會再有「打開編輯就先破壞資料、卻沒真的存到新內容」的風險
+  if(window._svcEditNo) {
+    await reverseSvcOrderEffects(window._svcEditNo);
+  }
   const total = window._svcItems.reduce((s,i)=>s+i.subtotal,0);
   const consumableCost = window._svcItems.filter(i=>i.item_type==='consumable'||i.item_type==='gift_product').reduce((s,i)=>s+i.cost,0);
 

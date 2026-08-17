@@ -51,11 +51,11 @@ async function svcKitModal(id) {
   window._skItems = items.map(i=>({...i}));
 
   const [{ data:sinv },{ data:sconsum }] = await Promise.all([
-    sb.from('service_inventory').select('*, products(name,service_unit)').gt('stock_qty',0),
+    sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty)').gt('stock_qty',0),
     sb.from('service_consumables').select('*').eq('is_active',true).order('name'),
   ]);
-  window._skProdOpts = (sinv||[]).map(p=>({value:p.product_no,type:'product',unit:p.products?.service_unit||'次',label:p.products?.name||p.product_no}));
-  window._skConsumOpts = (sconsum||[]).map(c=>({value:String(c.id),type:'consumable',unit:c.unit,label:c.name}));
+  window._skProdOpts = (sinv||[]).map(p=>({value:p.product_no,type:'product',unit:p.products?.service_unit||'次',defQty:p.products?.default_service_qty||1,label:p.products?.name||p.product_no}));
+  window._skConsumOpts = (sconsum||[]).map(c=>({value:String(c.id),type:'consumable',unit:c.unit,defQty:1,label:c.name}));
 
   OM(id?'編輯套組':'新增套組', `
   ${fi('sk-name','套組名稱 *','text',kit?.name||'')}
@@ -63,7 +63,7 @@ async function svcKitModal(id) {
   <div style="margin-top:12px;padding:12px;background:var(--sf2);border-radius:var(--r)">
     <div style="font-weight:600;margin-bottom:8px;font-size:13px">套組品項</div>
     <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:end">
-      <select id="sk-add-item" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+      <select id="sk-add-item" onchange="skItemChange(this)" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
         <option value="">— 選耗材 —</option>
         <optgroup label="商品撥轉耗材">${window._skProdOpts.map(o=>`<option value="P:${o.value}">${o.label}</option>`).join('')}</optgroup>
         <optgroup label="服務專屬耗材">${window._skConsumOpts.map(o=>`<option value="C:${o.value}">${o.label}</option>`).join('')}</optgroup>
@@ -78,6 +78,15 @@ async function svcKitModal(id) {
   skRenderItems();
 }
 window.svcKitModal = svcKitModal;
+
+function skItemChange(sel) {
+  const val = sel.value;
+  if(!val){ return; }
+  const [prefix,rawVal] = [val.slice(0,1), val.slice(2)];
+  const o = prefix==='P' ? window._skProdOpts.find(x=>x.value===rawVal) : window._skConsumOpts.find(x=>x.value===rawVal);
+  if(o) $('sk-add-qty').value = o.defQty;
+}
+window.skItemChange = skItemChange;
 
 function skAddItem() {
   const sel = $('sk-add-item');

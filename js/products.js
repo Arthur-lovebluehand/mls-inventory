@@ -89,7 +89,7 @@ async function products(){
           
           <td><div style="display:flex;gap:3px">
             <button class="btn btn-s" onclick="window.innerWidth<=768?showMobileProd('${p.product_no}'):showProd('${p.product_no}')">查看</button>
-            <button class="btn btn-s" onclick='eProd(${JSON.stringify(p)})'>編輯</button>
+            <button class="btn btn-s" onclick="editProdByNo('${p.product_no}')">編輯</button>
             <button class="btn btn-s" onclick="adjStk('${p.product_no}','${p.name.replace(/'/g,"\\'")}',${p.stock})">調庫存</button>
             <button class="btn btn-s" style="${p.is_active===false?'background:var(--acl);color:var(--ac);border-color:var(--ac)':'background:var(--aml);color:var(--am);border-color:var(--am)'}" onclick="toggleProd('${p.product_no}',${p.is_active!==false})">
               ${p.is_active===false?'✓ 啟用':'⊘ 停用'}</button>
