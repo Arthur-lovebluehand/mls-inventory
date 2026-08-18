@@ -87,6 +87,9 @@ const COL_LABELS = {
   min_qty:'最低數量', start_date:'開始日期', end_date:'結束日期', type:'類型',
   record_no:'記錄編號', record_date:'記錄日期', payer:'付款人', trigger_who:'觸發人',
   restock_no:'補貨單號', restock_date:'補貨日期', consumable_id:'耗材ID', item_name:'品項名稱',
+  deposit_item_id:'寄放品項ID', use_date:'使用/取回日期', qty_used:'使用/取回數量', use_type:'使用類型',
+  service_order_no:'服務單號', deposit_no:'寄放單號', source_order_no:'來源訂單', deposit_id:'寄放品項ID',
+  kit_id:'套組ID', source_type:'來源類型',
   unit_cost:'單位成本', total_cost:'總成本', item_no:'耗材編號', stock_qty:'庫存數量', updated_at:'更新時間',
   default_price:'預設單價', item_type:'品項類型', technician_id:'技師ID', technician_name:'技師姓名',
   commission_amount:'抽成金額', technician_pay:'技師抽成', paid_by_credit:'儲值金支付', paid_by_cash:'現金支付',
@@ -128,6 +131,8 @@ const EXPORT_TABLES = [
     {t:'customers',label:'客戶名單'},
     {t:'store_credits',label:'儲值金'},
     {t:'store_credit_records',label:'儲值金異動記錄'},
+    {custom:'customerDeposits',label:'客戶寄放（含商品明細）'},
+    {t:'customer_deposit_usages',label:'客戶寄放使用/取回記錄'},
   ]},
   { group:'銷售', tables:[
     {custom:'salesOrders',label:'銷售訂單（含商品明細）'},
@@ -154,12 +159,14 @@ const EXPORT_TABLES = [
     {t:'service_transfers',label:'撥轉記錄'},
     {t:'service_consumables',label:'服務專屬耗材'},
     {t:'service_consumable_restocks',label:'服務耗材補貨記錄'},
+    {custom:'serviceKits',label:'耗材套組（含品項）'},
   ]},
   { group:'財務／其他', tables:[
     {t:'bonus_records',label:'獎金/分潤記錄'},
     {t:'monthly_accounts',label:'月結對帳'},
     {t:'yearly_accounts',label:'年度對帳'},
     {t:'payment_methods',label:'付款方式設定'},
+    {t:'shipping_methods',label:'寄送方式設定'},
     {t:'settings',label:'系統設定'},
     {t:'audit_logs',label:'操作記錄'},
   ]},
@@ -232,6 +239,41 @@ const CUSTOM_EXPORTERS = {
       商品編號:r.product_no, 商品名稱:nameMap[r.product_no]||'（找不到商品名稱）',
       服務庫存數量:r.stock_qty, 更新時間:r.updated_at
     }));
+  },
+  async customerDeposits(){
+    const [deposits,items]=await Promise.all([fetchAllRows('customer_deposits'), fetchAllRows('customer_deposit_items')]);
+    deposits.sort((a,b)=>(a.deposit_date||'').localeCompare(b.deposit_date||'')||(a.deposit_no||'').localeCompare(b.deposit_no||''));
+    const itemsByDeposit={};
+    items.forEach(i=>{ (itemsByDeposit[i.deposit_no]=itemsByDeposit[i.deposit_no]||[]).push(i); });
+    const rows=[];
+    deposits.forEach(d=>{
+      const its=itemsByDeposit[d.deposit_no]||[{}];
+      its.forEach(i=>rows.push({
+        寄放單號:d.deposit_no, 寄放日期:d.deposit_date, 客戶編號:d.customer_no, 客戶名稱:d.customer_name,
+        來源訂單:d.source_order_no||'手動登記', 狀態:d.is_active===false?'已關閉':'啟用中',
+        商品名稱:i.product_name||'', 商品編號:i.product_no||'', 單位:i.unit||'',
+        寄放總量:i.total_qty??'', '已用/取回':i.used_qty??'', 剩餘:i.total_qty!=null?(i.total_qty-(i.used_qty||0)):'',
+        備註:d.note
+      }));
+    });
+    return rows;
+  },
+  async serviceKits(){
+    const [kits,items]=await Promise.all([fetchAllRows('service_kits'), fetchAllRows('service_kit_items')]);
+    kits.sort((a,b)=>(a.sort_order||99)-(b.sort_order||99)||(a.name||'').localeCompare(b.name||''));
+    const itemsByKit={};
+    items.forEach(i=>{ (itemsByKit[i.kit_id]=itemsByKit[i.kit_id]||[]).push(i); });
+    const rows=[];
+    kits.forEach(k=>{
+      const its=itemsByKit[k.id]||[{}];
+      its.forEach(i=>rows.push({
+        套組名稱:k.name, 狀態:k.is_active===false?'已停用':'啟用中', 排序:k.sort_order,
+        品項名稱:i.item_name||'', 來源類型:i.source_type==='product'?'商品撥轉耗材':i.source_type==='consumable'?'服務專屬耗材':(i.source_type||''),
+        商品編號:i.product_no||'', 耗材ID:i.consumable_id||'', 用量:i.qty??'', 單位:i.unit||'',
+        備註:k.note
+      }));
+    });
+    return rows;
   },
 };
 
