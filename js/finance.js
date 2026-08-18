@@ -152,9 +152,11 @@ async function accounts(){
     <div class="tab${accTab==='sales'?' on':''}" onclick="window._accTab='sales';accounts()">銷售財報</div>
     <div class="tab${accTab==='service'?' on':''}" onclick="window._accTab='service';accounts()">服務財報</div>
     <div class="tab${accTab==='total'?' on':''}" onclick="window._accTab='total';accounts()">總財報</div>
+    <div class="tab${accTab==='owner'?' on':''}" onclick="window._accTab='owner';accounts()">老闆娘個人淨利</div>
   </div>`;
   if(accTab==='service'){ await showSvcFinance(); return; }
   if(accTab==='total'){ await showTotalFinance(); return; }
+  if(accTab==='owner'){ await showOwnerProfit(); return; }
   $('main').innerHTML += `
     <div class="pc">
     ${(yr&&yr.length)?`<div class="tc" style="margin-bottom:14px"><div class="tb"><span class="tt">年度對帳</span></div>
@@ -316,7 +318,7 @@ window.toggleBonusFields=toggleBonusFields;
 // ════════════════════════════════════
 //  總財報（銷售 + 服務合計）
 // ════════════════════════════════════
-async function showTotalFinance() {
+async function computeTotalFinanceData() {
   const [{ data:sOrders },{ data:pOrders },{ data:svOrders },{ data:svItems }] = await Promise.all([
     sb.from('sales_orders').select('order_date,total,payment_done').eq('payment_done',true),
     sb.from('purchase_orders').select('po_date,total,done').eq('done',true),
@@ -345,8 +347,12 @@ async function showTotalFinance() {
 
   const months = Object.keys(mMap).sort().reverse();
   const years = Object.keys(yMap).sort().reverse();
+  return { mMap, yMap, months, years };
+}
+const netRow = d => d.salesRev + d.svcRev - d.purchCost - d.svcCost - d.techPay;
 
-  const netRow = d => d.salesRev + d.svcRev - d.purchCost - d.svcCost - d.techPay;
+async function showTotalFinance() {
+  const { mMap, yMap, months, years } = await computeTotalFinanceData();
 
   $('main').innerHTML += `
   <div class="pc">
@@ -391,6 +397,67 @@ async function showTotalFinance() {
 }
 
 window.showTotalFinance = showTotalFinance;
+
+// ════════════════════════════════════
+//  老闆娘個人淨利（公司總淨利＋自己身為技師的薪資）
+// ════════════════════════════════════
+var ownerTechName = null;
+async function showOwnerProfit() {
+  const { data:techs } = await sb.from('technicians').select('name').order('name');
+  const names = [...new Set((techs||[]).map(t=>t.name))];
+  if(ownerTechName===null) ownerTechName = names.find(n=>n.includes('闆'))||names[0]||null;
+
+  const { mMap, months } = await computeTotalFinanceData();
+
+  let ownerPayByMonth = {};
+  if(ownerTechName) {
+    const { data:items } = await sb.from('service_order_items')
+      .select('order_date:service_orders(order_date),technician_name,technician_pay')
+      .eq('item_type','service').eq('technician_name',ownerTechName);
+    (items||[]).forEach(i=>{
+      const ym=(i.order_date?.order_date||'').slice(0,7);
+      if(ym) ownerPayByMonth[ym]=(ownerPayByMonth[ym]||0)+(i.technician_pay||0);
+    });
+  }
+
+  let totalNet=0, totalPay=0;
+
+  $('main').innerHTML += `
+  <div class="pc">
+    <div class="tc" style="margin-bottom:16px">
+      <div class="tb"><span class="tt">選擇要計算的人</span></div>
+      <div style="padding:14px">
+        <select id="f-ownersel" onchange="ownerTechName=this.value;accounts()" style="padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
+          ${names.map(n=>`<option value="${n}" ${n===ownerTechName?'selected':''}>${n}</option>`).join('')||'<option value="">尚無技師資料</option>'}
+        </select>
+        <div class="al al-w" style="font-size:12px;margin-top:10px">
+          個人淨利＝公司當月總淨利（銷售+服務，已扣進貨/耗材/所有技師薪資）＋自己身為技師賺的薪資。因為公司淨利已經把所有技師薪資（含自己的）當成本扣掉了，這裡再加回自己那份，等於算出「身為老闆分到的利潤」加上「身為技師賺的工錢」兩者相加的個人總收入。
+        </div>
+      </div>
+    </div>
+    <div class="tc">
+      <div class="tb"><span class="tt">月度個人淨利</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>月份</th><th>公司總淨利</th><th>${ownerTechName||'—'} 技師薪資</th><th>個人淨利合計</th></tr>
+        ${months.map(ym=>{
+          const d=mMap[ym]; const net=netRow(d); const pay=ownerPayByMonth[ym]||0;
+          const personal=net+pay;
+          totalNet+=net; totalPay+=pay;
+          return `<tr>
+            <td style="color:var(--ac);font-weight:600">${ym}</td>
+            <td class="num">${fM(net)}</td>
+            <td class="num" style="color:var(--bl)">${fM(pay)}</td>
+            <td class="num" style="font-weight:700;color:${personal>=0?'var(--ac)':'var(--rd)'}">${fM(personal)}</td>
+          </tr>`;
+        }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+      </table></div>
+      ${months.length?`<div style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;border-top:1px solid var(--bd)">
+        累計：公司總淨利 ${fM(totalNet)} ＋ 技師薪資 ${fM(totalPay)} ＝ 個人總淨利 <span style="color:${(totalNet+totalPay)>=0?'var(--ac)':'var(--rd)'}">${fM(totalNet+totalPay)}</span>
+      </div>`:''}
+    </div>
+  </div>`;
+}
+window.showOwnerProfit = showOwnerProfit;
 
 // ════════════════════════════════════
 //  服務財報（含技師薪資）
