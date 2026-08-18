@@ -516,21 +516,23 @@ async function showSvcFinance() {
   <div class="pc">
     <div class="tc" style="margin-bottom:16px">
       <div class="tb"><span class="tt">月度服務財報</span></div>
-      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">「撥轉成本」只是參考用（那是把商品搬去服務庫存的當下金額，不是真的花費），實際成本已經在「耗材成本」裡算過了（服務真正用掉的那一刻才算），所以淨利不會扣撥轉成本，避免重複扣兩次。</div>
+      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">「成本小計」＝耗材成本＋技師薪資，是真正會從服務收入扣掉的錢（服務收入－成本小計＝服務淨利）。「撥轉成本」單獨列出來僅供參考（那是把商品搬去服務庫存的當下金額，不是真的花費，不算進小計也不算進淨利，避免重複扣兩次）。</div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>服務收入</th><th>耗材成本</th><th>撥轉成本</th><th>技師薪資</th><th>服務淨利</th></tr>
+        <tr><th>月份</th><th>服務收入</th><th>耗材成本</th><th>技師薪資</th><th>成本小計</th><th>撥轉成本（參考）</th><th>服務淨利</th></tr>
         ${months.map(ym=>{
           const d=mMap[ym];
-          const net=d.rev-d.cost-d.techPay;
+          const costSub = d.cost+d.techPay;
+          const net=d.rev-costSub;
           return `<tr>
             <td style="color:var(--ac);font-weight:600;cursor:pointer" onclick="svcMonthDetail('${ym}')">${ym}</td>
             <td class="num" style="color:var(--ac)">${fM(d.rev)}</td>
             <td class="num" style="color:var(--rd)">${fM(d.cost)}</td>
-            <td class="num" style="color:var(--am)">${fM(d.trCost)}</td>
             <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
+            <td class="num" style="font-weight:700;color:var(--rd)">－${fM(costSub)}</td>
+            <td class="num" style="color:var(--tx3);font-size:12px">${fM(d.trCost)}</td>
             <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
     </div>
     <div class="tc">
