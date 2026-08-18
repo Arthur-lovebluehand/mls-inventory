@@ -249,8 +249,7 @@ async function svcNewOrder(editNo) {
     drop.innerHTML = fil.slice(0,30).map(c=>`<div class="ss-opt" onmousedown="svcPickCustSearch('${c.customer_no}','${(c.name||'').replace(/'/g,"\\'")}')">${c.name} · ${c.phone||'—'}</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
   };
   window.svcFilterGiftProd = q=>{
-    if(!q){ $('ss-drop-svgift').classList.remove('open'); return; }
-    const fil = window._svcAllProds.filter(p=>p.name.includes(q));
+    const fil = (q ? window._svcAllProds.filter(p=>p.name.includes(q)) : window._svcAllProds);
     const drop = $('ss-drop-svgift'); if(!drop) return;
     drop.classList.add('open');
     drop.innerHTML = fil.slice(0,30).map(p=>`<div class="ss-opt" onmousedown="svcPickGiftProd('${p.product_no}','${(p.name||'').replace(/'/g,"\\'")}')">${p.name}${p.spec?`（${p.spec}）`:''} [庫${p.stock}]</div>`).join('')||`<div class="ss-opt no">無結果</div>`;

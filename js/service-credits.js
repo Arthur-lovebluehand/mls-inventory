@@ -88,8 +88,7 @@ async function svcAddCredit(custNo, custName) {
     $('ss-drop-crcust')?.classList.remove('open');
   };
   window.crFilterGiftProd = q=>{
-    if(!q){ $('ss-drop-crgift')?.classList.remove('open'); return; }
-    const fil = window._crAllProds.filter(p=>p.name.includes(q));
+    const fil = (q ? window._crAllProds.filter(p=>p.name.includes(q)) : window._crAllProds);
     const drop = $('ss-drop-crgift'); if(!drop) return;
     drop.classList.add('open');
     drop.innerHTML = fil.slice(0,30).map(p=>`<div class="ss-opt" onmousedown="crPickGiftProd('${p.product_no}','${(p.name||'').replace(/'/g,"\\'")}')">${p.name}${p.spec?`（${p.spec}）`:''} [庫${p.stock}]</div>`).join('')||`<div class="ss-opt no">無結果</div>`;

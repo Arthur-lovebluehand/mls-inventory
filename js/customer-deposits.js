@@ -182,29 +182,31 @@ window.cdPickOrder = cdPickOrder;
 
 function cdFilterCust(kw) {
   const drop = $('cd-cust-drop');
-  if(!kw){ drop.classList.remove('open'); return; }
   clearTimeout(window._cdCustTimer);
   window._cdCustTimer = setTimeout(async ()=>{
-    const { data } = await sb.from('customers').select('customer_no,name,phone').ilike('name',`%${kw}%`).limit(15);
+    let q = sb.from('customers').select('customer_no,name,phone').order('name').limit(30);
+    if(kw) q = q.ilike('name',`%${kw}%`);
+    const { data } = await q;
     drop.innerHTML = (data||[]).map(c=>
       `<div style="padding:7px 8px;cursor:pointer;font-size:13px" onmousedown="cdPickCust('${c.customer_no}','${c.name.replace(/'/g,"\\'")}')">${c.name}（${c.phone||'—'}）</div>`
     ).join('') || '<div style="padding:7px 8px;font-size:12px;color:var(--tx3)">查無客戶</div>';
     drop.classList.add('open');
-  }, 300);
+  }, 250);
 }
 window.cdFilterCust = cdFilterCust;
 
 function cdFilterManualProd(kw) {
   const drop = $('cd-pname-drop');
-  if(!kw){ drop.classList.remove('open'); return; }
   clearTimeout(window._cdProdTimer);
   window._cdProdTimer = setTimeout(async ()=>{
-    const { data } = await sb.from('products').select('product_no,name,service_unit,default_service_qty').eq('is_active',true).ilike('name',`%${kw}%`).limit(15);
+    let q = sb.from('products').select('product_no,name,service_unit,default_service_qty').eq('is_active',true).order('name').limit(30);
+    if(kw) q = q.ilike('name',`%${kw}%`);
+    const { data } = await q;
     drop.innerHTML = (data||[]).map(p=>
       `<div style="padding:7px 8px;cursor:pointer;font-size:13px" onmousedown="cdPickManualProd('${p.product_no}','${p.name.replace(/'/g,"\\'")}','${p.service_unit||'組'}',${p.default_service_qty||1})">${p.name}${p.service_unit?`（服務單位：${p.service_unit}）`:''}</div>`
     ).join('') || '<div style="padding:7px 8px;font-size:12px;color:var(--tx3)">查無商品，可直接手動輸入名稱</div>';
     drop.classList.add('open');
-  }, 300);
+  }, 250);
 }
 window.cdFilterManualProd = cdFilterManualProd;
 function cdPickManualProd(pno,name,unit,defQty) {
