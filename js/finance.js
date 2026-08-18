@@ -317,43 +317,44 @@ window.toggleBonusFields=toggleBonusFields;
 //  總財報（銷售 + 服務合計）
 // ════════════════════════════════════
 async function showTotalFinance() {
-  const [{ data:sOrders },{ data:pOrders },{ data:svOrders },{ data:svTransfers }] = await Promise.all([
+  const [{ data:sOrders },{ data:pOrders },{ data:svOrders },{ data:svItems }] = await Promise.all([
     sb.from('sales_orders').select('order_date,total,payment_done').eq('payment_done',true),
     sb.from('purchase_orders').select('po_date,total,done').eq('done',true),
     sb.from('service_orders').select('order_date,total,consumable_cost'),
-    sb.from('service_transfers').select('transfer_date,total_cost'),
+    sb.from('service_order_items').select('order_date:service_orders(order_date),technician_pay').eq('item_type','service'),
   ]);
 
   // 月度彙整
   const mMap = {};
-  const addM = (ym, key, val) => { if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,trCost:0}; mMap[ym][key]+=val||0; };
+  const addM = (ym, key, val) => { if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0}; mMap[ym][key]+=val||0; };
   (sOrders||[]).forEach(o => {
     const ym=(o.order_date||'').slice(0,7);
     if(ym) addM(ym,'salesRev',o.total);
   });
   (pOrders||[]).forEach(o => { const ym=(o.po_date||'').slice(0,7); if(ym) addM(ym,'purchCost',o.total); });
   (svOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'svcRev',o.total); addM(ym,'svcCost',o.consumable_cost); }});
-  (svTransfers||[]).forEach(t => { const ym=(t.transfer_date||'').slice(0,7); if(ym) addM(ym,'trCost',t.total_cost); });
+  (svItems||[]).forEach(i => { const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',i.technician_pay); });
 
   // 年度彙整
   const yMap = {};
   Object.entries(mMap).forEach(([ym, d]) => {
     const yr = ym.slice(0,4);
-    if(!yMap[yr]) yMap[yr]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,trCost:0};
+    if(!yMap[yr]) yMap[yr]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0};
     Object.keys(d).forEach(k => yMap[yr][k]+=d[k]);
   });
 
   const months = Object.keys(mMap).sort().reverse();
   const years = Object.keys(yMap).sort().reverse();
 
-  const netRow = d => d.salesRev + d.svcRev - d.purchCost - d.svcCost - d.trCost;
+  const netRow = d => d.salesRev + d.svcRev - d.purchCost - d.svcCost - d.techPay;
 
   $('main').innerHTML += `
   <div class="pc">
     <div class="tc" style="margin-bottom:16px">
       <div class="tb"><span class="tt">年度總財報</span></div>
+      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">服務成本＝耗材成本＋技師薪資（不含撥轉成本，撥轉只是搬庫存不是真花費，避免跟耗材成本重複扣，詳細撥轉參考數字請看「服務財報」）。</div>
       <div class="tw"><table style="width:100%">
-        <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>進貨支出</th><th>服務成本</th><th>總淨利</th></tr>
+        <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>總淨利</th></tr>
         ${years.map(yr=>{
           const d=yMap[yr]; const net=netRow(d);
           return `<tr>
@@ -361,16 +362,17 @@ async function showTotalFinance() {
             <td class="num" style="color:var(--ac)">${fM(d.salesRev)}</td>
             <td class="num" style="color:var(--ac)">${fM(d.svcRev)}</td>
             <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
-            <td class="num" style="color:var(--rd)">${fM(d.svcCost+d.trCost)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.svcCost)}</td>
+            <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
             <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
     </div>
     <div class="tc">
       <div class="tb"><span class="tt">月度總財報</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>銷售收入</th><th>服務收入</th><th>進貨支出</th><th>服務成本</th><th>總淨利</th></tr>
+        <tr><th>月份</th><th>銷售收入</th><th>服務收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>總淨利</th></tr>
         ${months.map(ym=>{
           const d=mMap[ym]; const net=netRow(d);
           return `<tr>
@@ -378,10 +380,11 @@ async function showTotalFinance() {
             <td class="num">${fM(d.salesRev)}</td>
             <td class="num">${fM(d.svcRev)}</td>
             <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
-            <td class="num" style="color:var(--rd)">${fM(d.svcCost+d.trCost)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.svcCost)}</td>
+            <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
             <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;
