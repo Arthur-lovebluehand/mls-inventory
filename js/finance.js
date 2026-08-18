@@ -318,22 +318,38 @@ window.toggleBonusFields=toggleBonusFields;
 // ════════════════════════════════════
 //  總財報（銷售 + 服務合計）
 // ════════════════════════════════════
+function normYM(ym){
+  if(!ym||ym.trim()==='') return null;
+  let s=ym.trim().replace(/\//g,'-');
+  s=s.replace(/^(\d{4})-(\d)$/,'$1-0$2');
+  return s;
+}
 async function computeTotalFinanceData() {
-  const [{ data:sOrders },{ data:pOrders },{ data:svOrders },{ data:svItems }] = await Promise.all([
-    sb.from('sales_orders').select('order_date,total,payment_done').eq('payment_done',true),
-    sb.from('purchase_orders').select('po_date,total,done').eq('done',true),
+  const [{ data:sOrders },{ data:pOrders },{ data:bnRecs },{ data:svOrders },{ data:svItems }] = await Promise.all([
+    sb.from('sales_orders').select('order_date,year_month,total,payment_done,payment_date'),
+    sb.from('purchase_orders').select('year_month,total'),
+    sb.from('bonus_records').select('year_month,amount,direction'),
     sb.from('service_orders').select('order_date,total,consumable_cost'),
     sb.from('service_order_items').select('order_date:service_orders(order_date),technician_pay').eq('item_type','service'),
   ]);
 
   // 月度彙整
   const mMap = {};
-  const addM = (ym, key, val) => { if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0}; mMap[ym][key]+=val||0; };
+  const addM = (ym, key, val) => { if(!ym) return; if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0}; mMap[ym][key]+=val||0; };
+  // 銷售：已收款算在收款月份、未收款算在訂單原本的年月（跟銷售財報同一套規則，只有已收款才真的算收入）
   (sOrders||[]).forEach(o => {
-    const ym=(o.order_date||'').slice(0,7);
-    if(ym) addM(ym,'salesRev',o.total);
+    const orderK = normYM(o.year_month);
+    const payK = o.payment_done ? normYM((o.payment_date||o.order_date||'').slice(0,7)) : null;
+    const showK = payK || orderK;
+    if(payK) addM(showK,'salesRev',o.total);
   });
-  (pOrders||[]).forEach(o => { const ym=(o.po_date||'').slice(0,7); if(ym) addM(ym,'purchCost',o.total); });
+  // 進貨：用年月欄位（跟銷售財報同一套規則）
+  (pOrders||[]).forEach(o => { addM(normYM(o.year_month),'purchCost',o.total); });
+  // 獎金/分潤：收入加、支出扣
+  (bnRecs||[]).forEach(b => {
+    if(b.direction==='收入') addM(normYM(b.year_month),'bonusIn',b.amount);
+    else addM(normYM(b.year_month),'bonusOut',b.amount);
+  });
   (svOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'svcRev',o.total); addM(ym,'svcCost',o.consumable_cost); }});
   (svItems||[]).forEach(i => { const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',i.technician_pay); });
 
@@ -341,7 +357,7 @@ async function computeTotalFinanceData() {
   const yMap = {};
   Object.entries(mMap).forEach(([ym, d]) => {
     const yr = ym.slice(0,4);
-    if(!yMap[yr]) yMap[yr]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0};
+    if(!yMap[yr]) yMap[yr]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0};
     Object.keys(d).forEach(k => yMap[yr][k]+=d[k]);
   });
 
@@ -349,7 +365,7 @@ async function computeTotalFinanceData() {
   const years = Object.keys(yMap).sort().reverse();
   return { mMap, yMap, months, years };
 }
-const netRow = d => d.salesRev + d.svcRev - d.purchCost - d.svcCost - d.techPay;
+const netRow = d => d.salesRev + d.svcRev + d.bonusIn - d.purchCost - d.svcCost - d.techPay - d.bonusOut;
 
 async function showTotalFinance() {
   const { mMap, yMap, months, years } = await computeTotalFinanceData();
@@ -358,39 +374,43 @@ async function showTotalFinance() {
   <div class="pc">
     <div class="tc" style="margin-bottom:16px">
       <div class="tb"><span class="tt">年度總財報</span></div>
-      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">服務成本＝耗材成本＋技師薪資（不含撥轉成本，撥轉只是搬庫存不是真花費，避免跟耗材成本重複扣，詳細撥轉參考數字請看「服務財報」）。</div>
+      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">月份分類規則跟「銷售財報」一致：銷售訂單已收款算在收款月份、未收款算在訂單月份；服務成本＝耗材成本＋技師薪資（不含撥轉成本，那只是搬庫存不是真花費）；有把獎金/分潤也算進來。</div>
       <div class="tw"><table style="width:100%">
-        <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>總淨利</th></tr>
+        <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>總淨利</th></tr>
         ${years.map(yr=>{
           const d=yMap[yr]; const net=netRow(d);
           return `<tr>
             <td style="font-weight:700">${yr}</td>
             <td class="num" style="color:var(--ac)">${fM(d.salesRev)}</td>
             <td class="num" style="color:var(--ac)">${fM(d.svcRev)}</td>
+            <td class="num" style="color:var(--ac)">${fM(d.bonusIn)}</td>
             <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
             <td class="num" style="color:var(--rd)">${fM(d.svcCost)}</td>
             <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.bonusOut)}</td>
             <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
     </div>
     <div class="tc">
       <div class="tb"><span class="tt">月度總財報</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>銷售收入</th><th>服務收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>總淨利</th></tr>
+        <tr><th>月份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>總淨利</th></tr>
         ${months.map(ym=>{
           const d=mMap[ym]; const net=netRow(d);
           return `<tr>
             <td style="color:var(--ac);font-weight:600">${ym}</td>
             <td class="num">${fM(d.salesRev)}</td>
             <td class="num">${fM(d.svcRev)}</td>
+            <td class="num">${fM(d.bonusIn)}</td>
             <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
             <td class="num" style="color:var(--rd)">${fM(d.svcCost)}</td>
             <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.bonusOut)}</td>
             <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;
