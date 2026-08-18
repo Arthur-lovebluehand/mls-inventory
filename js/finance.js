@@ -440,7 +440,7 @@ async function showOwnerProfit() {
     });
   }
 
-  let totalNet=0, totalPay=0;
+  let totalSalesNet=0, totalSvcNet=0, totalBonus=0, totalPersonal=0;
 
   $('main').innerHTML += `
   <div class="pc">
@@ -450,29 +450,55 @@ async function showOwnerProfit() {
         <select id="f-ownersel" onchange="ownerTechName=this.value;accounts()" style="padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
           ${names.map(n=>`<option value="${n}" ${n===ownerTechName?'selected':''}>${n}</option>`).join('')||'<option value="">尚無技師資料</option>'}
         </select>
-        <div class="al al-w" style="font-size:12px;margin-top:10px">
-          個人淨利＝公司當月總淨利（銷售+服務，已扣進貨/耗材/所有技師薪資）＋自己身為技師賺的薪資。因為公司淨利已經把所有技師薪資（含自己的）當成本扣掉了，這裡再加回自己那份，等於算出「身為老闆分到的利潤」加上「身為技師賺的工錢」兩者相加的個人總收入。
-        </div>
       </div>
     </div>
-    <div class="tc">
-      <div class="tb"><span class="tt">月度個人淨利</span></div>
+
+    <div class="tc" style="margin-bottom:16px">
+      <div class="tb"><span class="tt">① 服務類淨利（含自己賺的技師薪資）</span></div>
+      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">服務類淨利＝服務營收－服務成本小計（耗材＋全部技師薪資）＋${ownerTechName||'（未選）'}自己的技師收入（加回來）。</div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>公司總淨利</th><th>${ownerTechName||'—'} 技師薪資</th><th>個人淨利合計</th></tr>
+        <tr><th>月份</th><th>服務營收</th><th>服務成本小計</th><th>${ownerTechName||'—'}技師收入</th><th>服務類淨利</th></tr>
         ${months.map(ym=>{
-          const d=mMap[ym]; const net=netRow(d); const pay=ownerPayByMonth[ym]||0;
-          const personal=net+pay;
-          totalNet+=net; totalPay+=pay;
+          const d=mMap[ym];
+          const costSub = d.svcCost + d.techPay;
+          const pay = ownerPayByMonth[ym]||0;
+          const svcNet = d.svcRev - costSub + pay;
           return `<tr>
             <td style="color:var(--ac);font-weight:600">${ym}</td>
-            <td class="num">${fM(net)}</td>
-            <td class="num" style="color:var(--bl)">${fM(pay)}</td>
+            <td class="num">${fM(d.svcRev)}</td>
+            <td class="num" style="color:var(--rd)">－${fM(costSub)}</td>
+            <td class="num" style="color:var(--bl)">＋${fM(pay)}</td>
+            <td class="num" style="font-weight:700;color:${svcNet>=0?'var(--ac)':'var(--rd)'}">${fM(svcNet)}</td>
+          </tr>`;
+        }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+      </table></div>
+    </div>
+
+    <div class="tc">
+      <div class="tb"><span class="tt">② 個人月淨利（銷售淨利＋服務類淨利＋獎金）</span></div>
+      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">個人月淨利＝銷售淨利（銷售收入－進貨支出）＋①的服務類淨利（已經含自己的技師收入，這裡不再重複加）＋獎金/分潤淨額。</div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>月份</th><th>銷售淨利</th><th>服務類淨利</th><th>獎金淨額</th><th>個人月淨利</th></tr>
+        ${months.map(ym=>{
+          const d=mMap[ym];
+          const salesNet = d.salesRev - d.purchCost;
+          const costSub = d.svcCost + d.techPay;
+          const pay = ownerPayByMonth[ym]||0;
+          const svcNet = d.svcRev - costSub + pay;
+          const bonus = d.bonusIn - d.bonusOut;
+          const personal = salesNet + svcNet + bonus;
+          totalSalesNet+=salesNet; totalSvcNet+=svcNet; totalBonus+=bonus; totalPersonal+=personal;
+          return `<tr>
+            <td style="color:var(--ac);font-weight:600">${ym}</td>
+            <td class="num">${fM(salesNet)}</td>
+            <td class="num">${fM(svcNet)}</td>
+            <td class="num" style="color:${bonus>=0?'var(--ac)':'var(--rd)'}">${fM(bonus)}</td>
             <td class="num" style="font-weight:700;color:${personal>=0?'var(--ac)':'var(--rd)'}">${fM(personal)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
       ${months.length?`<div style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;border-top:1px solid var(--bd)">
-        累計：公司總淨利 ${fM(totalNet)} ＋ 技師薪資 ${fM(totalPay)} ＝ 個人總淨利 <span style="color:${(totalNet+totalPay)>=0?'var(--ac)':'var(--rd)'}">${fM(totalNet+totalPay)}</span>
+        累計：銷售淨利 ${fM(totalSalesNet)} ＋ 服務類淨利 ${fM(totalSvcNet)} ＋ 獎金淨額 ${fM(totalBonus)} ＝ 個人總淨利 <span style="color:${totalPersonal>=0?'var(--ac)':'var(--rd)'}">${fM(totalPersonal)}</span>
       </div>`:''}
     </div>
   </div>`;
