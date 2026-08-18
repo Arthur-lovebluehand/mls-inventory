@@ -2,9 +2,11 @@
 // service-orders.js
 // ══════════════════════════════
 
+var svcOrderSearch = '';
 async function svcOrders() {
-  const { data, count } = await sb.from('service_orders')
-    .select('*', { count:'exact' })
+  let q = sb.from('service_orders').select('*', { count:'exact' });
+  if(svcOrderSearch) q = q.or(`order_no.ilike.%${svcOrderSearch}%,customer_name.ilike.%${svcOrderSearch}%`);
+  const { data, count } = await q
     .order('order_date', { ascending:false })
     .order('order_no', { ascending:false })
     .range((svcOrderPage-1)*25, svcOrderPage*25-1);
@@ -12,6 +14,10 @@ async function svcOrders() {
   const tp = Math.max(1, Math.ceil((count||0)/25));
   $('svc-content').innerHTML = `
   <div class="tc">
+    <div class="tb"><span class="tt">服務訂單</span>
+      <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input placeholder="訂單號/客戶名稱…（輸入後按 Enter 搜尋）" value="${svcOrderSearch}" onkeydown="if(event.key==='Enter'){svcOrderSearch=this.value;svcOrderPage=1;svcOrders();}"></div>
+    </div>
     <div class="tw"><table style="width:100%">
       <tr><th>訂單號</th><th>日期</th><th>客戶</th><th>金額</th><th>付款</th><th>操作</th></tr>
       ${(data||[]).map(o=>`<tr>
@@ -21,7 +27,7 @@ async function svcOrders() {
         <td class="num">${fM(o.total)}</td>
         <td><span style="font-size:11px">${o.payment_method||''}</span></td>
         <td><button class="btn btn-s" onclick="svcShowOrder('${o.order_no}')">明細</button></td>
-      </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+      </tr>`).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">${svcOrderSearch?'查無符合的訂單':'尚無記錄'}</td></tr>`}
     </table></div>
   </div>
   <div class="pg"><span class="pi">第 ${svcOrderPage}/${tp} 頁，共 ${count||0} 筆</span>
@@ -39,10 +45,14 @@ async function svcShowOrder(no) {
   const services = (its||[]).filter(i=>i.item_type==='service');
   const consumables = (its||[]).filter(i=>i.item_type==='consumable');
   const gifts = (its||[]).filter(i=>i.item_type==='gift_product');
-  let curBalance = null;
+  let curBalance = null, txBalance = null;
   if(o.customer_no) {
-    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',o.customer_no).single();
+    const [{ data:cr },{ data:txRec }] = await Promise.all([
+      sb.from('store_credits').select('balance').eq('customer_no',o.customer_no).single(),
+      o.paid_by_credit>0 ? sb.from('store_credit_records').select('balance_after').eq('order_no',no).eq('type','deduct').maybeSingle() : Promise.resolve({data:null}),
+    ]);
     curBalance = cr?.balance ?? 0;
+    txBalance = txRec?.balance_after ?? null;
   }
 
   OM(`服務單：${no}`,`
@@ -51,7 +61,8 @@ async function svcShowOrder(no) {
     <div><span style="color:var(--tx3)">客戶：</span>${o.customer_name||'—'}</div>
     <div><span style="color:var(--tx3)">付款：</span>${o.payment_method||''}</div>
     <div><span style="color:var(--tx3)">儲值扣：</span>${fM(o.paid_by_credit)}</div>
-    ${curBalance!=null?`<div style="grid-column:1/-1"><span style="color:var(--tx3)">目前儲值餘額：</span><b style="color:${curBalance>0?'var(--ac)':'var(--rd)'}">${fM(curBalance)}</b></div>`:''}
+    ${txBalance!=null?`<div style="grid-column:1/-1"><span style="color:var(--tx3)">這筆消費後的餘額（上筆餘額－此次消費）：</span><b style="color:${txBalance>0?'var(--ac)':'var(--rd)'}">${fM(txBalance)}</b></div>`:''}
+    ${curBalance!=null?`<div style="grid-column:1/-1;font-size:12px;color:var(--tx3)">目前（現在）儲值餘額：${fM(curBalance)}</div>`:''}
   </div>
   ${services.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">服務項目</div>
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
