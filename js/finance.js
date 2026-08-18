@@ -344,7 +344,7 @@ async function showTotalFinance() {
     Object.keys(d).forEach(k => yMap[yr][k]+=d[k]);
   });
 
-  const months = Object.keys(mMap).sort().reverse().slice(0,24);
+  const months = Object.keys(mMap).sort().reverse();
   const years = Object.keys(yMap).sort().reverse();
 
   const netRow = d => d.salesRev + d.svcRev - d.purchCost - d.svcCost - d.trCost;
@@ -421,7 +421,7 @@ async function showSvcFinance() {
     (window._svcTechDetail[key]=window._svcTechDetail[key]||[]).push(i);
   });
 
-  const months = Object.keys(mMap).sort().reverse().slice(0,24);
+  const months = Object.keys(mMap).sort().reverse();
 
   $('main').innerHTML += `
   <div class="pc">

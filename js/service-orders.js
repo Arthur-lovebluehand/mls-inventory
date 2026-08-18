@@ -246,7 +246,8 @@ async function svcNewOrder(editNo) {
     const fil = q ? window._svcAllCusts.filter(c=>c.name.includes(q)||(c.phone||'').includes(q)) : window._svcAllCusts;
     const drop = $('ss-drop-svcust'); if(!drop) return;
     drop.classList.add('open');
-    drop.innerHTML = fil.slice(0,30).map(c=>`<div class="ss-opt" onmousedown="svcPickCustSearch('${c.customer_no}','${(c.name||'').replace(/'/g,"\\'")}')">${c.name} · ${c.phone||'—'}</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
+    drop.style.maxHeight = '280px';
+    drop.innerHTML = fil.map(c=>`<div class="ss-opt" onmousedown="svcPickCustSearch('${c.customer_no}','${(c.name||'').replace(/'/g,"\\'")}')">${c.name} · ${c.phone||'—'}</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
   };
   window.svcFilterGiftProd = q=>{
     const fil = (q ? window._svcAllProds.filter(p=>p.name.includes(q)) : window._svcAllProds);

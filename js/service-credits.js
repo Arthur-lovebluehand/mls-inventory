@@ -80,7 +80,8 @@ async function svcAddCredit(custNo, custName) {
     const fil = q ? window._crCusts.filter(c=>c.name.includes(q)||(c.phone||'').includes(q)) : window._crCusts;
     const drop = $('ss-drop-crcust'); if(!drop) return;
     drop.classList.add('open');
-    drop.innerHTML = fil.slice(0,30).map(c=>`<div class="ss-opt" onmousedown="crPickCust('${c.customer_no}','${(c.name||'').replace(/'/g,"\\'")}')">${c.name} · ${c.phone||'—'}</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
+    drop.style.maxHeight = '280px';
+    drop.innerHTML = fil.map(c=>`<div class="ss-opt" onmousedown="crPickCust('${c.customer_no}','${(c.name||'').replace(/'/g,"\\'")}')">${c.name} · ${c.phone||'—'}</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
   };
   window.crPickCust = (cno,name)=>{
     $('ss-inp-crcust').value = name;

@@ -184,7 +184,7 @@ function cdFilterCust(kw) {
   const drop = $('cd-cust-drop');
   clearTimeout(window._cdCustTimer);
   window._cdCustTimer = setTimeout(async ()=>{
-    let q = sb.from('customers').select('customer_no,name,phone').order('name').limit(30);
+    let q = sb.from('customers').select('customer_no,name,phone').order('name').limit(300);
     if(kw) q = q.ilike('name',`%${kw}%`);
     const { data } = await q;
     drop.innerHTML = (data||[]).map(c=>
