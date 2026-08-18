@@ -366,6 +366,8 @@ async function computeTotalFinanceData() {
   return { mMap, yMap, months, years };
 }
 const netRow = d => d.salesRev + d.svcRev + d.bonusIn - d.purchCost - d.svcCost - d.techPay - d.bonusOut;
+window.computeTotalFinanceData = computeTotalFinanceData;
+window.netRow = netRow;
 
 async function showTotalFinance() {
   const { mMap, yMap, months, years } = await computeTotalFinanceData();

@@ -161,6 +161,13 @@ const EXPORT_TABLES = [
     {t:'service_consumable_restocks',label:'服務耗材補貨記錄'},
     {custom:'serviceKits',label:'耗材套組（含品項）'},
   ]},
+  { group:'財報（即時計算，跟財報頁面同一套邏輯）', tables:[
+    {custom:'salesFinance',label:'銷售財報'},
+    {custom:'svcFinance',label:'服務財報'},
+    {custom:'totalFinance',label:'總財報（月度）'},
+    {custom:'techPay',label:'技師月薪表'},
+    {custom:'ownerProfit',label:'老闆娘個人淨利'},
+  ]},
   { group:'財務／其他', tables:[
     {t:'bonus_records',label:'獎金/分潤記錄'},
     {t:'monthly_accounts',label:'月結對帳'},
@@ -274,6 +281,83 @@ const CUSTOM_EXPORTERS = {
       }));
     });
     return rows;
+  },
+  async salesFinance(){
+    if(!window.computeTotalFinanceData) throw new Error('財報功能尚未載入，請重新整理頁面再試');
+    const { mMap, months } = await window.computeTotalFinanceData();
+    return months.map(ym=>{
+      const d=mMap[ym];
+      return { 月份:ym, 銷售收入:d.salesRev, 進貨支出:d.purchCost, 銷售淨利:d.salesRev-d.purchCost };
+    });
+  },
+  async svcFinance(){
+    if(!window.computeTotalFinanceData) throw new Error('財報功能尚未載入，請重新整理頁面再試');
+    const { mMap, months } = await window.computeTotalFinanceData();
+    return months.map(ym=>{
+      const d=mMap[ym];
+      const costSub=d.svcCost+d.techPay;
+      return { 月份:ym, 服務收入:d.svcRev, 耗材成本:d.svcCost, 技師薪資:d.techPay, 成本小計:costSub, 服務淨利:d.svcRev-costSub };
+    });
+  },
+  async totalFinance(){
+    if(!window.computeTotalFinanceData || !window.netRow) throw new Error('財報功能尚未載入，請重新整理頁面再試');
+    const { mMap, months } = await window.computeTotalFinanceData();
+    return months.map(ym=>{
+      const d=mMap[ym];
+      return {
+        月份:ym, 銷售收入:d.salesRev, 服務收入:d.svcRev, 獎金收入:d.bonusIn,
+        進貨支出:d.purchCost, 耗材成本:d.svcCost, 技師薪資:d.techPay, 獎金支出:d.bonusOut,
+        總淨利:window.netRow(d)
+      };
+    });
+  },
+  async techPay(){
+    const items = await fetchAllRows('service_order_items');
+    const svcItems = items.filter(i=>i.item_type==='service' && i.technician_name);
+    const orderNos = [...new Set(svcItems.map(i=>i.order_no))];
+    const { data:orders } = await sb.from('service_orders').select('order_no,order_date').in('order_no',orderNos.length?orderNos:['__none__']);
+    const dateMap = {}; (orders||[]).forEach(o=>dateMap[o.order_no]=o.order_date);
+    const techMap = {};
+    svcItems.forEach(i=>{
+      const ym=(dateMap[i.order_no]||'').slice(0,7);
+      if(!ym) return;
+      const key=`${i.technician_name}_${ym}`;
+      if(!techMap[key]) techMap[key]={ 月份:ym, 技師:i.technician_name, 服務時數次數:0, 應付薪資:0 };
+      techMap[key].服務時數次數 += i.qty||0;
+      techMap[key].應付薪資 += i.technician_pay||0;
+    });
+    return Object.values(techMap).sort((a,b)=>b.月份.localeCompare(a.月份)||a.技師.localeCompare(b.技師));
+  },
+  async ownerProfit(){
+    if(!window.computeTotalFinanceData) throw new Error('財報功能尚未載入，請重新整理頁面再試');
+    const { data:techs } = await sb.from('technicians').select('name');
+    const names = [...new Set((techs||[]).map(t=>t.name))];
+    const ownerName = names.find(n=>n.includes('闆'))||names[0]||null;
+    const { mMap, months } = await window.computeTotalFinanceData();
+
+    let ownerPayByMonth = {};
+    if(ownerName) {
+      const { data:items } = await sb.from('service_order_items')
+        .select('order_date:service_orders(order_date),technician_name,technician_pay')
+        .eq('item_type','service').eq('technician_name',ownerName);
+      (items||[]).forEach(i=>{
+        const ym=(i.order_date?.order_date||'').slice(0,7);
+        if(ym) ownerPayByMonth[ym]=(ownerPayByMonth[ym]||0)+(i.technician_pay||0);
+      });
+    }
+    return months.map(ym=>{
+      const d=mMap[ym];
+      const salesNet = d.salesRev - d.purchCost;
+      const costSub = d.svcCost + d.techPay;
+      const pay = ownerPayByMonth[ym]||0;
+      const svcNet = d.svcRev - costSub + pay;
+      const bonus = d.bonusIn - d.bonusOut;
+      return {
+        月份:ym, 計算對象:ownerName||'—',
+        服務營收:d.svcRev, 服務成本小計:costSub, [`${ownerName||'技師'}收入`]:pay, 服務類淨利:svcNet,
+        銷售淨利:salesNet, 獎金淨額:bonus, 個人月淨利:salesNet+svcNet+bonus
+      };
+    });
   },
 };
 
