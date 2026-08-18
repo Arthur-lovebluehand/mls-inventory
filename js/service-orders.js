@@ -110,7 +110,7 @@ async function svcNewOrder(editNo) {
   // 抓服務項目、服務庫存商品、客戶、完整商品清單（供贈品用）
   const [{ data:sitems },{ data:sinv },{ data:sconsum },{ data:custs },{ data:techs },{ data:allProds },kitsList] = await Promise.all([
     sb.from('service_items').select('*').eq('is_active',true).order('sort_order'),
-    sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty,service_units_per_stock,cost)').gt('stock_qty',0),
+    sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty,service_units_per_stock,cost)').gt('stock_qty',0).order('product_no'),
     sb.from('service_consumables').select('*').eq('is_active',true).gt('stock_qty',0).order('name'),
     sb.from('customers').select('customer_no,name,phone').order('name'),
     sb.from('technicians').select('*').eq('is_active',true).order('name'),
@@ -139,13 +139,17 @@ async function svcNewOrder(editNo) {
   const svcOpts = Object.entries(catGroups).map(([cat,items])=>
     `<optgroup label="${cat}">${items.map(s=>`<option value="${s.id}" data-price="${s.default_price}" data-unit="${s.unit||'次'}">${s.name}（${fM(s.default_price)}/${s.unit||'次'}）</option>`).join('')}</optgroup>`
   ).join('');
-  const prodOpts = (sinv||[]).map(p=>{
-    const prod = p.products;
-    return `<option value="${p.product_no}" data-type="product" data-unit="${prod?.service_unit||'次'}" data-perstock="${prod?.service_units_per_stock||1}" data-defqty="${prod?.default_service_qty||1}" data-cost="${prod?.cost||0}">${prod?.name||p.product_no}（庫存 ${p.stock_qty} ${prod?.service_unit||'次'}）</option>`;
-  }).join('');
-  const consumOpts = (sconsum||[]).map(c=>
-    `<option value="${c.item_no}" data-type="consumable" data-id="${c.id}" data-unit="${c.unit}" data-cost="${c.cost||0}">${c.name}（庫存 ${c.stock_qty} ${c.unit}）</option>`
-  ).join('');
+  window._svcConsumOptions = [
+    ...(sinv||[]).map(p=>{
+      const prod = p.products;
+      return { type:'product', value:p.product_no, label:prod?.name||p.product_no,
+        sub:`商品撥轉耗材・庫存 ${p.stock_qty} ${prod?.service_unit||'次'}`,
+        unit:prod?.service_unit||'次', perstock:prod?.service_units_per_stock||1, defqty:prod?.default_service_qty||1, cost:prod?.cost||0 };
+    }),
+    ...(sconsum||[]).map(c=>({ type:'consumable', value:c.item_no, label:c.name,
+      sub:`服務專屬耗材・庫存 ${c.stock_qty} ${c.unit}`,
+      unit:c.unit, id:c.id, defqty:1, cost:c.cost||0 })),
+  ];
 
   OM(editNo?`編輯服務單：${editNo}`:'新增服務單', `
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
@@ -194,11 +198,13 @@ async function svcNewOrder(editNo) {
       </select>
     </div>
     <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:end">
-      <select id="sv-prod" onchange="svcProdChange(this)" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
-        <option value="">— 選耗材 —</option>
-        ${prodOpts?`<optgroup label="商品撥轉耗材">${prodOpts}</optgroup>`:''}
-        ${consumOpts?`<optgroup label="服務專屬耗材">${consumOpts}</optgroup>`:''}
-      </select>
+      <div class="ss-wrap" id="ss-svprod">
+        <input class="ss-input" id="ss-inp-svprod" placeholder="輸入耗材名稱搜尋…" autocomplete="off"
+          oninput="svcFilterProd(this.value)" onfocus="svcFilterProd(this.value)"
+          onblur="setTimeout(()=>$('ss-drop-svprod')?.classList.remove('open'),200)">
+        <input type="hidden" id="sv-prod">
+        <div class="ss-drop" id="ss-drop-svprod"></div>
+      </div>
       <input type="number" id="sv-prodqty" value="1" min="0.5" step="0.5" placeholder="用量"
         style="width:60px;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
       <input type="number" id="sv-prodprice" value="0" placeholder="加收費用"
@@ -254,6 +260,33 @@ async function svcNewOrder(editNo) {
     $('sv-giftpno').value = pno;
     $('ss-drop-svgift')?.classList.remove('open');
   };
+  window.svcFilterProd = q=>{
+    const list = window._svcConsumOptions||[];
+    const fil = q ? list.filter(o=>o.label.includes(q)) : list;
+    const drop = $('ss-drop-svprod'); if(!drop) return;
+    drop.classList.add('open');
+    // 依類型分組顯示：商品撥轉耗材／服務專屬耗材／客戶寄放商品
+    const groups = {};
+    fil.forEach(o=>{ (groups[o.type]=groups[o.type]||[]).push(o); });
+    const typeLabel = {product:'商品撥轉耗材', consumable:'服務專屬耗材', deposit:'客戶寄放商品'};
+    drop.innerHTML = Object.keys(groups).map(t=>`
+      <div style="padding:4px 8px;font-size:10px;color:var(--tx3);background:var(--sf2);font-weight:600">${typeLabel[t]||t}</div>
+      ${groups[t].map(o=>`<div class="ss-opt" onmousedown="svcPickProd('${o.type}','${o.value}')">${o.label}<span style="color:var(--tx3);font-size:11px"> ・${o.sub}</span></div>`).join('')}
+    `).join('') || `<div class="ss-opt no">無結果</div>`;
+  };
+  window.svcPickProd = (type,value)=>{
+    const o = (window._svcConsumOptions||[]).find(x=>x.type===type && String(x.value)===String(value));
+    if(!o) return;
+    $('ss-inp-svprod').value = o.label;
+    $('sv-prod').value = value;
+    $('sv-prod').dataset.type = type;
+    $('sv-prod').dataset.id = o.id||'';
+    $('sv-prod').dataset.unit = o.unit||'';
+    $('sv-prod').dataset.perstock = o.perstock||1;
+    $('sv-prod').dataset.cost = o.cost||0;
+    $('sv-prodqty').value = o.defqty||1;
+    $('ss-drop-svprod')?.classList.remove('open');
+  };
 
   renderSvcItems();
   if(existingOrder?.customer_no) svcPickCust(existingOrder.customer_no, existingOrder.customer_name);
@@ -276,30 +309,18 @@ async function svcPickCust(custNo, custName) {
           $('f-sv-cname').parentNode.appendChild(hint); }
         hint.innerHTML=`<div style="font-size:11px;color:${bal>0?'var(--ac)':'var(--tx3)'};margin-top:4px">儲值餘額：${fM(bal)}</div>`;
       });
-    // 查這位客戶自己的寄放商品，加進耗材下拉選單
+    // 查這位客戶自己的寄放商品，加進耗材搜尋選項
     const deposits = await window.getCustomerDeposits?.(custNo) || [];
-    const sel2 = $('sv-prod');
-    if(sel2) {
-      let depGroup = sel2.querySelector('optgroup[label="客戶寄放商品"]');
-      if(depGroup) depGroup.remove();
-      if(deposits.length) {
-        const og = document.createElement('optgroup');
-        og.label = '客戶寄放商品';
-        deposits.forEach(d=>{
-          const remain = (d.total_qty||0)-(d.used_qty||0);
-          const o = document.createElement('option');
-          o.value = 'DEP:'+d.id;
-          o.dataset.type = 'deposit';
-          o.dataset.id = d.id;
-          o.dataset.unit = d.unit;
-          o.dataset.cost = 0;
-          o.dataset.defqty = d.default_service_qty||1;
-          o.text = `${d.product_name}（她寄放剩 ${remain} ${d.unit}）`;
-          og.appendChild(o);
-        });
-        sel2.appendChild(og);
-      }
-    }
+    // 先移除舊的寄放選項（換客戶時），再加入這位客戶目前的
+    window._svcConsumOptions = (window._svcConsumOptions||[]).filter(o=>o.type!=='deposit');
+    deposits.forEach(d=>{
+      const remain = (d.total_qty||0)-(d.used_qty||0);
+      window._svcConsumOptions.push({
+        type:'deposit', value:'DEP:'+d.id, id:d.id, label:d.product_name,
+        sub:`客戶寄放商品・她寄放剩 ${remain} ${d.unit}`,
+        unit:d.unit, defqty:d.default_service_qty||1, cost:0
+      });
+    });
   }
 }
 window.svcPickCustSearch = svcPickCust;
@@ -338,51 +359,52 @@ function svcProdChange(sel) {
 
 window.svcProdChange = svcProdChange;
 function svcAddConsumable() {
-  const sel = document.getElementById('sv-prod');
-  const opt = sel.options[sel.selectedIndex];
-  if(!opt.value){ toast('請選擇耗材','e'); return; }
+  const hidden = document.getElementById('sv-prod');
+  const itemName = document.getElementById('ss-inp-svprod')?.value;
+  if(!hidden.value){ toast('請搜尋並選擇耗材','e'); return; }
   const qty = parseFloat(document.getElementById('sv-prodqty').value)||1;
   const svcPrice = parseFloat(document.getElementById('sv-prodprice').value)||0;
-  const type = opt.dataset.type||'product';
+  const type = hidden.dataset.type||'product';
 
   if(type==='deposit') {
     // 客戶自己寄放的商品：不算成本（已經是她的東西），扣的是她自己的寄放庫存，不動店裡庫存
     window._svcItems.push({
       id: Date.now(), item_type:'consumable', source:'deposit',
-      item_name: opt.text.split('（')[0],
-      deposit_id: parseInt(opt.dataset.id),
-      qty, unit:opt.dataset.unit||'組',
+      item_name: itemName,
+      deposit_id: parseInt(hidden.dataset.id),
+      qty, unit:hidden.dataset.unit||'組',
       unit_price: svcPrice,
       cost: 0,
       subtotal: svcPrice * qty
     });
   } else if(type==='consumable') {
     // 服務專屬耗材：成本已是「每服務單位」，不用換算
-    const costPerSvcUnit = parseFloat(opt.dataset.cost)||0;
+    const costPerSvcUnit = parseFloat(hidden.dataset.cost)||0;
     window._svcItems.push({
       id: Date.now(), item_type:'consumable', source:'consumable',
-      item_name: opt.text.split('（')[0],
-      consumable_id: parseInt(opt.dataset.id),
-      qty, unit:opt.dataset.unit||'個',
+      item_name: itemName,
+      consumable_id: parseInt(hidden.dataset.id),
+      qty, unit:hidden.dataset.unit||'個',
       unit_price: svcPrice,
       cost: Math.round(costPerSvcUnit * qty * 100)/100,
       subtotal: svcPrice * qty
     });
   } else {
     // 商品撥轉耗材：成本要用「進貨成本 ÷ 1盒/瓶總容量」換算成每單位成本，再乘以這次用量
-    const costPerUnit = parseFloat(opt.dataset.cost)||0;
-    const costPerSvcUnit = costPerUnit / (parseFloat(opt.dataset.perstock)||1);
+    const costPerUnit = parseFloat(hidden.dataset.cost)||0;
+    const costPerSvcUnit = costPerUnit / (parseFloat(hidden.dataset.perstock)||1);
     window._svcItems.push({
       id: Date.now(), item_type:'consumable', source:'product',
-      item_name: opt.text.split('（')[0],
-      product_no: opt.value,
-      qty, unit:opt.dataset.unit||'次',
+      item_name: itemName,
+      product_no: hidden.value,
+      qty, unit:hidden.dataset.unit||'次',
       unit_price: svcPrice,
       cost: Math.round(costPerSvcUnit * qty * 100)/100,
       subtotal: svcPrice * qty
     });
   }
-  sel.selectedIndex = 0;
+  $('ss-inp-svprod').value = '';
+  hidden.value = ''; hidden.dataset.type=''; hidden.dataset.id=''; hidden.dataset.unit=''; hidden.dataset.perstock=''; hidden.dataset.cost='';
   document.getElementById('sv-prodqty').value = 1;
   document.getElementById('sv-prodprice').value = 0;
   renderSvcItems();

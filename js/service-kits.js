@@ -51,7 +51,7 @@ async function svcKitModal(id) {
   window._skItems = items.map(i=>({...i}));
 
   const [{ data:sinv },{ data:sconsum }] = await Promise.all([
-    sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty)').gt('stock_qty',0),
+    sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty)').gt('stock_qty',0).order('product_no'),
     sb.from('service_consumables').select('*').eq('is_active',true).order('name'),
   ]);
   window._skProdOpts = (sinv||[]).map(p=>({value:p.product_no,type:'product',unit:p.products?.service_unit||'次',defQty:p.products?.default_service_qty||1,label:p.products?.name||p.product_no}));
@@ -63,11 +63,13 @@ async function svcKitModal(id) {
   <div style="margin-top:12px;padding:12px;background:var(--sf2);border-radius:var(--r)">
     <div style="font-weight:600;margin-bottom:8px;font-size:13px">套組品項</div>
     <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:end">
-      <select id="sk-add-item" onchange="skItemChange(this)" style="padding:6px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
-        <option value="">— 選耗材 —</option>
-        <optgroup label="商品撥轉耗材">${window._skProdOpts.map(o=>`<option value="P:${o.value}">${o.label}</option>`).join('')}</optgroup>
-        <optgroup label="服務專屬耗材">${window._skConsumOpts.map(o=>`<option value="C:${o.value}">${o.label}</option>`).join('')}</optgroup>
-      </select>
+      <div class="ss-wrap" id="ss-skitem">
+        <input class="ss-input" id="ss-inp-skitem" placeholder="輸入耗材名稱搜尋…" autocomplete="off"
+          oninput="skFilterItem(this.value)" onfocus="skFilterItem(this.value)"
+          onblur="setTimeout(()=>$('ss-drop-skitem')?.classList.remove('open'),200)">
+        <input type="hidden" id="sk-add-item">
+        <div class="ss-drop" id="ss-drop-skitem"></div>
+      </div>
       <input type="number" id="sk-add-qty" value="1" min="0.5" step="0.5" style="width:60px;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
       <button class="btn btn-s" onclick="skAddItem()">＋ 加入</button>
     </div>
@@ -79,19 +81,36 @@ async function svcKitModal(id) {
 }
 window.svcKitModal = svcKitModal;
 
-function skItemChange(sel) {
-  const val = sel.value;
-  if(!val){ return; }
+function skFilterItem(q) {
+  const all = [
+    ...(window._skProdOpts||[]).map(o=>({...o, val:'P:'+o.value, typeLabel:'商品撥轉耗材'})),
+    ...(window._skConsumOpts||[]).map(o=>({...o, val:'C:'+o.value, typeLabel:'服務專屬耗材'})),
+  ];
+  const fil = q ? all.filter(o=>o.label.includes(q)) : all;
+  const drop = $('ss-drop-skitem'); if(!drop) return;
+  drop.classList.add('open');
+  const groups = {};
+  fil.forEach(o=>{ (groups[o.typeLabel]=groups[o.typeLabel]||[]).push(o); });
+  drop.innerHTML = Object.keys(groups).map(t=>`
+    <div style="padding:4px 8px;font-size:10px;color:var(--tx3);background:var(--sf2);font-weight:600">${t}</div>
+    ${groups[t].map(o=>`<div class="ss-opt" onmousedown="skPickItem('${o.val}')">${o.label}</div>`).join('')}
+  `).join('') || `<div class="ss-opt no">無結果</div>`;
+}
+window.skFilterItem = skFilterItem;
+function skPickItem(val) {
   const [prefix,rawVal] = [val.slice(0,1), val.slice(2)];
   const o = prefix==='P' ? window._skProdOpts.find(x=>x.value===rawVal) : window._skConsumOpts.find(x=>x.value===rawVal);
-  if(o) $('sk-add-qty').value = o.defQty;
+  if(!o) return;
+  $('ss-inp-skitem').value = o.label;
+  $('sk-add-item').value = val;
+  $('sk-add-qty').value = o.defQty;
+  $('ss-drop-skitem')?.classList.remove('open');
 }
-window.skItemChange = skItemChange;
+window.skPickItem = skPickItem;
 
 function skAddItem() {
-  const sel = $('sk-add-item');
-  const val = sel.value;
-  if(!val){ toast('請選擇耗材','e'); return; }
+  const val = $('sk-add-item')?.value;
+  if(!val){ toast('請搜尋並選擇耗材','e'); return; }
   const qty = parseFloat($('sk-add-qty').value)||1;
   const [prefix,rawVal] = [val.slice(0,1), val.slice(2)];
   if(prefix==='P') {
@@ -101,7 +120,7 @@ function skAddItem() {
     const o = window._skConsumOpts.find(x=>x.value===rawVal);
     window._skItems.push({source_type:'consumable', product_no:null, consumable_id:parseInt(rawVal), item_name:o.label, qty, unit:o.unit});
   }
-  sel.selectedIndex=0; $('sk-add-qty').value=1;
+  $('ss-inp-skitem').value=''; $('sk-add-item').value=''; $('sk-add-qty').value=1;
   skRenderItems();
 }
 window.skAddItem = skAddItem;
