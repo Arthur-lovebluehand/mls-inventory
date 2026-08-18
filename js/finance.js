@@ -318,8 +318,8 @@ window.toggleBonusFields=toggleBonusFields;
 // ════════════════════════════════════
 async function showTotalFinance() {
   const [{ data:sOrders },{ data:pOrders },{ data:svOrders },{ data:svTransfers }] = await Promise.all([
-    sb.from('sales_orders').select('order_date,total_amount,payment_status').eq('payment_status','已收'),
-    sb.from('purchase_orders').select('po_date,total').eq('done','完成'),
+    sb.from('sales_orders').select('order_date,total,payment_done').eq('payment_done',true),
+    sb.from('purchase_orders').select('po_date,total,done').eq('done',true),
     sb.from('service_orders').select('order_date,total,consumable_cost'),
     sb.from('service_transfers').select('transfer_date,total_cost'),
   ]);
@@ -328,9 +328,8 @@ async function showTotalFinance() {
   const mMap = {};
   const addM = (ym, key, val) => { if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,trCost:0}; mMap[ym][key]+=val||0; };
   (sOrders||[]).forEach(o => {
-    if(!o.payment_done) return;
     const ym=(o.order_date||'').slice(0,7);
-    if(ym) addM(ym,'salesRev',o.total||o.total_amount);
+    if(ym) addM(ym,'salesRev',o.total);
   });
   (pOrders||[]).forEach(o => { const ym=(o.po_date||'').slice(0,7); if(ym) addM(ym,'purchCost',o.total); });
   (svOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'svcRev',o.total); addM(ym,'svcCost',o.consumable_cost); }});
