@@ -5,15 +5,22 @@
 // ══════════════════════════════
 // 營運成本（房租/水電/網路等固定成本）
 // ══════════════════════════════
-var opexP = 1;
+var _opexYear = null; // null=年度總覽；設定年份字串則顯示該年的明細
 async function opex(){
-  const{data,count}=await sb.from('operating_expenses').select('*',{count:'exact'}).order('expense_date',{ascending:false}).range((opexP-1)*30,opexP*30-1);
-  const tp=Math.max(1,Math.ceil((count||0)/30));
+  const { data:allRecs, count } = await sb.from('operating_expenses').select('*',{count:'exact'}).order('expense_date',{ascending:false});
 
   const thisMonth = new Date().toISOString().slice(0,7);
-  const { data:allForTotal } = await sb.from('operating_expenses').select('amount,expense_date');
-  const monthTotal = (allForTotal||[]).filter(r=>(r.expense_date||'').startsWith(thisMonth)).reduce((s,r)=>s+(r.amount||0),0);
-  const yearTotal = (allForTotal||[]).filter(r=>(r.expense_date||'').startsWith(thisMonth.slice(0,4))).reduce((s,r)=>s+(r.amount||0),0);
+  const monthTotal = (allRecs||[]).filter(r=>(r.expense_date||'').startsWith(thisMonth)).reduce((s,r)=>s+(r.amount||0),0);
+  const yearTotal = (allRecs||[]).filter(r=>(r.expense_date||'').startsWith(thisMonth.slice(0,4))).reduce((s,r)=>s+(r.amount||0),0);
+
+  // 依年份彙整
+  const yearMap = {};
+  (allRecs||[]).forEach(r=>{
+    const yr=(r.expense_date||'').slice(0,4); if(!yr) return;
+    if(!yearMap[yr]) yearMap[yr]={count:0,total:0};
+    yearMap[yr].count++; yearMap[yr].total+=r.amount||0;
+  });
+  const years = Object.keys(yearMap).sort().reverse();
 
   $('main').innerHTML=`
   <div class="ph"><div><div class="pt">營運成本</div><div class="ps">共 ${count||0} 筆</div></div>
@@ -25,12 +32,40 @@ async function opex(){
     </div>
     <div class="al al-w" style="font-size:12px">
       記錄房租、水電、網路等跟商品/服務無關、但每個月固定會花的錢。這些記錄好之後，財報裡的「營運成本」跟淨利才會反映真正的獲利，不會看起來有賺、實際上錢都花在這些地方了。
+    </div>`;
+
+  // ── 年度總覽 ──
+  if(!_opexYear) {
+    $('main').innerHTML += `
+    <div class="tc">
+      <div class="tb"><span class="tt">年度總覽（點年份看該年明細）</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>年份</th><th>筆數</th><th style="font-weight:700">金額合計</th></tr>
+        ${years.map(yr=>{
+          const y=yearMap[yr];
+          return `<tr style="cursor:pointer" onclick="_opexYear='${yr}';opex()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+            <td style="font-weight:700;color:var(--ac);font-size:15px">${yr} ›</td>
+            <td>${y.count} 筆</td>
+            <td class="num" style="font-weight:700;color:var(--rd)">${fM(y.total)}</td>
+          </tr>`;
+        }).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+      </table></div>
+    </div>
+  </div>`;
+    return;
+  }
+
+  // ── 該年度明細 ──
+  const yearRecs = (allRecs||[]).filter(r=>(r.expense_date||'').startsWith(_opexYear));
+  $('main').innerHTML += `
+    <div style="margin-bottom:14px">
+      <button class="btn btn-s" onclick="_opexYear=null;opex()">‹ 返回年度總覽</button>
     </div>
     <div class="tc">
-      <div class="tb"><span class="tt">營運成本記錄</span></div>
+      <div class="tb"><span class="tt">${_opexYear} 年營運成本記錄</span></div>
       <div class="tw"><table style="width:100%">
         <tr><th>日期</th><th>類別</th><th>金額</th><th>固定支出</th><th>備註</th><th>操作</th></tr>
-        ${(data||[]).map(r=>`<tr>
+        ${yearRecs.map(r=>`<tr>
           <td style="font-size:12px">${fD(r.expense_date)}</td>
           <td><span class="badge bgr">${r.category}</span></td>
           <td class="num" style="font-weight:600;color:var(--rd)">${fM(r.amount)}</td>
@@ -40,12 +75,8 @@ async function opex(){
             <button class="btn btn-s" onclick="editOpex(${r.id})">編輯</button>
             <button class="btn btn-s btn-r" onclick="deleteOpex(${r.id})">刪除</button>
           </td>
-        </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+        </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">本年度尚無記錄</td></tr>'}
       </table></div>
-      <div class="pg"><span class="pi">第 ${opexP}/${tp} 頁，共 ${count||0} 筆</span>
-        ${opexP>1?`<button class="btn btn-s" onclick="opexP--;opex()">上一頁</button>`:''}
-        ${opexP<tp?`<button class="btn btn-s" onclick="opexP++;opex()">下一頁</button>`:''}${pageJump('opexP',tp,'opex')}
-      </div>
     </div>
   </div>`;
 }
