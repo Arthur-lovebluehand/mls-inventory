@@ -141,6 +141,19 @@ async function printOrder(no){
   </body></html>`);
   win.document.close();
 }
+function onOrderTypeChange(type) {
+  const payEl = $('f-opay');
+  if(!payEl) return;
+  if(type==='自用') {
+    payEl.value = '自用（無金流）';
+    payEl.disabled = true;
+  } else {
+    payEl.disabled = false;
+    if(payEl.value==='自用（無金流）') payEl.value = _payMethods[0]||'';
+  }
+}
+window.onOrderTypeChange = onOrderTypeChange;
+
 async function addOrder(){
   const[{data:pr},{data:cu}]=await Promise.all([
     sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('name'),
@@ -170,7 +183,7 @@ async function addOrder(){
     ${fi('ofee','運費','number','0')}
     ${fi('oinv','發票號碼','text')}
     <div class="fl"><label>位階（決定商品自動售價）</label><select id="f-oalv" onchange="updateItemPricesByLevel(this.value)">${LEVELS.map(l=>`<option>${l}</option>`).join('')}</select></div>
-    <div class="fl"><label>訂單類型</label><select id="f-otype">${ORDER_TYPES.map(t=>`<option ${t==='一般訂單'?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="fl"><label>訂單類型</label><select id="f-otype" onchange="onOrderTypeChange(this.value)">${ORDER_TYPES.map(t=>`<option ${t==='一般訂單'?'selected':''}>${t}</option>`).join('')}</select></div>
   </div>
   <div style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
@@ -291,7 +304,8 @@ async function saveOrder(editNo){
   const its=_items.filter(i=>i.pno&&((i.qty||0)+(i.giftQty||0))>0);
   if(!its.length){toast('請至少選一項商品','e');return;}
   const sub=its.reduce((s,i)=>s+i.amt,0),fee=n('ofee')||0,tax=0,total=sub+fee;
-  const payload={order_date:dt,customer_name:nm,phone:v('ophone'),ship_address:v('oaddr'),payment_method:v('opay'),shipping_method:v('oshp'),shipping_fee:fee,note:v('onote'),agent_level:v('oalv'),order_type:v('otype')||'一般訂單',invoice_no:v('oinv')||null,subtotal:sub,tax,total,payment_done:editNo?undefined:false,products_summary:its.map(i=>(_allProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、')};
+  const otype = v('otype')||'一般訂單';
+  const payload={order_date:dt,customer_name:nm,phone:v('ophone'),ship_address:v('oaddr'),payment_method:v('opay'),shipping_method:v('oshp'),shipping_fee:fee,note:v('onote'),agent_level:v('oalv'),order_type:otype,invoice_no:v('oinv')||null,subtotal:sub,tax,total,payment_done:editNo?undefined:(otype==='自用'?true:false),payment_date:editNo?undefined:(otype==='自用'?dt:null),products_summary:its.map(i=>(_allProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、')};
   const custNoEl=document.getElementById('ss-val-cust');
   if(custNoEl) payload.customer_no=custNoEl.value||null; // 只有新增畫面才有搜尋框，避免修改時誤把已存的客戶編號覆蓋掉
   if(editNo){
@@ -348,7 +362,7 @@ async function editOrder(no){
     ${fi('ofee','運費','number',o?.shipping_fee||0)}
     ${fi('oinv','發票號碼','text',o?.invoice_no||'')}
     <div class="fl"><label>位階</label><select id="f-oalv" onchange="updateItemPricesByLevel(this.value)">${LEVELS.map(l=>`<option ${l===o?.agent_level?'selected':''}>${l}</option>`).join('')}</select></div>
-    <div class="fl"><label>訂單類型</label><select id="f-otype">${ORDER_TYPES.map(t=>`<option ${t===(o?.order_type||'一般訂單')?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="fl"><label>訂單類型</label><select id="f-otype" onchange="onOrderTypeChange(this.value)">${ORDER_TYPES.map(t=>`<option ${t===(o?.order_type||'一般訂單')?'selected':''}>${t}</option>`).join('')}</select></div>
   </div>
   <div style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
