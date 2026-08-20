@@ -577,7 +577,16 @@ async function computeTotalFinanceData(includeSelfUse) {
   const years = Object.keys(yMap).sort().reverse();
   return { mMap, yMap, months, years };
 }
-const netRow = d => d.salesRev + d.svcRev + d.bonusIn - d.purchCost - d.svcCost - d.techPay - d.bonusOut - d.opCost;
+var _totalFinanceIncl = {purchCost:true, svcCost:true, techPay:true, bonusOut:true, opCost:true};
+const netRow = d => {
+  let n = d.salesRev + d.svcRev + d.bonusIn;
+  if(_totalFinanceIncl.purchCost) n -= d.purchCost;
+  if(_totalFinanceIncl.svcCost) n -= d.svcCost;
+  if(_totalFinanceIncl.techPay) n -= d.techPay;
+  if(_totalFinanceIncl.bonusOut) n -= d.bonusOut;
+  if(_totalFinanceIncl.opCost) n -= d.opCost;
+  return n;
+};
 window.computeTotalFinanceData = computeTotalFinanceData;
 window.netRow = netRow;
 
@@ -587,11 +596,22 @@ async function showTotalFinance() {
 
   const controlsHtml = `
     <div class="tc" style="margin-bottom:16px;padding:12px 16px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:10px">
         <input type="checkbox" ${_includeSelfUse?'checked':''} onchange="_includeSelfUse=this.checked;accounts()">
         包含「自用」類型的訂單營收（預設不含，只看對外真實銷售）
       </label>
+      <div style="font-size:12px;color:var(--tx3);margin-bottom:6px">淨利要不要扣這些項目（取消勾選＝先不看這塊，數字會即時重算）：</div>
+      <div style="display:flex;flex-wrap:wrap;gap:14px">
+        ${[['purchCost','進貨支出'],['svcCost','耗材成本'],['techPay','技師薪資'],['bonusOut','獎金支出'],['opCost','營運成本']].map(([k,lbl])=>`
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="checkbox" ${_totalFinanceIncl[k]?'checked':''} onchange="_totalFinanceIncl.${k}=this.checked;accounts()">
+            ${lbl}
+          </label>`).join('')}
+      </div>
     </div>`;
+
+  const excludedStyle = 'color:var(--tx3);text-decoration:line-through;opacity:.5';
+  const cellStyle = (key, normalColor) => _totalFinanceIncl[key] ? `color:${normalColor}` : excludedStyle;
 
   // ── 年度總覽 ──
   if(!window._totalFinanceYear) {
@@ -600,7 +620,7 @@ async function showTotalFinance() {
       ${controlsHtml}
       <div class="tc">
         <div class="tb"><span class="tt">年度總覽（點年份看該年每月明細）</span></div>
-        <div class="al al-w" style="font-size:12px;margin:0 16px 10px">月份分類規則跟「銷售財報」一致：銷售訂單已收款算在收款月份、未收款算在訂單月份；服務成本＝耗材成本＋技師薪資（不含撥轉成本，那只是搬庫存不是真花費）；有把獎金/分潤、營運成本（房租水電網路等）也算進來。</div>
+        <div class="al al-w" style="font-size:12px;margin:0 16px 10px">月份分類規則跟「銷售財報」一致：銷售訂單已收款算在收款月份、未收款算在訂單月份；服務成本＝耗材成本＋技師薪資（不含撥轉成本，那只是搬庫存不是真花費）；有把獎金/分潤、營運成本（房租水電網路等）也算進來。取消勾選的項目會用刪除線標示，代表沒有被扣進總淨利。</div>
         <div class="tw"><table style="width:100%">
           <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>營運成本</th><th style="font-weight:700">總淨利</th></tr>
           ${years.map(yr=>{
@@ -610,11 +630,11 @@ async function showTotalFinance() {
               <td class="num" style="color:var(--ac)">${fM(d.salesRev)}</td>
               <td class="num" style="color:var(--ac)">${fM(d.svcRev)}</td>
               <td class="num" style="color:var(--ac)">${fM(d.bonusIn)}</td>
-              <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
-              <td class="num" style="color:var(--rd)">${fM(d.svcCost)}</td>
-              <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
-              <td class="num" style="color:var(--rd)">${fM(d.bonusOut)}</td>
-              <td class="num" style="color:var(--rd)">${fM(d.opCost)}</td>
+              <td class="num" style="${cellStyle('purchCost','var(--rd)')}">${fM(d.purchCost)}</td>
+              <td class="num" style="${cellStyle('svcCost','var(--rd)')}">${fM(d.svcCost)}</td>
+              <td class="num" style="${cellStyle('techPay','var(--bl)')}">${fM(d.techPay)}</td>
+              <td class="num" style="${cellStyle('bonusOut','var(--rd)')}">${fM(d.bonusOut)}</td>
+              <td class="num" style="${cellStyle('opCost','var(--rd)')}">${fM(d.opCost)}</td>
               <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
             </tr>`;
           }).join('')||'<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
@@ -644,11 +664,11 @@ async function showTotalFinance() {
             <td class="num">${fM(d.salesRev)}</td>
             <td class="num">${fM(d.svcRev)}</td>
             <td class="num">${fM(d.bonusIn)}</td>
-            <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
-            <td class="num" style="color:var(--rd)">${fM(d.svcCost)}</td>
-            <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
-            <td class="num" style="color:var(--rd)">${fM(d.bonusOut)}</td>
-            <td class="num" style="color:var(--rd)">${fM(d.opCost)}</td>
+            <td class="num" style="${cellStyle('purchCost','var(--rd)')}">${fM(d.purchCost)}</td>
+            <td class="num" style="${cellStyle('svcCost','var(--rd)')}">${fM(d.svcCost)}</td>
+            <td class="num" style="${cellStyle('techPay','var(--bl)')}">${fM(d.techPay)}</td>
+            <td class="num" style="${cellStyle('bonusOut','var(--rd)')}">${fM(d.bonusOut)}</td>
+            <td class="num" style="${cellStyle('opCost','var(--rd)')}">${fM(d.opCost)}</td>
             <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
           </tr>`;
         }).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
