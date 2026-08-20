@@ -58,7 +58,8 @@ function _getPages(){
     categories:()=>window.categories?.(),
     serviceHub:()=>window.serviceHub?.(),
     dataImport:()=>window.dataImport?.(),
-    customerDeposits:()=>window.customerDeposits?.()
+    customerDeposits:()=>window.customerDeposits?.(),
+    opex:()=>window.opex?.()
   };
 }
 

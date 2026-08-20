@@ -2,6 +2,114 @@
 // finance.js
 // ═══════════════════════════════════════
 
+// ══════════════════════════════
+// 營運成本（房租/水電/網路等固定成本）
+// ══════════════════════════════
+var opexP = 1;
+async function opex(){
+  const{data,count}=await sb.from('operating_expenses').select('*',{count:'exact'}).order('expense_date',{ascending:false}).range((opexP-1)*30,opexP*30-1);
+  const tp=Math.max(1,Math.ceil((count||0)/30));
+  const { data:settingRow } = await sb.from('settings').select('value').eq('key','opex_categories').maybeSingle();
+  let cats = ['房租','水電','網路','電話','保險','清潔費','雜項'];
+  try{ if(settingRow?.value) cats = JSON.parse(settingRow.value); }catch(e){}
+  window._opexCats = cats;
+
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const { data:allForTotal } = await sb.from('operating_expenses').select('amount,expense_date');
+  const monthTotal = (allForTotal||[]).filter(r=>(r.expense_date||'').startsWith(thisMonth)).reduce((s,r)=>s+(r.amount||0),0);
+  const yearTotal = (allForTotal||[]).filter(r=>(r.expense_date||'').startsWith(thisMonth.slice(0,4))).reduce((s,r)=>s+(r.amount||0),0);
+
+  $('main').innerHTML=`
+  <div class="ph"><div><div class="pt">營運成本</div><div class="ps">共 ${count||0} 筆</div></div>
+    <div class="ha"><button class="btn btn-p btn-s" onclick="addOpex()">＋ 新增記錄</button></div></div>
+  <div class="pc">
+    <div class="mg">
+      <div class="mc"><div class="ml">本月合計</div><div class="mv cr">${fM(monthTotal)}</div></div>
+      <div class="mc"><div class="ml">今年累計</div><div class="mv cr">${fM(yearTotal)}</div></div>
+    </div>
+    <div class="al al-w" style="font-size:12px">
+      記錄房租、水電、網路等跟商品/服務無關、但每個月固定會花的錢。這些記錄好之後，財報裡的「營運成本」跟淨利才會反映真正的獲利，不會看起來有賺、實際上錢都花在這些地方了。
+    </div>
+    <div class="tc">
+      <div class="tb"><span class="tt">營運成本記錄</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>日期</th><th>類別</th><th>金額</th><th>固定支出</th><th>備註</th><th>操作</th></tr>
+        ${(data||[]).map(r=>`<tr>
+          <td style="font-size:12px">${fD(r.expense_date)}</td>
+          <td><span class="badge bgr">${r.category}</span></td>
+          <td class="num" style="font-weight:600;color:var(--rd)">${fM(r.amount)}</td>
+          <td>${r.is_recurring?'<span class="badge bg">每月固定</span>':'—'}</td>
+          <td style="font-size:12px;color:var(--tx3)">${r.note||'—'}</td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-s" onclick="editOpex(${r.id})">編輯</button>
+            <button class="btn btn-s btn-r" onclick="deleteOpex(${r.id})">刪除</button>
+          </td>
+        </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+      </table></div>
+      <div class="pg"><span class="pi">第 ${opexP}/${tp} 頁，共 ${count||0} 筆</span>
+        ${opexP>1?`<button class="btn btn-s" onclick="opexP--;opex()">上一頁</button>`:''}
+        ${opexP<tp?`<button class="btn btn-s" onclick="opexP++;opex()">下一頁</button>`:''}${pageJump('opexP',tp,'opex')}
+      </div>
+    </div>
+  </div>`;
+}
+window.opex = opex;
+
+function addOpex() {
+  OM('新增營運成本', `
+  <div class="fg">
+    ${fi('oxdate','日期','date',today())}
+    <div class="fl"><label>類別</label><select id="f-oxcat">${window._opexCats.map(c=>`<option>${c}</option>`).join('')}</select></div>
+    ${fi('oxamt','金額 *','number')}
+    <label style="display:flex;align-items:center;gap:6px;margin-top:22px;cursor:pointer;font-size:13px">
+      <input type="checkbox" id="f-oxrecur"> 這是每月固定會有的支出
+    </label>
+    <div class="fl fw">${fi('oxnote','備註（選填）')}</div>
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveOpex()">新增</button>`);
+}
+window.addOpex = addOpex;
+async function editOpex(id) {
+  const { data:r } = await sb.from('operating_expenses').select('*').eq('id',id).single();
+  if(!r) return;
+  OM('編輯營運成本', `
+  <div class="fg">
+    ${fi('oxdate','日期','date',r.expense_date)}
+    <div class="fl"><label>類別</label><select id="f-oxcat">${window._opexCats.map(c=>`<option ${c===r.category?'selected':''}>${c}</option>`).join('')}</select></div>
+    ${fi('oxamt','金額 *','number',r.amount)}
+    <label style="display:flex;align-items:center;gap:6px;margin-top:22px;cursor:pointer;font-size:13px">
+      <input type="checkbox" id="f-oxrecur" ${r.is_recurring?'checked':''}> 這是每月固定會有的支出
+    </label>
+    <div class="fl fw">${fi('oxnote','備註（選填）','text',r.note)}</div>
+  </div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveOpex(${id})">儲存</button>`);
+}
+window.editOpex = editOpex;
+async function saveOpex(id) {
+  const amt = n('oxamt');
+  if(!amt) { toast('請填寫金額','e'); return; }
+  const payload = { expense_date:v('oxdate'), category:v('oxcat'), amount:amt, is_recurring:$('f-oxrecur')?.checked||false, note:v('oxnote')||null };
+  if(id) {
+    await sb.from('operating_expenses').update(payload).eq('id',id);
+  } else {
+    payload.expense_no = 'OX-'+v('oxdate').replace(/-/g,'')+'-'+Date.now().toString().slice(-4);
+    await sb.from('operating_expenses').insert(payload);
+  }
+  toast('✅ 已儲存');
+  CM();
+  opex();
+}
+window.saveOpex = saveOpex;
+async function deleteOpex(id) {
+  if(!confirm('確定刪除這筆營運成本記錄？')) return;
+  await sb.from('operating_expenses').delete().eq('id',id);
+  toast('已刪除');
+  opex();
+}
+window.deleteOpex = deleteOpex;
+
 async function bonus(){
   const{data,count}=await sb.from('bonus_records').select('*',{count:'exact'}).order('record_date',{ascending:false}).range((bnP-1)*30,bnP*30-1);
   const tp=Math.ceil((count||0)/30);
@@ -369,17 +477,18 @@ function normYM(ym){
   return s;
 }
 async function computeTotalFinanceData(includeSelfUse) {
-  const [{ data:sOrders },{ data:pOrders },{ data:bnRecs },{ data:svOrders },{ data:svItems }] = await Promise.all([
+  const [{ data:sOrders },{ data:pOrders },{ data:bnRecs },{ data:svOrders },{ data:svItems },{ data:opexRecs }] = await Promise.all([
     sb.from('sales_orders').select('order_date,year_month,total,payment_done,payment_date,order_type'),
     sb.from('purchase_orders').select('year_month,total'),
     sb.from('bonus_records').select('year_month,amount,direction'),
     sb.from('service_orders').select('order_date,total,consumable_cost'),
     sb.from('service_order_items').select('order_date:service_orders(order_date),technician_pay').eq('item_type','service'),
+    sb.from('operating_expenses').select('expense_date,amount'),
   ]);
 
   // 月度彙整
   const mMap = {};
-  const addM = (ym, key, val) => { if(!ym) return; if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0}; mMap[ym][key]+=val||0; };
+  const addM = (ym, key, val) => { if(!ym) return; if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0,opCost:0}; mMap[ym][key]+=val||0; };
   // 銷售：已收款算在收款月份、未收款算在訂單原本的年月（跟銷售財報同一套規則，只有已收款才真的算收入）
   (sOrders||[]).forEach(o => {
     if(o.order_type==='自用' && !includeSelfUse) return; // 預設不把自用訂單算進真實營收
@@ -397,12 +506,14 @@ async function computeTotalFinanceData(includeSelfUse) {
   });
   (svOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'svcRev',o.total); addM(ym,'svcCost',o.consumable_cost); }});
   (svItems||[]).forEach(i => { const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',i.technician_pay); });
+  // 營運成本（房租/水電/網路等固定成本）
+  (opexRecs||[]).forEach(r => { const ym=(r.expense_date||'').slice(0,7); if(ym) addM(ym,'opCost',r.amount); });
 
   // 年度彙整
   const yMap = {};
   Object.entries(mMap).forEach(([ym, d]) => {
     const yr = ym.slice(0,4);
-    if(!yMap[yr]) yMap[yr]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0};
+    if(!yMap[yr]) yMap[yr]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0,opCost:0};
     Object.keys(d).forEach(k => yMap[yr][k]+=d[k]);
   });
 
@@ -410,7 +521,7 @@ async function computeTotalFinanceData(includeSelfUse) {
   const years = Object.keys(yMap).sort().reverse();
   return { mMap, yMap, months, years };
 }
-const netRow = d => d.salesRev + d.svcRev + d.bonusIn - d.purchCost - d.svcCost - d.techPay - d.bonusOut;
+const netRow = d => d.salesRev + d.svcRev + d.bonusIn - d.purchCost - d.svcCost - d.techPay - d.bonusOut - d.opCost;
 window.computeTotalFinanceData = computeTotalFinanceData;
 window.netRow = netRow;
 
@@ -418,40 +529,59 @@ var _includeSelfUse = false;
 async function showTotalFinance() {
   const { mMap, yMap, months, years } = await computeTotalFinanceData(_includeSelfUse);
 
-  $('main').innerHTML += `
-  <div class="pc">
+  const controlsHtml = `
     <div class="tc" style="margin-bottom:16px;padding:12px 16px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
         <input type="checkbox" ${_includeSelfUse?'checked':''} onchange="_includeSelfUse=this.checked;accounts()">
         包含「自用」類型的訂單營收（預設不含，只看對外真實銷售）
       </label>
-    </div>
-    <div class="tc" style="margin-bottom:16px">
-      <div class="tb"><span class="tt">年度總財報</span></div>
-      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">月份分類規則跟「銷售財報」一致：銷售訂單已收款算在收款月份、未收款算在訂單月份；服務成本＝耗材成本＋技師薪資（不含撥轉成本，那只是搬庫存不是真花費）；有把獎金/分潤也算進來。</div>
-      <div class="tw"><table style="width:100%">
-        <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>總淨利</th></tr>
-        ${years.map(yr=>{
-          const d=yMap[yr]; const net=netRow(d);
-          return `<tr>
-            <td style="font-weight:700">${yr}</td>
-            <td class="num" style="color:var(--ac)">${fM(d.salesRev)}</td>
-            <td class="num" style="color:var(--ac)">${fM(d.svcRev)}</td>
-            <td class="num" style="color:var(--ac)">${fM(d.bonusIn)}</td>
-            <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
-            <td class="num" style="color:var(--rd)">${fM(d.svcCost)}</td>
-            <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
-            <td class="num" style="color:var(--rd)">${fM(d.bonusOut)}</td>
-            <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
-          </tr>`;
-        }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
-      </table></div>
+    </div>`;
+
+  // ── 年度總覽 ──
+  if(!window._totalFinanceYear) {
+    $('main').innerHTML += `
+    <div class="pc">
+      ${controlsHtml}
+      <div class="tc">
+        <div class="tb"><span class="tt">年度總覽（點年份看該年每月明細）</span></div>
+        <div class="al al-w" style="font-size:12px;margin:0 16px 10px">月份分類規則跟「銷售財報」一致：銷售訂單已收款算在收款月份、未收款算在訂單月份；服務成本＝耗材成本＋技師薪資（不含撥轉成本，那只是搬庫存不是真花費）；有把獎金/分潤、營運成本（房租水電網路等）也算進來。</div>
+        <div class="tw"><table style="width:100%">
+          <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>營運成本</th><th style="font-weight:700">總淨利</th></tr>
+          ${years.map(yr=>{
+            const d=yMap[yr]; const net=netRow(d);
+            return `<tr style="cursor:pointer" onclick="window._totalFinanceYear='${yr}';accounts()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+              <td style="font-weight:700;color:var(--ac);font-size:15px">${yr} ›</td>
+              <td class="num" style="color:var(--ac)">${fM(d.salesRev)}</td>
+              <td class="num" style="color:var(--ac)">${fM(d.svcRev)}</td>
+              <td class="num" style="color:var(--ac)">${fM(d.bonusIn)}</td>
+              <td class="num" style="color:var(--rd)">${fM(d.purchCost)}</td>
+              <td class="num" style="color:var(--rd)">${fM(d.svcCost)}</td>
+              <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
+              <td class="num" style="color:var(--rd)">${fM(d.bonusOut)}</td>
+              <td class="num" style="color:var(--rd)">${fM(d.opCost)}</td>
+              <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
+            </tr>`;
+          }).join('')||'<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+        </table></div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  // ── 該年度的月份明細 ──
+  const yr = window._totalFinanceYear;
+  const yearMonths = months.filter(ym=>ym.startsWith(yr));
+  $('main').innerHTML += `
+  <div class="pc">
+    ${controlsHtml}
+    <div style="margin-bottom:14px">
+      <button class="btn btn-s" onclick="window._totalFinanceYear=null;accounts()">‹ 返回年度總覽</button>
     </div>
     <div class="tc">
-      <div class="tb"><span class="tt">月度總財報</span></div>
+      <div class="tb"><span class="tt">${yr} 年月度總財報</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>總淨利</th></tr>
-        ${months.map(ym=>{
+        <tr><th>月份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>營運成本</th><th style="font-weight:700">總淨利</th></tr>
+        ${yearMonths.map(ym=>{
           const d=mMap[ym]; const net=netRow(d);
           return `<tr>
             <td style="color:var(--ac);font-weight:600">${ym}</td>
@@ -462,9 +592,10 @@ async function showTotalFinance() {
             <td class="num" style="color:var(--rd)">${fM(d.svcCost)}</td>
             <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
             <td class="num" style="color:var(--rd)">${fM(d.bonusOut)}</td>
+            <td class="num" style="color:var(--rd)">${fM(d.opCost)}</td>
             <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;
@@ -475,12 +606,11 @@ window.showTotalFinance = showTotalFinance;
 // ════════════════════════════════════
 //  老闆娘個人淨利（公司總淨利＋自己身為技師的薪資）
 // ════════════════════════════════════
-var ownerTechName = null;
 var _ownerProfitYear = null; // null=年度總覽；設定年份字串則顯示該年的月份明細
 async function showOwnerProfit() {
   const { data:techs } = await sb.from('technicians').select('name').order('name');
   const names = [...new Set((techs||[]).map(t=>t.name))];
-  if(ownerTechName===null) ownerTechName = names.find(n=>n.includes('闆'))||names[0]||null;
+  const ownerTechName = names.find(n=>n.includes('闆'))||names[0]||null;
 
   const { mMap, months } = await computeTotalFinanceData(_includeSelfUse);
 
@@ -503,8 +633,9 @@ async function showOwnerProfit() {
     const svcNet = d.svcRev - costSub + pay;
     const salesNet = d.salesRev - d.purchCost;
     const bonus = d.bonusIn - d.bonusOut;
-    const personal = salesNet + svcNet + bonus;
-    return { svcRev:d.svcRev, costSub, pay, svcNet, salesNet, bonus, personal };
+    const opCost = d.opCost||0;
+    const personal = salesNet + svcNet + bonus - opCost;
+    return { svcRev:d.svcRev, costSub, pay, svcNet, salesNet, bonus, opCost, personal };
   };
 
   // 依年度彙整
@@ -512,8 +643,8 @@ async function showOwnerProfit() {
   months.forEach(ym=>{
     const yr = ym.slice(0,4);
     const c = calc(ym);
-    if(!yearMap[yr]) yearMap[yr]={salesNet:0,svcNet:0,bonus:0,personal:0};
-    yearMap[yr].salesNet+=c.salesNet; yearMap[yr].svcNet+=c.svcNet; yearMap[yr].bonus+=c.bonus; yearMap[yr].personal+=c.personal;
+    if(!yearMap[yr]) yearMap[yr]={salesNet:0,svcNet:0,bonus:0,opCost:0,personal:0};
+    yearMap[yr].salesNet+=c.salesNet; yearMap[yr].svcNet+=c.svcNet; yearMap[yr].bonus+=c.bonus; yearMap[yr].opCost+=c.opCost; yearMap[yr].personal+=c.personal;
   });
   const years = Object.keys(yearMap).sort().reverse();
   const grandTotal = years.reduce((s,y)=>s+yearMap[y].personal,0);
@@ -524,14 +655,6 @@ async function showOwnerProfit() {
         <input type="checkbox" ${_includeSelfUse?'checked':''} onchange="_includeSelfUse=this.checked;accounts()">
         包含「自用」類型的訂單營收（預設不含，只看對外真實銷售）
       </label>
-    </div>
-    <div class="tc" style="margin-bottom:16px">
-      <div class="tb"><span class="tt">選擇要計算的人</span></div>
-      <div style="padding:14px">
-        <select id="f-ownersel" onchange="ownerTechName=this.value;accounts()" style="padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
-          ${names.map(n=>`<option value="${n}" ${n===ownerTechName?'selected':''}>${n}</option>`).join('')||'<option value="">尚無技師資料</option>'}
-        </select>
-      </div>
     </div>`;
 
   // ── 年度總覽 ──
@@ -541,9 +664,9 @@ async function showOwnerProfit() {
       ${controlsHtml}
       <div class="tc">
         <div class="tb"><span class="tt">年度總覽（點年份看該年每月明細）</span></div>
-        <div class="al al-w" style="font-size:12px;margin:0 16px 10px">個人淨利＝銷售淨利＋服務類淨利（已含自己的技師收入）＋獎金淨額。</div>
+        <div class="al al-w" style="font-size:12px;margin:0 16px 10px">個人淨利＝銷售淨利＋服務類淨利（已含自己的技師收入）＋獎金淨額－營運成本（房租水電網路等）。</div>
         <div class="tw"><table style="width:100%">
-          <tr><th>年份</th><th>銷售淨利</th><th>服務類淨利</th><th>獎金淨額</th><th>個人年淨利</th></tr>
+          <tr><th>年份</th><th>銷售淨利</th><th>服務類淨利</th><th>獎金淨額</th><th>營運成本</th><th>個人年淨利</th></tr>
           ${years.map(yr=>{
             const y=yearMap[yr];
             return `<tr style="cursor:pointer" onclick="_ownerProfitYear='${yr}';accounts()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
@@ -551,9 +674,10 @@ async function showOwnerProfit() {
               <td class="num">${fM(y.salesNet)}</td>
               <td class="num">${fM(y.svcNet)}</td>
               <td class="num" style="color:${y.bonus>=0?'var(--ac)':'var(--rd)'}">${fM(y.bonus)}</td>
+              <td class="num" style="color:var(--rd)">${fM(y.opCost)}</td>
               <td class="num" style="font-weight:700;color:${y.personal>=0?'var(--ac)':'var(--rd)'}">${fM(y.personal)}</td>
             </tr>`;
-          }).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+          }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
         </table></div>
         ${years.length?`<div style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;border-top:1px solid var(--bd)">
           全部年度累計個人淨利：<span style="color:${grandTotal>=0?'var(--ac)':'var(--rd)'}">${fM(grandTotal)}</span>
@@ -565,7 +689,7 @@ async function showOwnerProfit() {
 
   // ── 該年度的月份明細 ──
   const yearMonths = months.filter(ym=>ym.startsWith(_ownerProfitYear)).sort();
-  const y = yearMap[_ownerProfitYear]||{salesNet:0,svcNet:0,bonus:0,personal:0};
+  const y = yearMap[_ownerProfitYear]||{salesNet:0,svcNet:0,bonus:0,opCost:0,personal:0};
 
   $('main').innerHTML += `
   <div class="pc">
@@ -592,10 +716,10 @@ async function showOwnerProfit() {
     </div>
 
     <div class="tc">
-      <div class="tb"><span class="tt">${_ownerProfitYear} 年 ② 個人月淨利（銷售淨利＋服務類淨利＋獎金）</span></div>
-      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">個人月淨利＝銷售淨利（銷售收入－進貨支出）＋①的服務類淨利（已經含自己的技師收入，這裡不再重複加）＋獎金/分潤淨額。</div>
+      <div class="tb"><span class="tt">${_ownerProfitYear} 年 ② 個人月淨利（銷售淨利＋服務類淨利＋獎金－營運成本）</span></div>
+      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">個人月淨利＝銷售淨利（銷售收入－進貨支出）＋①的服務類淨利（已經含自己的技師收入，這裡不再重複加）＋獎金/分潤淨額－營運成本（房租水電網路等）。</div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>銷售淨利</th><th>服務類淨利</th><th>獎金淨額</th><th>個人月淨利</th></tr>
+        <tr><th>月份</th><th>銷售淨利</th><th>服務類淨利</th><th>獎金淨額</th><th>營運成本</th><th>個人月淨利</th></tr>
         ${yearMonths.map(ym=>{
           const c=calc(ym);
           return `<tr>
@@ -603,12 +727,13 @@ async function showOwnerProfit() {
             <td class="num">${fM(c.salesNet)}</td>
             <td class="num">${fM(c.svcNet)}</td>
             <td class="num" style="color:${c.bonus>=0?'var(--ac)':'var(--rd)'}">${fM(c.bonus)}</td>
+            <td class="num" style="color:var(--rd)">${fM(c.opCost)}</td>
             <td class="num" style="font-weight:700;color:${c.personal>=0?'var(--ac)':'var(--rd)'}">${fM(c.personal)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">本年度尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--tx3)">本年度尚無記錄</td></tr>'}
       </table></div>
       <div style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;border-top:1px solid var(--bd)">
-        ${_ownerProfitYear}年累計：銷售淨利 ${fM(y.salesNet)} ＋ 服務類淨利 ${fM(y.svcNet)} ＋ 獎金淨額 ${fM(y.bonus)} ＝ 個人年淨利 <span style="color:${y.personal>=0?'var(--ac)':'var(--rd)'}">${fM(y.personal)}</span>
+        ${_ownerProfitYear}年累計：銷售淨利 ${fM(y.salesNet)} ＋ 服務類淨利 ${fM(y.svcNet)} ＋ 獎金淨額 ${fM(y.bonus)} － 營運成本 ${fM(y.opCost)} ＝ 個人年淨利 <span style="color:${y.personal>=0?'var(--ac)':'var(--rd)'}">${fM(y.personal)}</span>
       </div>
     </div>
   </div>`;
