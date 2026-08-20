@@ -209,8 +209,9 @@ async function showLoan(no){
     <div class="dr"><span class="dlb">歸還狀態</span><span class="dv"><span class="badge ${l?.return_status==='全部歸還'||l?.returned?'bg':l?.return_status==='部分歸還'?'ba':'br2'}">${l?.return_status||'未歸還'}</span></span></div>
     <div class="dr"><span class="dlb">地址</span><span class="dv">${l?.address||'—'}</span></div>
   </div>
-  <table class="itb"><tr><th>商品</th><th>借貨數</th><th>已歸還</th><th>未歸還</th><th>歸還日</th></tr>
-  ${(its||[]).map(i=>`<tr>
+  <table class="itb"><tr><th>#</th><th>商品</th><th>借貨數</th><th>已歸還</th><th>未歸還</th><th>歸還日</th></tr>
+  ${(its||[]).map((i,idx)=>`<tr>
+    <td style="color:var(--tx3);font-size:12px">${idx+1}</td>
     <td>${i.product_name||'—'}${i.spec?` (${i.spec})`:''}</td>
     <td class="num">${fN(i.qty)}</td>
     <td class="num ok">${fN(i.returned_qty||0)}</td>

@@ -18,10 +18,12 @@ async function categories() {
     <div class="tab${tab==='roles'?' on':''}" onclick="window._catTab='roles';categories()">服務職位</div>
     <div class="tab${tab==='payment'?' on':''}" onclick="window._catTab='payment';categories()">付款方式</div>
     <div class="tab${tab==='shipping'?' on':''}" onclick="window._catTab='shipping';categories()">寄送方式</div>
+    <div class="tab${tab==='ordertype'?' on':''}" onclick="window._catTab='ordertype';categories()">訂單類型</div>
   </div>`;
   if(tab==='roles') { await categoriesRoles(); return; }
   if(tab==='payment') { await categoriesPayment(); return; }
   if(tab==='shipping') { await categoriesShipping(); return; }
+  if(tab==='ordertype') { await categoriesOrderType(); return; }
   await categoriesProducts();
 }
 
@@ -319,6 +321,87 @@ async function deleteShipMethod(id, name) {
   categories();
 }
 window.categoriesShipping = categoriesShipping;
+
+// ══════════════════════════════
+// 訂單類型管理
+// ══════════════════════════════
+const ORDER_TYPE_COLORS = [
+  {v:'bgr',label:'灰（預設）'},{v:'bg',label:'綠'},{v:'ba',label:'橘'},
+  {v:'bb',label:'藍'},{v:'bbr',label:'棕'},{v:'br2',label:'紅'}
+];
+async function categoriesOrderType() {
+  const { data } = await sb.from('order_types').select('*').order('sort_order').order('name');
+  $('main').innerHTML += `
+  <div class="pc">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <button class="btn btn-p btn-s" onclick="addOrderTypeModal()">＋ 新增訂單類型</button>
+  </div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理銷售訂單的「訂單類型」選項跟顏色。你可以自己決定要留哪些、要刪哪些（例如已經改用「獎金/分潤」功能記帳，這裡的分潤獎金類型如果用不到了可以直接刪掉），排序也可以自己排。</div>
+  <div class="tc"><div class="tw"><table style="width:100%">
+    <tr><th>顏色預覽</th><th>名稱</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
+    ${(data||[]).map(t=>`<tr>
+      <td><span class="badge ${t.color}">${t.name}</span></td>
+      <td style="font-weight:500">${t.name}</td>
+      <td style="text-align:center">${t.sort_order}</td>
+      <td><span class="badge ${t.is_active?'bg':'br2'}">${t.is_active?'啟用':'停用'}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn btn-s" onclick="editOrderTypeModal(${t.id},'${t.name.replace(/'/g,"\\'")}','${t.color}',${t.sort_order},${t.is_active})">編輯</button>
+        <button class="btn btn-s" onclick="toggleOrderType(${t.id},${t.is_active})">${t.is_active?'停用':'啟用'}</button>
+        <button class="btn btn-s btn-r" onclick="deleteOrderType(${t.id},'${t.name.replace(/'/g,"\\'")}')">刪除</button>
+      </div></td>
+    </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">尚無訂單類型，請先新增</td></tr>'}
+  </table></div></div></div>`;
+}
+function addOrderTypeModal() {
+  OM('新增訂單類型', `
+  ${fi('otname','名稱 *')}
+  <div class="fl"><label>顏色</label><select id="f-otcolor">${ORDER_TYPE_COLORS.map(c=>`<option value="${c.v}">${c.label}</option>`).join('')}</select></div>
+  ${fi('otsort','排序','number','99')}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveOrderType()">新增</button>`);
+}
+function editOrderTypeModal(id,name,color,sort,active) {
+  OM('編輯訂單類型', `
+  ${fi('otname','名稱 *','text',name)}
+  <div class="fl"><label>顏色</label><select id="f-otcolor">${ORDER_TYPE_COLORS.map(c=>`<option value="${c.v}" ${c.v===color?'selected':''}>${c.label}</option>`).join('')}</select></div>
+  ${fi('otsort','排序','number',sort)}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveOrderType(${id})">儲存</button>`);
+}
+async function saveOrderType(id) {
+  const name = v('otname').trim();
+  if(!name) { toast('請輸入名稱','e'); return; }
+  const payload = { name, color:v('otcolor')||'bgr', sort_order:parseInt(v('otsort'))||99 };
+  if(id) {
+    const { error } = await sb.from('order_types').update(payload).eq('id',id);
+    if(error) { toast('更新失敗：'+error.message,'e'); return; }
+  } else {
+    const { error } = await sb.from('order_types').insert({...payload, is_active:true});
+    if(error) { toast('新增失敗：'+error.message,'e'); return; }
+  }
+  toast('✅ 已儲存');
+  CM();
+  await loadOrderTypes();
+  categories();
+}
+async function toggleOrderType(id, current) {
+  await sb.from('order_types').update({is_active:!current}).eq('id',id);
+  await loadOrderTypes();
+  categories();
+}
+async function deleteOrderType(id, name) {
+  if(!confirm(`確定刪除訂單類型「${name}」？（已經用這個類型的舊訂單不會被刪除，只是類型清單裡少一個選項）`)) return;
+  await sb.from('order_types').delete().eq('id',id);
+  toast('已刪除');
+  await loadOrderTypes();
+  categories();
+}
+window.categoriesOrderType = categoriesOrderType;
+window.addOrderTypeModal = addOrderTypeModal;
+window.editOrderTypeModal = editOrderTypeModal;
+window.saveOrderType = saveOrderType;
+window.toggleOrderType = toggleOrderType;
+window.deleteOrderType = deleteOrderType;
 window.addShipMethodModal = addShipMethodModal;
 window.editShipMethodModal = editShipMethodModal;
 window.saveShipMethod = saveShipMethod;

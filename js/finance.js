@@ -58,7 +58,8 @@ async function bonus(){
 async function addBonus(){
   const td=today(), no=await genNo('BN','bonus_records','record_no');
   OM('新增獎金/分潤記錄',`<div class="fg">
-    ${fi('bno','記錄號','text',no)} ${fi('bdt','日期','date',td)}
+    ${fi('bno','記錄號','text',no)}
+    <div class="fl"><label>日期</label><input id="f-bdt" type="date" value="${td}" onchange="regenNoOnDateChange('bdt','bno','BN','bonus_records','record_no')" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
     <div class="fl"><label>方向</label><select id="f-bdir" onchange="toggleBonusFields(this.value)">
       <option value="支出（我分潤給人）">支出（我分潤給人）</option>
       <option value="收入（上游分潤給我）">收入（上游分潤給我）</option>
@@ -80,9 +81,10 @@ async function addBonus(){
 }
 async function saveBonus(){
   const no=v('bno'),rec=v('brec'),amt=n('bamt');
-  if(!rec||!amt){toast('請填寫對象和金額','e');return;}
   const dir=v('bdir').startsWith('收入')?'收入':'支出';
-  const{error}=await sb.from('bonus_records').insert({record_no:no,record_date:v('bdt'),direction:dir,recipient:rec,type:v('btype'),amount:amt,payment_method:v('bpay'),invoice_no:v('binv')||null,payment_date:v('bpdt')||null,note:v('bnote')||null,payer:v('bpayer')||null,trigger_who:v('btrigger')||null,payment_done:false,year_month:ym(v('bdt'))});
+  if(!amt){toast('請填寫金額','e');return;}
+  if(dir==='支出' && !rec){toast('請填寫支付對象（誰收款）','e');return;}
+  const{error}=await sb.from('bonus_records').insert({record_no:no,record_date:v('bdt'),direction:dir,recipient:rec||v('btrigger')||v('bpayer')||null,type:v('btype'),amount:amt,payment_method:v('bpay'),invoice_no:v('binv')||null,payment_date:v('bpdt')||null,note:v('bnote')||null,payer:v('bpayer')||null,trigger_who:v('btrigger')||null,payment_done:false,year_month:ym(v('bdt'))});
   if(error){toast('新增失敗：'+error.message,'e');return;}
   toast('記錄已新增');CM();bonus();
 }
@@ -296,10 +298,11 @@ async function editBonus(no){
 }
 async function updateBonus(no){
   const rec=v('brec'), amt=n('bamt');
-  if(!rec||!amt){toast('請填寫對象和金額','e');return;}
   const dir=v('bdir').startsWith('收入')?'收入':'支出';
+  if(!amt){toast('請填寫金額','e');return;}
+  if(dir==='支出' && !rec){toast('請填寫支付對象（誰收款）','e');return;}
   const{error}=await sb.from('bonus_records').update({
-    record_date:v('bdt'), direction:dir, recipient:rec,
+    record_date:v('bdt'), direction:dir, recipient:rec||v('btrigger')||v('bpayer')||null,
     type:v('btype'), amount:amt, payment_method:v('bpay'),
     invoice_no:v('binv')||null, payment_date:v('bpdt')||null,
     note:v('bnote')||null,

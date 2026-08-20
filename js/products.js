@@ -125,7 +125,7 @@ function prodForm(p){
       </select>
     </div>
     ${fi('punit','單位','text',p.unit||'個')} ${fi('pstock','現有庫存','number',p.stock||0)}
-    ${fs('psource','主要來源',['愛閃耀','安芳','其他廠商','自有品牌','其他'],p.source||'愛閃耀')}
+    ${fs('psource','主要來源',[..._vendorNames,'自有品牌','其他'],p.source||_vendorNames[0]||'其他')}
     ${fi('pvpno','廠商原始編號（廠商自己的商品編號）','text',p.vendor_product_no)}
   </div>
   <div class="sh">各位階售價</div>

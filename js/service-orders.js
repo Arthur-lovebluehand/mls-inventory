@@ -64,22 +64,23 @@ async function svcShowOrder(no) {
     ${txBalance!=null?`<div style="grid-column:1/-1"><span style="color:var(--tx3)">這筆消費後的餘額（上筆餘額－此次消費）：</span><b style="color:${txBalance>0?'var(--ac)':'var(--rd)'}">${fM(txBalance)}</b></div>`:''}
     ${curBalance!=null?`<div style="grid-column:1/-1;font-size:12px;color:var(--tx3)">目前（現在）儲值餘額：${fM(curBalance)}</div>`:''}
   </div>
+  <div style="font-size:11px;color:var(--tx3);margin-bottom:8px">共 ${its.length} 項品項</div>
   ${services.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">服務項目</div>
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
-    <tr><th>項目</th><th>數量</th><th>單價</th><th>小計</th><th>技師</th></tr>
-    ${services.map(i=>`<tr><td>${i.item_name}${i.is_gift?' <span class="badge ba" style="font-size:10px">贈</span>':''}</td><td>${i.qty}${i.unit||''}</td>
+    <tr><th>#</th><th>項目</th><th>數量</th><th>單價</th><th>小計</th><th>技師</th></tr>
+    ${services.map((i,idx)=>`<tr><td style="color:var(--tx3);font-size:12px">${idx+1}</td><td>${i.item_name}${i.is_gift?' <span class="badge ba" style="font-size:10px">贈</span>':''}</td><td>${i.qty}${i.unit||''}</td>
       <td class="num">${fM(i.unit_price)}</td><td class="num">${fM(i.subtotal)}</td><td style="font-size:12px">${i.technician_name||'—'}</td></tr>`).join('')}
   </table></div></div>`:''}
   ${consumables.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">耗材</div>
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
-    <tr><th>商品</th><th>用量</th><th>服務費</th><th>耗材成本</th></tr>
-    ${consumables.map(i=>`<tr><td>${i.item_name}</td><td>${i.qty}${i.unit||''}</td>
+    <tr><th>#</th><th>商品</th><th>用量</th><th>服務費</th><th>耗材成本</th></tr>
+    ${consumables.map((i,idx)=>`<tr><td style="color:var(--tx3);font-size:12px">${idx+1}</td><td>${i.item_name}</td><td>${i.qty}${i.unit||''}</td>
       <td class="num">${fM(i.unit_price)}</td><td class="num" style="color:var(--rd)">${fM(i.cost)}</td></tr>`).join('')}
   </table></div></div>`:''}
   ${gifts.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">贈送商品</div>
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
-    <tr><th>商品</th><th>數量</th><th>成本</th></tr>
-    ${gifts.map(i=>`<tr><td>${i.item_name}</td><td>${i.qty}${i.unit||''}</td>
+    <tr><th>#</th><th>商品</th><th>數量</th><th>成本</th></tr>
+    ${gifts.map((i,idx)=>`<tr><td style="color:var(--tx3);font-size:12px">${idx+1}</td><td>${i.item_name}</td><td>${i.qty}${i.unit||''}</td>
       <td class="num" style="color:var(--rd)">${fM(i.cost)}</td></tr>`).join('')}
   </table></div></div>`:''}
   <div style="text-align:right;font-size:15px;font-weight:700;border-top:1px solid var(--bd);padding-top:10px">

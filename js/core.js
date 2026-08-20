@@ -39,7 +39,7 @@ window.addEventListener('error',e=>{
       showLoginPage();
       return;
     }
-    Promise.all([loadPayMethods(),loadShipMethods()]).then(() => go('dashboard'));
+    Promise.all([loadPayMethods(),loadShipMethods(),loadVendorNames(),loadOrderTypes()]).then(() => go('dashboard'));
   };
   s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
   document.head.appendChild(s);
@@ -154,7 +154,13 @@ function pageJump(varName, tp, fnName) {
   if(tp<=1) return '';
   return `<span style="font-size:12px;margin-left:8px;display:inline-flex;align-items:center;gap:4px">跳至第<input type="number" min="1" max="${tp}" style="width:46px;padding:3px 5px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px" onkeydown="if(event.key==='Enter'){let p=parseInt(this.value)||1;p=Math.max(1,Math.min(${tp},p));${varName}=p;${fnName}();}">頁（共${tp}頁）</span>`;
 }
-const ORDER_TYPES=['一般訂單','零售訂單','自用','代理補貨','代理升等','新入代理','下家新入同階代理','贈品銷貨單','分潤獎金','草本境獎金'];
+var _orderTypes = [{name:'一般訂單',color:'bgr'}]; // {name,color}[]
+async function loadOrderTypes(){
+  const{data}=await sb.from('order_types').select('name,color').eq('is_active',true).order('sort_order').order('name');
+  if(data&&data.length) _orderTypes=data;
+}
+function orderTypeNames(){ return _orderTypes.map(t=>t.name); }
+function orderTypeColor(name){ return (_orderTypes.find(t=>t.name===name)||{}).color || 'bgr'; }
 const LEVEL_COLS={創始:'price_founder',大區:'price_region',市代:'price_city',經銷:'price_dealer',VIP:'price_vip',零售:'price_retail'};
 function lvBadge(l){
   const cls={創始:'bbr',大區:'bbr',市代:'bb',經銷:'bg',VIP:'ba',零售:'bgr'};
@@ -375,6 +381,12 @@ async function loadShipMethods(){
 
 function shipMethodSel(id,val){
   return `<div class="fl"><label>寄送方式</label><select id="f-${id}">${_shipMethods.map(m=>`<option value="${m}" ${m===val?'selected':''}>${m}</option>`).join('')}</select></div>`;
+}
+
+var _vendorNames = [];
+async function loadVendorNames(){
+  const{data}=await sb.from('vendors').select('name').eq('is_active',true).order('sort_order').order('name');
+  if(data) _vendorNames=data.map(x=>x.name);
 }
 
 // expose for inline — 已移至各模組自行 expose

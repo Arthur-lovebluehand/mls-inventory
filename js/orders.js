@@ -33,7 +33,7 @@ async function orders(){
           ${(data||[]).map(o=>`<tr>
             <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${o.order_no}</td>
             <td style="font-size:12px">${fD(o.order_date)}</td>
-            <td style="font-weight:500">${o.customer_name||'—'}${o.order_type&&o.order_type!=='一般訂單'?`<div><span class="badge ba" style="font-size:10px">${o.order_type}</span></div>`:''}</td>
+            <td style="font-weight:500">${o.customer_name||'—'}${o.order_type&&o.order_type!=='一般訂單'?`<div><span class="badge ${orderTypeColor(o.order_type)}" style="font-size:10px">${o.order_type}</span></div>`:''}</td>
             <td>${lvBadge(o.agent_level)}</td>
             <td class="num">${fM(o.subtotal)}</td>
             <td class="num" style="font-weight:600">${fM(o.total)}</td>
@@ -76,8 +76,9 @@ async function showOrder(no){
     <div class="dr" style="grid-column:1/-1"><span class="dlb">送貨地址</span><span class="dv">${o?.ship_address||'—'}</span></div>
     <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${o?.note||'—'}</span></div>
   </div>
-  <table class="itb"><tr><th>商品</th><th>單價</th><th>銷售數</th><th style="color:var(--am)">贈品數</th><th>訂購合計</th><th class="ok">已出貨</th><th>金額</th></tr>
-  ${(its||[]).map(i=>`<tr>
+  <table class="itb"><tr><th>#</th><th>商品</th><th>單價</th><th>銷售數</th><th style="color:var(--am)">贈品數</th><th>訂購合計</th><th class="ok">已出貨</th><th>金額</th></tr>
+  ${(its||[]).map((i,idx)=>`<tr>
+    <td style="color:var(--tx3);font-size:12px">${idx+1}</td>
     <td>${i.product_name||'—'}</td>
     <td class="num">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString('zh-TW'):'贈品'}</td>
     <td class="num">${fN(i.qty)}</td>
@@ -85,7 +86,7 @@ async function showOrder(no){
     <td class="num" style="font-weight:600">${fN((i.qty||0)+(i.gift_qty||0))}</td>
     <td class="num ok">${fN(i.shipped_qty||0)}</td>
     <td class="num">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString('zh-TW'):'—'}</td>
-  </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
+  </tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
   </table>
   <div style="background:var(--sf2);border-radius:var(--r);padding:10px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:13px">
     <span>小計（稅前參考）</span><span class="num" style="text-align:right">${fM(o?.subtotal)}</span>
@@ -127,8 +128,9 @@ async function printOrder(no){
   <div class="row"><div class="lbl">送貨地址</div></div><div>${o?.ship_address||'—'}</div>
   <div class="row"><div><div class="lbl">寄送方式</div><div>${o?.shipping_method||'—'}</div></div><div><div class="lbl">付款方式</div><div>${o?.payment_method||'—'}</div></div></div>
   <table>
-    <tr><th>商品名稱</th><th style="text-align:right">單價</th><th style="text-align:right">數量</th><th style="text-align:right">金額</th></tr>
-    ${(its||[]).map(i=>`<tr><td>${i.product_name||'—'}${i.gift_qty&&i.gift_qty>0?` <span style="background:#fef9e7;color:#b8860b;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">含贈品×${i.gift_qty}</span>`:''}</td><td style="text-align:right">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString():''}</td><td style="text-align:right">${(i.qty||0)+(i.gift_qty||0)}${i.gift_qty&&i.gift_qty>0?`<span style="font-size:10px;color:#b8860b;display:block">（贈${i.gift_qty}）</span>`:''}</td><td style="text-align:right">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString():'贈品'}</td></tr>`).join('')}
+    <tr><th style="text-align:center;width:28px">#</th><th>商品名稱</th><th style="text-align:right">單價</th><th style="text-align:right">數量</th><th style="text-align:right">金額</th></tr>
+    ${(its||[]).map((i,idx)=>`<tr><td style="text-align:center;color:#888">${idx+1}</td><td>${i.product_name||'—'}${i.gift_qty&&i.gift_qty>0?` <span style="background:#fef9e7;color:#b8860b;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">含贈品×${i.gift_qty}</span>`:''}</td><td style="text-align:right">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString():''}</td><td style="text-align:right">${(i.qty||0)+(i.gift_qty||0)}${i.gift_qty&&i.gift_qty>0?`<span style="font-size:10px;color:#b8860b;display:block">（贈${i.gift_qty}）</span>`:''}</td><td style="text-align:right">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString():'贈品'}</td></tr>`).join('')}
+    <tr><td colspan="3" style="text-align:right;font-size:11px;color:#888;border:none">共 ${(its||[]).length} 項</td><td style="border:none"></td><td style="border:none"></td></tr>
   </table>
   <div class="tot">
     <div class="row"><span>小計</span><span>${o?.subtotal?'$'+Number(o.subtotal).toLocaleString():''}</span></div>
@@ -183,7 +185,7 @@ async function addOrder(){
     ${fi('ofee','運費','number','0')}
     ${fi('oinv','發票號碼','text')}
     <div class="fl"><label>位階（決定商品自動售價）</label><select id="f-oalv" onchange="updateItemPricesByLevel(this.value)">${LEVELS.map(l=>`<option>${l}</option>`).join('')}</select></div>
-    <div class="fl"><label>訂單類型</label><select id="f-otype" onchange="onOrderTypeChange(this.value)">${ORDER_TYPES.map(t=>`<option ${t==='一般訂單'?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="fl"><label>訂單類型</label><select id="f-otype" onchange="onOrderTypeChange(this.value)">${orderTypeNames().map(t=>`<option ${t==='一般訂單'?'selected':''}>${t}</option>`).join('')}</select></div>
   </div>
   <div style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
@@ -381,7 +383,7 @@ async function editOrder(no){
     ${fi('ofee','運費','number',o?.shipping_fee||0)}
     ${fi('oinv','發票號碼','text',o?.invoice_no||'')}
     <div class="fl"><label>位階</label><select id="f-oalv" onchange="updateItemPricesByLevel(this.value)">${LEVELS.map(l=>`<option ${l===o?.agent_level?'selected':''}>${l}</option>`).join('')}</select></div>
-    <div class="fl"><label>訂單類型</label><select id="f-otype" onchange="onOrderTypeChange(this.value)">${ORDER_TYPES.map(t=>`<option ${t===(o?.order_type||'一般訂單')?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="fl"><label>訂單類型</label><select id="f-otype" onchange="onOrderTypeChange(this.value)">${orderTypeNames().map(t=>`<option ${t===(o?.order_type||'一般訂單')?'selected':''}>${t}</option>`).join('')}</select></div>
   </div>
   <div style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">

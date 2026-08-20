@@ -127,11 +127,12 @@ async function showPO(no){
     <div class="dr"><span class="dlb">發票號碼</span><span class="dv" style="font-family:monospace">${po?.invoice_no||'—'}</span></div>
     ${po?.note?`<div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv" style="white-space:pre-wrap">${po.note}</span></div>`:''}
   </div>
-  <table class="itb"><tr><th>商品</th><th>規格</th><th>單價</th><th>訂購</th><th style="color:var(--am)">贈品</th><th style="font-weight:700">應收總計</th><th>已收</th><th>待收</th><th>金額</th></tr>
-  ${(its||[]).map(i=>{
+  <table class="itb"><tr><th>#</th><th>商品</th><th>規格</th><th>單價</th><th>訂購</th><th style="color:var(--am)">贈品</th><th style="font-weight:700">應收總計</th><th>已收</th><th>待收</th><th>金額</th></tr>
+  ${(its||[]).map((i,idx)=>{
     const total=(i.qty||0)+(i.gift_qty||0);
     const pending=total-(i.received_qty||0);
     return `<tr>
+      <td style="color:var(--tx3);font-size:12px">${idx+1}</td>
       <td>${i.product_name||'—'}${(i.gift_qty>0&&!i.qty)?'<span class="badge ba" style="margin-left:4px;font-size:10px">贈品</span>':''}</td>
       <td style="font-size:11px">${i.spec||'—'}</td>
       <td class="num">${i.unit_price?fM(i.unit_price):'<span style="color:var(--am)">$0</span>'}</td>
@@ -142,7 +143,7 @@ async function showPO(no){
       <td class="num ${pending>0?'cr':''}">${fN(pending)}</td>
       <td class="num">${fM(i.amount)}</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
+  }).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
   </table>
   <div style="background:var(--sf2);border-radius:var(--r);padding:10px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:13px">
     <span>小計（稅前參考）</span><span class="num" style="text-align:right">${fM(po?.subtotal)}</span>
