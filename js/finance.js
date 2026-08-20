@@ -187,6 +187,8 @@ async function showMonthDetail(k){
   const d=window._acctByMonth?.[k];
   if(!d){toast('無資料','w');return;}
   const net=d.in+d.bn_in-d.po-d.bn_out;
+  const sortedOrders=(d.orders||[]).slice().sort((a,b)=>(b.order_date||'').localeCompare(a.order_date||''));
+  const sortedPos=(d.pos||[]).slice().sort((a,b)=>(b.po_date||'').localeCompare(a.po_date||''));
   OM(`${k} 明細`, `
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:14px">
     <div style="background:var(--sf2);border-radius:var(--r);padding:8px 10px;text-align:center">
@@ -203,7 +205,7 @@ async function showMonthDetail(k){
   ${d.orders?.length?`<div class="sh">銷售訂單（${d.orders.length}筆）</div>
   <div style="overflow-x:auto"><table class="itb" style="min-width:300px">
     <tr><th>訂單號</th><th>日期</th><th>客戶</th><th>金額</th><th>收款</th></tr>
-    ${d.orders.map(o=>`<tr><td><a href="#" onclick="event.preventDefault();CM();setTimeout(()=>showOrder('${o.order_no}'),80)" style="color:var(--ac);font-size:11px;font-family:monospace">${o.order_no}</a></td>
+    ${sortedOrders.map(o=>`<tr><td><a href="#" onclick="event.preventDefault();CM();setTimeout(()=>showOrder('${o.order_no}'),80)" style="color:var(--ac);font-size:11px;font-family:monospace">${o.order_no}</a></td>
       <td style="font-size:11px">${fD(o.order_date)}</td><td style="font-size:12px">${o.customer_name||'—'}</td>
       <td class="num">${fM(o.total)}</td>
       <td><span class="badge ${o.payment_done?'bg':'br2'}">${o.payment_done?'已收':'未收'}</span></td></tr>`).join('')}
@@ -211,7 +213,7 @@ async function showMonthDetail(k){
   ${d.pos?.length?`<div class="sh" style="margin-top:10px">進貨單（${d.pos.length}筆）</div>
   <div style="overflow-x:auto"><table class="itb" style="min-width:280px">
     <tr><th>進貨單號</th><th>日期</th><th>廠商</th><th>金額</th></tr>
-    ${d.pos.map(p=>`<tr><td><a href="#" onclick="event.preventDefault();CM();setTimeout(()=>showPO('${p.po_no}'),80)" style="color:var(--br);font-size:11px;font-family:monospace">${p.po_no}</a></td>
+    ${sortedPos.map(p=>`<tr><td><a href="#" onclick="event.preventDefault();CM();setTimeout(()=>showPO('${p.po_no}'),80)" style="color:var(--br);font-size:11px;font-family:monospace">${p.po_no}</a></td>
       <td style="font-size:11px">${fD(p.po_date)}</td><td style="font-size:12px">${p.vendor_name||'—'}</td>
       <td class="num">${fM(p.total)}</td></tr>`).join('')}
   </table></div>`:''}

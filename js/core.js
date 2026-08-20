@@ -39,7 +39,7 @@ window.addEventListener('error',e=>{
       showLoginPage();
       return;
     }
-    Promise.all([loadPayMethods(),loadShipMethods(),loadVendorNames(),loadOrderTypes()]).then(() => go('dashboard'));
+    Promise.all([loadPayMethods(),loadShipMethods(),loadBrandNames(),loadOrderTypes()]).then(() => go('dashboard'));
   };
   s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
   document.head.appendChild(s);
@@ -383,10 +383,10 @@ function shipMethodSel(id,val){
   return `<div class="fl"><label>寄送方式</label><select id="f-${id}">${_shipMethods.map(m=>`<option value="${m}" ${m===val?'selected':''}>${m}</option>`).join('')}</select></div>`;
 }
 
-var _vendorNames = [];
-async function loadVendorNames(){
-  const{data}=await sb.from('vendors').select('name').eq('is_active',true).order('sort_order').order('name');
-  if(data) _vendorNames=data.map(x=>x.name);
+var _brandNames = [];
+async function loadBrandNames(){
+  const{data}=await sb.from('brands').select('name').eq('is_active',true).order('sort_order').order('name');
+  if(data) _brandNames=data.map(x=>x.name);
 }
 
 // expose for inline — 已移至各模組自行 expose

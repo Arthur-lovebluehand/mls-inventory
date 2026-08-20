@@ -125,7 +125,7 @@ function prodForm(p){
       </select>
     </div>
     ${fi('punit','單位','text',p.unit||'個')} ${fi('pstock','現有庫存','number',p.stock||0)}
-    ${fs('psource','主要來源',[..._vendorNames,'自有品牌','其他'],p.source||_vendorNames[0]||'其他')}
+    ${fs('psource','品牌',[..._brandNames,'自有品牌','其他'],p.source||_brandNames[0]||'其他')}
     ${fi('pvpno','廠商原始編號（廠商自己的商品編號）','text',p.vendor_product_no)}
   </div>
   <div class="sh">各位階售價</div>
@@ -343,7 +343,7 @@ function showProdPage(p, its, poIts, loanIts, adjLogs, soMap, poMap, lnMap) {
         <div><div style="font-size:11px;color:var(--tx3)">商品編號</div><div style="font-size:14px;font-weight:600">${p?.product_no}</div></div>
         <div><div style="font-size:11px;color:var(--tx3)">規格</div><div style="font-size:14px">${p?.spec||'—'}</div></div>
         <div><div style="font-size:11px;color:var(--tx3)">類別</div><div><span class="badge bgr" style="font-size:12px">${p?.category||'—'}</span></div></div>
-        <div><div style="font-size:11px;color:var(--tx3)">主要來源</div><div style="font-size:14px">${p?.source||'—'}</div></div>
+        <div><div style="font-size:11px;color:var(--tx3)">品牌</div><div style="font-size:14px">${p?.source||'—'}</div></div>
         <div><div style="font-size:11px;color:var(--tx3)">廠商原始編號</div><div style="font-size:13px;font-family:monospace">${p?.vendor_product_no||'—'}</div></div>
         <div><div style="font-size:11px;color:var(--tx3)">單位</div><div style="font-size:14px">${p?.unit||'個'}</div></div>
       </div>
@@ -492,7 +492,7 @@ async function showProd(no) {
     <div class="dr"><span class="dlb">廠商原始編號</span><span class="dv" style="font-family:monospace;font-size:13px">${p?.vendor_product_no || '—'}</span></div>
     <div class="dr"><span class="dlb">規格</span><span class="dv">${p?.spec || '—'}</span></div>
     <div class="dr"><span class="dlb">類別</span><span class="dv">${p?.category ? `<span class="badge bgr">${p.category}</span>` : '—'}</span></div>
-    <div class="dr"><span class="dlb">主要來源</span><span class="dv">${p?.source || '—'}</span></div>
+    <div class="dr"><span class="dlb">品牌</span><span class="dv">${p?.source || '—'}</span></div>
     <div class="dr"><span class="dlb">單位</span><span class="dv">${p?.unit || '個'}</span></div>
     <div class="dr"><span class="dlb">目前庫存</span><span class="dv ${skCls(p?.stock||0)}" style="font-size:20px;font-weight:700">${fN(p?.stock)}</span></div>
     ${p?.description ? `<div class="dr" style="grid-column:1/-1"><span class="dlb">說明</span><span class="dv">${p.description}</span></div>` : ''}

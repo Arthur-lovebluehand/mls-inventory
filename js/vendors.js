@@ -77,14 +77,12 @@ async function genVendorNo(){
 }
 async function toggleVendor(vno,active){
   await sb.from('vendors').update({is_active:!active}).eq('vendor_no',vno);
-  await loadVendorNames();
   toast(!active?'廠商已啟用':'廠商已停用'); vendors();
 }
 async function deleteVendor(vno,name){
   if(!confirm(`確定刪除廠商「${name}」？`))return;
   const{error}=await sb.from('vendors').delete().eq('vendor_no',vno);
   if(error){toast('刪除失敗：'+error.message,'e');return;}
-  await loadVendorNames();
   toast('廠商已刪除'); vendors();
 }
 function addVend(){OM('新增廠商',vendForm(),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveVend(false)">新增</button>`);}
@@ -114,7 +112,6 @@ async function saveVend(existingNo){
   const obj={name:nm,contact:v('vcont')||null,phone:v('vph')||null,mobile:v('vmob')||null,email:v('veml')||null,tax_no:v('vtax')||null,fax:v('vfax')||null,payment_method:v('vpay')||null,payment_terms:v('vterm')||null,bank_name:v('vbank')||null,bank_account:v('vbacc')||null,bank_holder:v('vbhld')||null,full_address:v('vaddr')||null,ship_address:v('vshipaddr')||null,note:v('vnote')||null};
   if(existingNo){await sb.from('vendors').update(obj).eq('vendor_no',existingNo);}
   else{obj.vendor_no=await genVendorNo();await sb.from('vendors').insert(obj);}
-  await loadVendorNames();
   toast(existingNo?'廠商已更新':'廠商新增成功');CM();vendors();
 }
 async function brands() {
@@ -172,6 +169,7 @@ async function saveBrand(editId) {
   const obj={name:nm,category:v('bcategory'),origin:v('borigin')||null,website:v('bwebsite')||null,note:v('bnote2')||null,is_active:true};
   if(editId){await sb.from('brands').update(obj).eq('id',editId);}
   else{await sb.from('brands').insert(obj);}
+  await loadBrandNames();
   toast(editId?'品牌已更新':'品牌新增成功！');CM();brands();
 }
 async function setBrandSort(id,val){
@@ -180,11 +178,13 @@ async function setBrandSort(id,val){
 }
 async function toggleBrand(id,active){
   await sb.from('brands').update({is_active:!active}).eq('id',id);
+  await loadBrandNames();
   toast(!active?'品牌已啟用':'品牌已停用');brands();
 }
 async function deleteBrand(id,name){
   if(!confirm(`確定刪除品牌「${name}」？`))return;
   await sb.from('brands').delete().eq('id',id);
+  await loadBrandNames();
   toast('品牌已刪除');brands();
 }
 window.brands=brands;
