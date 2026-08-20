@@ -5,7 +5,8 @@
 // ══════════════════════════════
 // 營運成本（房租/水電/網路等固定成本）
 // ══════════════════════════════
-var _opexYear = null; // null=年度總覽；設定年份字串則顯示該年的明細
+var _opexYear = null; // 目前展開的年份，null=顯示年度總覽
+var _opexMonth = null; // 目前展開的月份(YYYY-MM)，null=顯示該年月份彙整
 async function opex(){
   const { data:allRecs, count } = await sb.from('operating_expenses').select('*',{count:'exact'}).order('expense_date',{ascending:false});
 
@@ -13,12 +14,15 @@ async function opex(){
   const monthTotal = (allRecs||[]).filter(r=>(r.expense_date||'').startsWith(thisMonth)).reduce((s,r)=>s+(r.amount||0),0);
   const yearTotal = (allRecs||[]).filter(r=>(r.expense_date||'').startsWith(thisMonth.slice(0,4))).reduce((s,r)=>s+(r.amount||0),0);
 
-  // 依年份彙整
-  const yearMap = {};
+  // 依年份、月份彙整
+  const yearMap = {}, monthMap = {};
   (allRecs||[]).forEach(r=>{
-    const yr=(r.expense_date||'').slice(0,4); if(!yr) return;
+    const ym=(r.expense_date||'').slice(0,7); const yr=ym.slice(0,4);
+    if(!yr) return;
     if(!yearMap[yr]) yearMap[yr]={count:0,total:0};
     yearMap[yr].count++; yearMap[yr].total+=r.amount||0;
+    if(!monthMap[ym]) monthMap[ym]={count:0,total:0};
+    monthMap[ym].count++; monthMap[ym].total+=r.amount||0;
   });
   const years = Object.keys(yearMap).sort().reverse();
 
@@ -31,14 +35,14 @@ async function opex(){
       <div class="mc"><div class="ml">今年累計</div><div class="mv cr">${fM(yearTotal)}</div></div>
     </div>
     <div class="al al-w" style="font-size:12px">
-      記錄房租、水電、網路等跟商品/服務無關、但每個月固定會花的錢。這些記錄好之後，財報裡的「營運成本」跟淨利才會反映真正的獲利，不會看起來有賺、實際上錢都花在這些地方了。
+      記錄房租、水電、網路等跟商品/服務無關、但每個月固定會花的錢。
     </div>`;
 
-  // ── 年度總覽 ──
+  // ── 第一層：年度總覽 ──
   if(!_opexYear) {
     $('main').innerHTML += `
     <div class="tc">
-      <div class="tb"><span class="tt">年度總覽（點年份看該年明細）</span></div>
+      <div class="tb"><span class="tt">年度總覽（點年份看該年每月彙整）</span></div>
       <div class="tw"><table style="width:100%">
         <tr><th>年份</th><th>筆數</th><th style="font-weight:700">金額合計</th></tr>
         ${years.map(yr=>{
@@ -55,17 +59,42 @@ async function opex(){
     return;
   }
 
-  // ── 該年度明細 ──
-  const yearRecs = (allRecs||[]).filter(r=>(r.expense_date||'').startsWith(_opexYear));
-  $('main').innerHTML += `
+  // ── 第二層：該年度的月份彙整 ──
+  if(!_opexMonth) {
+    const yearMonths = Object.keys(monthMap).filter(ym=>ym.startsWith(_opexYear)).sort().reverse();
+    $('main').innerHTML += `
     <div style="margin-bottom:14px">
       <button class="btn btn-s" onclick="_opexYear=null;opex()">‹ 返回年度總覽</button>
     </div>
     <div class="tc">
-      <div class="tb"><span class="tt">${_opexYear} 年營運成本記錄</span></div>
+      <div class="tb"><span class="tt">${_opexYear} 年月度彙整（點月份看逐筆明細）</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>月份</th><th>筆數</th><th style="font-weight:700">金額合計</th></tr>
+        ${yearMonths.map(ym=>{
+          const m=monthMap[ym];
+          return `<tr style="cursor:pointer" onclick="_opexMonth='${ym}';opex()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+            <td style="font-weight:600;color:var(--ac)">${ym} ›</td>
+            <td>${m.count} 筆</td>
+            <td class="num" style="font-weight:700;color:var(--rd)">${fM(m.total)}</td>
+          </tr>`;
+        }).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">本年度尚無記錄</td></tr>'}
+      </table></div>
+    </div>
+  </div>`;
+    return;
+  }
+
+  // ── 第三層：該月逐筆明細 ──
+  const monthRecs = (allRecs||[]).filter(r=>(r.expense_date||'').startsWith(_opexMonth));
+  $('main').innerHTML += `
+    <div style="margin-bottom:14px">
+      <button class="btn btn-s" onclick="_opexMonth=null;opex()">‹ 返回 ${_opexYear} 年月度彙整</button>
+    </div>
+    <div class="tc">
+      <div class="tb"><span class="tt">${_opexMonth} 營運成本明細</span></div>
       <div class="tw"><table style="width:100%">
         <tr><th>日期</th><th>類別</th><th>金額</th><th>固定支出</th><th>備註</th><th>操作</th></tr>
-        ${yearRecs.map(r=>`<tr>
+        ${monthRecs.map(r=>`<tr>
           <td style="font-size:12px">${fD(r.expense_date)}</td>
           <td><span class="badge bgr">${r.category}</span></td>
           <td class="num" style="font-weight:600;color:var(--rd)">${fM(r.amount)}</td>
@@ -75,7 +104,7 @@ async function opex(){
             <button class="btn btn-s" onclick="editOpex(${r.id})">編輯</button>
             <button class="btn btn-s btn-r" onclick="deleteOpex(${r.id})">刪除</button>
           </td>
-        </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">本年度尚無記錄</td></tr>'}
+        </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">本月尚無記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;
