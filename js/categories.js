@@ -336,7 +336,7 @@ async function categoriesOrderType() {
   <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
     <button class="btn btn-p btn-s" onclick="addOrderTypeModal()">＋ 新增訂單類型</button>
   </div>
-  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理銷售訂單的「訂單類型」選項跟顏色。你可以自己決定要留哪些、要刪哪些（例如已經改用「獎金/分潤」功能記帳，這裡的分潤獎金類型如果用不到了可以直接刪掉），排序也可以自己排。</div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理銷售訂單的「訂單類型」選項跟顏色，可以自己新增、刪除、排序。</div>
   <div class="tc"><div class="tw"><table style="width:100%">
     <tr><th>顏色預覽</th><th>名稱</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
     ${(data||[]).map(t=>`<tr>
@@ -390,7 +390,7 @@ async function toggleOrderType(id, current) {
   categories();
 }
 async function deleteOrderType(id, name) {
-  if(!confirm(`確定刪除訂單類型「${name}」？（已經用這個類型的舊訂單不會被刪除，只是類型清單裡少一個選項）`)) return;
+  if(!confirm(`確定刪除訂單類型「${name}」？`)) return;
   await sb.from('order_types').delete().eq('id',id);
   toast('已刪除');
   await loadOrderTypes();
