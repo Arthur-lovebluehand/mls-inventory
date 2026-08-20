@@ -91,8 +91,7 @@ async function saveBonus(){
 async function toggleBonus(id,done){await sb.from('bonus_records').update({payment_done:!done,payment_date:!done?today():null}).eq('id',id);toast(!done?'已標記發放':'已取消');bonus();}
 async function dBonus(id){if(!confirm('確定刪除此記錄？'))return;await sb.from('bonus_records').delete().eq('id',id);toast('已刪除');bonus();}
 async function accounts(){
-  const[{data:yr},{data:orders_m},{data:po_m},{data:bn_m}]=await Promise.all([
-    sb.from('yearly_accounts').select('*').order('year',{ascending:false}),
+  const[{data:orders_m},{data:po_m},{data:bn_m}]=await Promise.all([
     sb.from('sales_orders').select('year_month,total,payment_done,payment_date,order_no,order_date,customer_name'),
     sb.from('purchase_orders').select('year_month,total,po_no,po_date,vendor_name,done'),
     sb.from('bonus_records').select('year_month,amount,payment_done,direction,record_no,record_date,recipient,type'),
@@ -159,16 +158,56 @@ async function accounts(){
   if(accTab==='service'){ await showSvcFinance(); return; }
   if(accTab==='total'){ await showTotalFinance(); return; }
   if(accTab==='owner'){ await showOwnerProfit(); return; }
+
+  // 依年份彙整
+  const yearMap={};
+  monthKeys.forEach(k=>{
+    if(k==='（未知月）') return;
+    const yr=k.slice(0,4);
+    const d=byMonth[k];
+    if(!yearMap[yr]) yearMap[yr]={in:0,po:0,bn_in:0,bn_out:0};
+    yearMap[yr].in+=d.in; yearMap[yr].po+=d.po; yearMap[yr].bn_in+=d.bn_in; yearMap[yr].bn_out+=d.bn_out;
+  });
+  const years=Object.keys(yearMap).sort().reverse();
+  const netOf=d=>d.in+d.bn_in-d.po-d.bn_out;
+
+  // ── 年度總覽 ──
+  if(!window._acctSalesYear){
+    $('main').innerHTML += `
+    <div class="pc">
+      <div class="tc">
+        <div class="tb"><span class="tt">年度總覽（點年份看該年每月明細）</span></div>
+        <div class="tw"><table style="width:100%">
+          <tr><th>年份</th><th>銷售收入</th><th>獎金收入</th><th>進貨支出</th><th>獎金支出</th><th style="font-weight:700">淨利</th></tr>
+          ${years.map(yr=>{
+            const d=yearMap[yr]; const net=netOf(d);
+            return `<tr style="cursor:pointer" onclick="window._acctSalesYear='${yr}';accounts()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+              <td style="font-weight:700;color:var(--ac);font-size:15px">${yr} ›</td>
+              <td class="num ok">${fM(d.in)}</td>
+              <td class="num ok" style="color:var(--br)">${fM(d.bn_in)}</td>
+              <td class="num cr">${fM(d.po)}</td>
+              <td class="num cr" style="color:var(--am)">${fM(d.bn_out)}</td>
+              <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
+            </tr>`;
+          }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+        </table></div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  // ── 該年度的月份明細 ──
+  const yr=window._acctSalesYear;
+  const yearMonths=monthKeys.filter(k=>k.startsWith(yr));
   $('main').innerHTML += `
     <div class="pc">
-    ${(yr&&yr.length)?`<div class="tc" style="margin-bottom:14px"><div class="tb"><span class="tt">年度對帳</span></div>
-    <div class="tw"><table style="width:100%"><tr><th>年份</th><th>收入</th><th>支出</th><th>結餘</th></tr>
-    ${(yr||[]).map(y=>`<tr><td style="font-weight:600">${y.year}</td><td class="num ok">${fM(y.income)}</td><td class="num cr">${fM(y.expense)}</td><td class="num" style="font-weight:700;color:${y.total>=0?'var(--ac)':'var(--rd)'}">${fM(y.total)}</td></tr>`).join('')}
-    </table></div></div>`:''}
-    <div class="tc"><div class="tb"><span class="tt">月度彙整（依訂單計算，點月份看細節）</span></div>
+    <div style="margin-bottom:14px">
+      <button class="btn btn-s" onclick="window._acctSalesYear=null;accounts()">‹ 返回年度總覽</button>
+    </div>
+    <div class="tc"><div class="tb"><span class="tt">${yr} 年月度彙整（依訂單計算，點月份看細節）</span></div>
     <div class="tw"><table style="width:100%">
       <tr><th>月份</th><th>銷售收入<br><small>已收款</small></th><th>獎金收入</th><th>進貨支出</th><th>獎金支出</th><th style="font-weight:700">淨利</th></tr>
-      ${monthKeys.map(k=>{
+      ${yearMonths.map(k=>{
         const d=byMonth[k];
         const net=d.in+d.bn_in-d.po-d.bn_out;
         return `<tr style="cursor:pointer" onclick="showMonthDetail('${k}')" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
@@ -609,14 +648,58 @@ async function showSvcFinance() {
 
   const months = Object.keys(mMap).sort().reverse();
 
+  // 依年份彙整
+  const yearMap = {};
+  months.forEach(ym=>{
+    const yr=ym.slice(0,4);
+    const d=mMap[ym];
+    if(!yearMap[yr]) yearMap[yr]={rev:0,cost:0,techPay:0};
+    yearMap[yr].rev+=d.rev; yearMap[yr].cost+=d.cost; yearMap[yr].techPay+=d.techPay;
+  });
+  const years = Object.keys(yearMap).sort().reverse();
+
+  // ── 年度總覽 ──
+  if(!window._svcFinanceYear) {
+    $('main').innerHTML += `
+    <div class="pc">
+      <div class="tc">
+        <div class="tb"><span class="tt">年度總覽（點年份看該年每月明細）</span></div>
+        <div class="al al-w" style="font-size:12px;margin:0 16px 10px">服務淨利＝服務收入－耗材成本－技師薪資。</div>
+        <div class="tw"><table style="width:100%">
+          <tr><th>年份</th><th>服務收入</th><th>耗材成本</th><th>技師薪資</th><th style="font-weight:700">服務淨利</th></tr>
+          ${years.map(yr=>{
+            const d=yearMap[yr]; const net=d.rev-d.cost-d.techPay;
+            return `<tr style="cursor:pointer" onclick="window._svcFinanceYear='${yr}';accounts()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+              <td style="font-weight:700;color:var(--ac);font-size:15px">${yr} ›</td>
+              <td class="num" style="color:var(--ac)">${fM(d.rev)}</td>
+              <td class="num" style="color:var(--rd)">${fM(d.cost)}</td>
+              <td class="num" style="color:var(--bl)">${fM(d.techPay)}</td>
+              <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
+            </tr>`;
+          }).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+        </table></div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  // ── 該年度的月份明細 ──
+  const yr = window._svcFinanceYear;
+  const yearMonths = months.filter(ym=>ym.startsWith(yr));
+  const yearTechEntries = Object.entries(techMap).filter(([key,t])=>t.ym.startsWith(yr))
+    .sort((a,b)=>b[1].ym.localeCompare(a[1].ym)||a[1].name.localeCompare(b[1].name));
+
   $('main').innerHTML += `
   <div class="pc">
+    <div style="margin-bottom:14px">
+      <button class="btn btn-s" onclick="window._svcFinanceYear=null;accounts()">‹ 返回年度總覽</button>
+    </div>
     <div class="tc" style="margin-bottom:16px">
-      <div class="tb"><span class="tt">月度服務財報</span></div>
+      <div class="tb"><span class="tt">${yr} 年月度服務財報</span></div>
       <div class="al al-w" style="font-size:12px;margin:0 16px 10px">「成本小計」＝耗材成本＋技師薪資，是真正會從服務收入扣掉的錢（服務收入－成本小計＝服務淨利）。「撥轉成本」單獨列出來僅供參考（那是把商品搬去服務庫存的當下金額，不是真的花費，不算進小計也不算進淨利，避免重複扣兩次）。</div>
       <div class="tw"><table style="width:100%">
         <tr><th>月份</th><th>服務收入</th><th>耗材成本</th><th>技師薪資</th><th>成本小計</th><th>撥轉成本（參考）</th><th>服務淨利</th></tr>
-        ${months.map(ym=>{
+        ${yearMonths.map(ym=>{
           const d=mMap[ym];
           const costSub = d.cost+d.techPay;
           const net=d.rev-costSub;
@@ -633,10 +716,10 @@ async function showSvcFinance() {
       </table></div>
     </div>
     <div class="tc">
-      <div class="tb"><span class="tt">技師月薪表</span></div>
+      <div class="tb"><span class="tt">${yr} 年技師月薪表</span></div>
       <div class="tw"><table style="width:100%">
         <tr><th>月份</th><th>技師</th><th>服務時數/次</th><th>應付薪資</th></tr>
-        ${Object.entries(techMap).sort((a,b)=>b[1].ym.localeCompare(a[1].ym)||a[1].name.localeCompare(b[1].name)).map(([key,t])=>`<tr style="cursor:pointer" onclick="techMonthDetail('${key}')" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+        ${yearTechEntries.map(([key,t])=>`<tr style="cursor:pointer" onclick="techMonthDetail('${key}')" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
           <td style="color:var(--ac);font-weight:600">${t.ym}</td>
           <td style="font-weight:500">${t.name}</td>
           <td style="text-align:center">${t.sessions}</td>
