@@ -6,8 +6,9 @@
 
 var cdSearch = '';
 
+var cdStatusFilter = 'active'; // active | used | closed | all
 async function customerDeposits() {
-  let q = sb.from('customer_deposits').select('*').order('is_active',{ascending:false}).order('deposit_date',{ascending:false});
+  let q = sb.from('customer_deposits').select('*');
   if(cdSearch) q = q.ilike('customer_name',`%${cdSearch}%`);
   const { data:deposits } = await q;
   const depositNos = (deposits||[]).map(d=>d.deposit_no);
@@ -20,6 +21,19 @@ async function customerDeposits() {
   if(cdSearch) {
     list = list.filter(d => d.customer_name.includes(cdSearch) || (itemsByDeposit[d.deposit_no]||[]).some(i=>i.product_name.includes(cdSearch)));
   }
+  // 狀態篩選
+  const statusOf = d => {
+    const its = itemsByDeposit[d.deposit_no]||[];
+    const remain = its.reduce((s,i)=>s+((i.total_qty||0)-(i.used_qty||0)),0);
+    return d.is_active===false ? 'closed' : remain<=0 ? 'used' : 'active';
+  };
+  if(cdStatusFilter!=='all') list = list.filter(d=>statusOf(d)===cdStatusFilter);
+  // 依客戶姓名排序，讓同一個人的寄放記錄聚在一起，同一客戶內再依日期新到舊
+  list.sort((a,b)=> a.customer_name.localeCompare(b.customer_name,'zh-TW') || (b.deposit_date||'').localeCompare(a.deposit_date||''));
+
+  const statusTabs = [
+    {k:'active',label:'寄放中'},{k:'used',label:'已用完'},{k:'closed',label:'已關閉'},{k:'all',label:'全部'}
+  ];
 
   $('main').innerHTML = `
   <div class="ph"><div><div class="pt">客戶寄放庫存</div><div class="ps">${list.length} 張</div></div>
@@ -28,21 +42,24 @@ async function customerDeposits() {
     <div class="al al-w" style="font-size:12px;margin-bottom:12px">
       客戶已經買斷、算過帳的商品，只是放在店裡讓她分次使用或之後取回。這裡的數量增減<b>不會</b>影響店裡自己的商品庫存。
     </div>
+    <div class="tab-bar" style="margin-bottom:12px">
+      ${statusTabs.map(t=>`<div class="tab${cdStatusFilter===t.k?' on':''}" onclick="cdStatusFilter='${t.k}';customerDeposits()">${t.label}</div>`).join('')}
+    </div>
     <div class="tc">
       <div class="tb"><span class="tt">寄放清單</span>
         <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         <input placeholder="客戶姓名/商品名稱…（輸入後按 Enter 搜尋）" value="${cdSearch}" onkeydown="if(event.key==='Enter'){cdSearch=this.value;customerDeposits();}"></div>
       </div>
       <div class="tw"><table style="width:100%">
-        <tr><th>單號</th><th>客戶</th><th>商品摘要</th><th>寄放日</th><th>來源訂單</th><th>狀態</th><th>操作</th></tr>
+        <tr><th>客戶</th><th>單號</th><th>商品摘要</th><th>寄放日</th><th>來源訂單</th><th>狀態</th><th>操作</th></tr>
         ${list.map(d=>{
           const its = itemsByDeposit[d.deposit_no]||[];
           const totalRemain = its.reduce((s,i)=>s+((i.total_qty||0)-(i.used_qty||0)),0);
           const summary = its.map(i=>i.product_name).join('、')||'—';
           const status = d.is_active===false ? '已關閉' : totalRemain<=0 ? '已用完' : '寄放中';
           return `<tr style="${d.is_active===false?'opacity:.5':''}">
-            <td style="font-size:12px;color:var(--tx3)">${d.deposit_no}</td>
             <td style="font-weight:500">${d.customer_name}</td>
+            <td style="font-size:11px;color:var(--tx3)">${d.deposit_no}</td>
             <td style="font-size:13px">${summary}</td>
             <td style="font-size:12px">${fD(d.deposit_date)}</td>
             <td style="font-size:11px;color:var(--tx3)">${d.source_order_no||'手動登記'}</td>

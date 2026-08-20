@@ -51,7 +51,7 @@ async function orders(){
         <div class="pg"><span class="pi">第${oP}/${tp}頁</span>
           <div style="display:flex;gap:5px">
             ${oP>1?`<button class="btn btn-s" onclick="oP--;orders()">上一頁</button>`:''}
-            ${oP<tp?`<button class="btn btn-s" onclick="oP++;orders()">下一頁</button>`:''}
+            ${oP<tp?`<button class="btn btn-s" onclick="oP++;orders()">下一頁</button>`:''}${pageJump('oP',tp,'orders')}
           </div></div>
       </div>
     </div>`;
@@ -193,8 +193,8 @@ async function addOrder(){
         <button class="btn btn-s" onclick="addItem()">＋ 單品</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:3fr 60px 90px 60px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
-      <span>商品</span><span>銷售數</span><span>單價</span><span style="color:var(--am)">贈品數</span><span>金額</span><span></span>
+    <div style="display:grid;grid-template-columns:26px 3fr 60px 90px 60px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
+      <span>#</span><span>商品</span><span>銷售數</span><span>單價</span><span style="color:var(--am)">贈品數</span><span>金額</span><span></span>
     </div>
     <div id="itemsArea"></div>
     <div id="oAmt" style="text-align:right;font-weight:600;padding-top:8px;border-top:1px solid var(--bd);margin-top:6px;font-size:13px"></div>
@@ -206,7 +206,8 @@ async function addOrder(){
     const fil=q?_allCusts.filter(c=>c.name.includes(q)||(c.phone||'').includes(q)):_allCusts;
     const drop=$('ss-drop-cust'); if(!drop)return;
     drop.classList.add('open');
-    drop.innerHTML=fil.slice(0,30).map(c=>`<div class="ss-opt" onmousedown="pickCust('${c.customer_no}')">${c.name} · ${c.agent_level||'—'} · ${c.phone||'—'}</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
+    drop.style.maxHeight='280px';
+    drop.innerHTML=fil.map(c=>`<div class="ss-opt" onmousedown="pickCust('${c.customer_no}')">${c.name} · ${c.agent_level||'—'} · ${c.phone||'—'}</div>`).join('')||`<div class="ss-opt no">無結果</div>`;
   };
   window.pickCust=cno=>{
     const c=_allCusts.find(x=>x.customer_no===cno);
@@ -265,8 +266,9 @@ function getItemProdOpts(selPno){
 function renderItems(){
   const area=$('itemsArea');if(!area)return;
   // 套組分組 header + item rows
-  let _html='', _prevBG='';
+  let _html='', _prevBG='', _idx=0;
   _items.forEach(item=>{
+    _idx++;
     if(item.bundle_group && item.bundle_group!==_prevBG){
       _prevBG=item.bundle_group;
       const bname=item.bundle_name||item.promo_code||'套組';
@@ -278,6 +280,7 @@ function renderItems(){
     const borderStyle=item.bundle_group?'border-left:3px solid var(--bl);padding-left:10px':'';
     const giftLabel=item.is_gift?'<div style="grid-column:1/-1;font-size:10px;color:var(--am);font-weight:600;margin-bottom:2px">🎁 贈品（不計費）</div>':'';
     _html+='<div class="ir ir-order" style="'+borderStyle+'">'+giftLabel;
+    _html+='<span style="font-size:12px;color:var(--tx3);text-align:center">'+_idx+'</span>';
     // 以下繼續加各欄內容（用同樣的 template，但改成字串拼接）
     // 搜尋框
     const pname=item._pname||(item.pno?(_allProds.find(p=>p.product_no===item.pno)?.name||item.pno):'');
@@ -296,7 +299,8 @@ function updAmt(){
   const el=$('oAmt');if(!el)return;
   const sub=_items.reduce((s,i)=>s+i.amt,0);
   const fee=parseFloat($('f-ofee')?.value)||0;
-  el.innerHTML=`商品小計 ${fM(sub)} + 運費 ${fM(fee)} = <span style="color:var(--ac)">${fM(sub+fee)}</span>（已含稅）`;
+  const totalQty=_items.reduce((s,i)=>s+(i.qty||0)+(i.giftQty||0),0);
+  el.innerHTML=`共 ${_items.length} 項品項，數量合計 ${totalQty} 件　｜　商品小計 ${fM(sub)} + 運費 ${fM(fee)} = <span style="color:var(--ac)">${fM(sub+fee)}</span>（已含稅）`;
 }
 async function saveOrder(editNo){
   const no=editNo||v('ono'), nm=v('oname'), dt=v('odate');
@@ -372,8 +376,8 @@ async function editOrder(no){
         <button class="btn btn-s" onclick="addItem()">＋ 單品</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:3fr 60px 90px 60px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
-      <span>商品</span><span>銷售數</span><span>單價</span><span style="color:var(--am)">贈品數</span><span>金額</span><span></span>
+    <div style="display:grid;grid-template-columns:26px 3fr 60px 90px 60px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
+      <span>#</span><span>商品</span><span>銷售數</span><span>單價</span><span style="color:var(--am)">贈品數</span><span>金額</span><span></span>
     </div>
     <div id="itemsArea"></div>
     <div id="oAmt" style="text-align:right;font-weight:600;padding-top:8px;border-top:1px solid var(--bd);margin-top:6px;font-size:13px"></div>

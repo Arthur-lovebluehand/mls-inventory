@@ -150,6 +150,10 @@ const today=()=>new Date().toISOString().slice(0,10);
 const ym=d=>(d||today()).slice(0,7);
 
 const LEVELS=['創始','大區','市代','經銷','VIP','零售'];
+function pageJump(varName, tp, fnName) {
+  if(tp<=1) return '';
+  return `<span style="font-size:12px;margin-left:8px;display:inline-flex;align-items:center;gap:4px">跳至第<input type="number" min="1" max="${tp}" style="width:46px;padding:3px 5px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px" onkeydown="if(event.key==='Enter'){let p=parseInt(this.value)||1;p=Math.max(1,Math.min(${tp},p));${varName}=p;${fnName}();}">頁（共${tp}頁）</span>`;
+}
 const ORDER_TYPES=['一般訂單','零售訂單','自用','代理補貨','代理升等','新入代理','下家新入同階代理','贈品銷貨單','分潤獎金','草本境獎金'];
 const LEVEL_COLS={創始:'price_founder',大區:'price_region',市代:'price_city',經銷:'price_dealer',VIP:'price_vip',零售:'price_retail'};
 function lvBadge(l){

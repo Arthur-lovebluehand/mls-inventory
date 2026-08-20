@@ -432,6 +432,7 @@ window.showTotalFinance = showTotalFinance;
 //  老闆娘個人淨利（公司總淨利＋自己身為技師的薪資）
 // ════════════════════════════════════
 var ownerTechName = null;
+var _ownerProfitYear = null; // null=年度總覽；設定年份字串則顯示該年的月份明細
 async function showOwnerProfit() {
   const { data:techs } = await sb.from('technicians').select('name').order('name');
   const names = [...new Set((techs||[]).map(t=>t.name))];
@@ -450,10 +451,30 @@ async function showOwnerProfit() {
     });
   }
 
-  let totalSalesNet=0, totalSvcNet=0, totalBonus=0, totalPersonal=0;
+  // 每個月的完整算式（共用給年度彙整跟月度明細）
+  const calc = ym => {
+    const d=mMap[ym];
+    const costSub = d.svcCost + d.techPay;
+    const pay = ownerPayByMonth[ym]||0;
+    const svcNet = d.svcRev - costSub + pay;
+    const salesNet = d.salesRev - d.purchCost;
+    const bonus = d.bonusIn - d.bonusOut;
+    const personal = salesNet + svcNet + bonus;
+    return { svcRev:d.svcRev, costSub, pay, svcNet, salesNet, bonus, personal };
+  };
 
-  $('main').innerHTML += `
-  <div class="pc">
+  // 依年度彙整
+  const yearMap = {};
+  months.forEach(ym=>{
+    const yr = ym.slice(0,4);
+    const c = calc(ym);
+    if(!yearMap[yr]) yearMap[yr]={salesNet:0,svcNet:0,bonus:0,personal:0};
+    yearMap[yr].salesNet+=c.salesNet; yearMap[yr].svcNet+=c.svcNet; yearMap[yr].bonus+=c.bonus; yearMap[yr].personal+=c.personal;
+  });
+  const years = Object.keys(yearMap).sort().reverse();
+  const grandTotal = years.reduce((s,y)=>s+yearMap[y].personal,0);
+
+  const controlsHtml = `
     <div class="tc" style="margin-bottom:16px;padding:12px 16px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
         <input type="checkbox" ${_includeSelfUse?'checked':''} onchange="_includeSelfUse=this.checked;accounts()">
@@ -467,55 +488,84 @@ async function showOwnerProfit() {
           ${names.map(n=>`<option value="${n}" ${n===ownerTechName?'selected':''}>${n}</option>`).join('')||'<option value="">尚無技師資料</option>'}
         </select>
       </div>
-    </div>
+    </div>`;
 
+  // ── 年度總覽 ──
+  if(!_ownerProfitYear) {
+    $('main').innerHTML += `
+    <div class="pc">
+      ${controlsHtml}
+      <div class="tc">
+        <div class="tb"><span class="tt">年度總覽（點年份看該年每月明細）</span></div>
+        <div class="al al-w" style="font-size:12px;margin:0 16px 10px">個人淨利＝銷售淨利＋服務類淨利（已含自己的技師收入）＋獎金淨額。</div>
+        <div class="tw"><table style="width:100%">
+          <tr><th>年份</th><th>銷售淨利</th><th>服務類淨利</th><th>獎金淨額</th><th>個人年淨利</th></tr>
+          ${years.map(yr=>{
+            const y=yearMap[yr];
+            return `<tr style="cursor:pointer" onclick="_ownerProfitYear='${yr}';accounts()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+              <td style="color:var(--ac);font-weight:700;font-size:15px">${yr} ›</td>
+              <td class="num">${fM(y.salesNet)}</td>
+              <td class="num">${fM(y.svcNet)}</td>
+              <td class="num" style="color:${y.bonus>=0?'var(--ac)':'var(--rd)'}">${fM(y.bonus)}</td>
+              <td class="num" style="font-weight:700;color:${y.personal>=0?'var(--ac)':'var(--rd)'}">${fM(y.personal)}</td>
+            </tr>`;
+          }).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+        </table></div>
+        ${years.length?`<div style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;border-top:1px solid var(--bd)">
+          全部年度累計個人淨利：<span style="color:${grandTotal>=0?'var(--ac)':'var(--rd)'}">${fM(grandTotal)}</span>
+        </div>`:''}
+      </div>
+    </div>`;
+    return;
+  }
+
+  // ── 該年度的月份明細 ──
+  const yearMonths = months.filter(ym=>ym.startsWith(_ownerProfitYear)).sort();
+  const y = yearMap[_ownerProfitYear]||{salesNet:0,svcNet:0,bonus:0,personal:0};
+
+  $('main').innerHTML += `
+  <div class="pc">
+    ${controlsHtml}
+    <div style="margin-bottom:14px">
+      <button class="btn btn-s" onclick="_ownerProfitYear=null;accounts()">‹ 返回年度總覽</button>
+    </div>
     <div class="tc" style="margin-bottom:16px">
-      <div class="tb"><span class="tt">① 服務類淨利（含自己賺的技師薪資）</span></div>
+      <div class="tb"><span class="tt">${_ownerProfitYear} 年 ① 服務類淨利（含自己賺的技師薪資）</span></div>
       <div class="al al-w" style="font-size:12px;margin:0 16px 10px">服務類淨利＝服務營收－服務成本小計（耗材＋全部技師薪資）＋${ownerTechName||'（未選）'}自己的技師收入（加回來）。</div>
       <div class="tw"><table style="width:100%">
         <tr><th>月份</th><th>服務營收</th><th>服務成本小計</th><th>${ownerTechName||'—'}技師收入</th><th>服務類淨利</th></tr>
-        ${months.map(ym=>{
-          const d=mMap[ym];
-          const costSub = d.svcCost + d.techPay;
-          const pay = ownerPayByMonth[ym]||0;
-          const svcNet = d.svcRev - costSub + pay;
+        ${yearMonths.map(ym=>{
+          const c=calc(ym);
           return `<tr>
             <td style="color:var(--ac);font-weight:600">${ym}</td>
-            <td class="num">${fM(d.svcRev)}</td>
-            <td class="num" style="color:var(--rd)">－${fM(costSub)}</td>
-            <td class="num" style="color:var(--bl)">＋${fM(pay)}</td>
-            <td class="num" style="font-weight:700;color:${svcNet>=0?'var(--ac)':'var(--rd)'}">${fM(svcNet)}</td>
+            <td class="num">${fM(c.svcRev)}</td>
+            <td class="num" style="color:var(--rd)">－${fM(c.costSub)}</td>
+            <td class="num" style="color:var(--bl)">＋${fM(c.pay)}</td>
+            <td class="num" style="font-weight:700;color:${c.svcNet>=0?'var(--ac)':'var(--rd)'}">${fM(c.svcNet)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">本年度尚無記錄</td></tr>'}
       </table></div>
     </div>
 
     <div class="tc">
-      <div class="tb"><span class="tt">② 個人月淨利（銷售淨利＋服務類淨利＋獎金）</span></div>
+      <div class="tb"><span class="tt">${_ownerProfitYear} 年 ② 個人月淨利（銷售淨利＋服務類淨利＋獎金）</span></div>
       <div class="al al-w" style="font-size:12px;margin:0 16px 10px">個人月淨利＝銷售淨利（銷售收入－進貨支出）＋①的服務類淨利（已經含自己的技師收入，這裡不再重複加）＋獎金/分潤淨額。</div>
       <div class="tw"><table style="width:100%">
         <tr><th>月份</th><th>銷售淨利</th><th>服務類淨利</th><th>獎金淨額</th><th>個人月淨利</th></tr>
-        ${months.map(ym=>{
-          const d=mMap[ym];
-          const salesNet = d.salesRev - d.purchCost;
-          const costSub = d.svcCost + d.techPay;
-          const pay = ownerPayByMonth[ym]||0;
-          const svcNet = d.svcRev - costSub + pay;
-          const bonus = d.bonusIn - d.bonusOut;
-          const personal = salesNet + svcNet + bonus;
-          totalSalesNet+=salesNet; totalSvcNet+=svcNet; totalBonus+=bonus; totalPersonal+=personal;
+        ${yearMonths.map(ym=>{
+          const c=calc(ym);
           return `<tr>
             <td style="color:var(--ac);font-weight:600">${ym}</td>
-            <td class="num">${fM(salesNet)}</td>
-            <td class="num">${fM(svcNet)}</td>
-            <td class="num" style="color:${bonus>=0?'var(--ac)':'var(--rd)'}">${fM(bonus)}</td>
-            <td class="num" style="font-weight:700;color:${personal>=0?'var(--ac)':'var(--rd)'}">${fM(personal)}</td>
+            <td class="num">${fM(c.salesNet)}</td>
+            <td class="num">${fM(c.svcNet)}</td>
+            <td class="num" style="color:${c.bonus>=0?'var(--ac)':'var(--rd)'}">${fM(c.bonus)}</td>
+            <td class="num" style="font-weight:700;color:${c.personal>=0?'var(--ac)':'var(--rd)'}">${fM(c.personal)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">本年度尚無記錄</td></tr>'}
       </table></div>
-      ${months.length?`<div style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;border-top:1px solid var(--bd)">
-        累計：銷售淨利 ${fM(totalSalesNet)} ＋ 服務類淨利 ${fM(totalSvcNet)} ＋ 獎金淨額 ${fM(totalBonus)} ＝ 個人總淨利 <span style="color:${totalPersonal>=0?'var(--ac)':'var(--rd)'}">${fM(totalPersonal)}</span>
-      </div>`:''}
+      <div style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;border-top:1px solid var(--bd)">
+        ${_ownerProfitYear}年累計：銷售淨利 ${fM(y.salesNet)} ＋ 服務類淨利 ${fM(y.svcNet)} ＋ 獎金淨額 ${fM(y.bonus)} ＝ 個人年淨利 <span style="color:${y.personal>=0?'var(--ac)':'var(--rd)'}">${fM(y.personal)}</span>
+      </div>
     </div>
   </div>`;
 }

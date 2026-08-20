@@ -16,8 +16,12 @@ async function svcItems() {
   try{ const{data:co}=await sb.from('settings').select('value').eq('key','svc_item_cat_order').single(); if(co?.value) catOrd=JSON.parse(co.value); }catch(e){}
   window._svcCatOrd = catOrd;
 
+  const hideInactive = window._svcHideInactive!==false; // 預設隱藏
+  const shownData = hideInactive ? (data||[]).filter(s=>s.is_active!==false) : (data||[]);
+  const inactiveCount = (data||[]).filter(s=>s.is_active===false).length;
+
   const groups = {};
-  (data||[]).forEach(s=>{ const c=s.category||'未分類'; (groups[c]=groups[c]||[]).push(s); });
+  shownData.forEach(s=>{ const c=s.category||'未分類'; (groups[c]=groups[c]||[]).push(s); });
   const groupNames = Object.keys(groups).sort((a,b)=>(catOrd[a]||99)-(catOrd[b]||99) || a.localeCompare(b));
 
   const rowsHtml = s => `<tr style="${s.is_active===false?'opacity:.5':''}">
@@ -34,11 +38,18 @@ async function svcItems() {
     </tr>`;
 
   $('svc-content').innerHTML = `
-  <div style="margin-bottom:12px;display:flex;justify-content:flex-end;gap:8px">
-    ${groupNames.length>1?'<button class="btn btn-s" onclick="showSvcCatOrder()">⚙ 分類排序</button>':''}
-    <button class="btn btn-p btn-s" onclick="svcNewItemModal()">＋ 新增服務項目</button>
+  <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--tx3)">
+      <input type="checkbox" ${hideInactive?'checked':''} onchange="window._svcHideInactive=!this.checked;svcItems()">
+      隱藏已停用${inactiveCount>0?`（${inactiveCount}項）`:''}
+    </label>
+    <div style="display:flex;gap:8px">
+      ${groupNames.length>1?'<button class="btn btn-s" onclick="showSvcCatOrder()">⚙ 分類排序</button>':''}
+      <button class="btn btn-p btn-s" onclick="svcNewItemModal()">＋ 新增服務項目</button>
+    </div>
   </div>
   ${(data||[]).length===0 ? '<div class="tc"><div style="padding:20px;text-align:center;color:var(--tx3)">尚無服務項目，請先新增</div></div>' :
+    shownData.length===0 ? `<div class="tc"><div style="padding:20px;text-align:center;color:var(--tx3)">全部都是已停用的項目，取消勾選「隱藏已停用」即可看到</div></div>` :
     groupNames.map(cat=>`
     <div class="tc" style="margin-bottom:14px">
       <div class="tb"><span class="tt">${cat}</span><span class="badge bg" style="font-size:11px;margin-left:8px">${groups[cat].length} 項</span></div>

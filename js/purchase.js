@@ -102,7 +102,7 @@ async function purchase(){
       <div class="pg"><span class="pi">第${puP}/${tp}頁</span>
         <div style="display:flex;gap:5px">
           ${puP>1?`<button class="btn btn-s" onclick="puP--;purchase()">上一頁</button>`:''}
-          ${puP<tp?`<button class="btn btn-s" onclick="puP++;purchase()">下一頁</button>`:''}
+          ${puP<tp?`<button class="btn btn-s" onclick="puP++;purchase()">下一頁</button>`:''}${pageJump('puP',tp,'purchase')}
         </div></div>
     </div></div>`;
   }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
@@ -203,6 +203,7 @@ function renderPOItems(){
   const area=$('poArea');if(!area)return;
   // 加欄位標題（使用跟 item row 相同的 ir-po class，確保欄位對齊）
   const _poHeader='<div class="ir ir-po" style="background:transparent!important;padding:4px 8px;margin-bottom:2px;border-bottom:2px solid var(--bd)">'
+    +'<span style="font-size:11px;color:var(--tx3);font-weight:700;text-align:center">#</span>'
     +'<span style="font-size:11px;color:var(--tx3);font-weight:700">商品</span>'
     +'<span style="font-size:11px;color:var(--tx3);font-weight:700;text-align:left">訂購</span>'
     +'<span style="font-size:11px;color:var(--tx3);font-weight:700;text-align:left">進貨價</span>'
@@ -211,8 +212,9 @@ function renderPOItems(){
     +'<span></span>'
     +'</div>';
   // 跟 renderItems 相同的套組分組邏輯
-  let _html=_poHeader, _prevBG='';
+  let _html=_poHeader, _prevBG='', _idx=0;
   _poItems.forEach(item=>{
+    _idx++;
     if(item.bundle_group && item.bundle_group!==_prevBG){
       _prevBG=item.bundle_group;
       const bname=item.bundle_name||item.promo_code||'套組';
@@ -225,6 +227,7 @@ function renderPOItems(){
     const borderStyle=item.bundle_group?'border-left:3px solid var(--bl);padding-left:10px':'';
     const giftLabel=(item.giftQty>0&&item.qty===0)?'<div style="grid-column:1/-1;font-size:10px;color:var(--am);font-weight:600;margin-bottom:2px">🎁 贈品（不計費）</div>':'';
     _html+='<div class="ir ir-po" style="'+borderStyle+'">'+giftLabel;
+    _html+='<span style="font-size:12px;color:var(--tx3);text-align:center">'+_idx+'</span>';
 
     // 商品搜尋框
     const pname=item._pname||(item.pno?(_poProds.find(p=>p.product_no===item.pno)?.name||item.pno):'');

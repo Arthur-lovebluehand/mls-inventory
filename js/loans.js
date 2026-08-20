@@ -144,8 +144,9 @@ async function addLoan(){
 }
 function renderLoanItems(){
   const area=$('loanArea');if(!area)return;
-  area.innerHTML=_loanItems.map(item=>`
+  area.innerHTML=_loanItems.map((item,idx)=>`
   <div class="ir ir-loan">
+    <span style="font-size:12px;color:var(--tx3);text-align:center">${idx+1}</span>
     <div style="position:relative">
       <input type="text" value="${item.pno?(_loanProds.find(p=>p.product_no===item.pno)?.name||item.pno):''}" placeholder="輸入關鍵字搜尋商品…"
         style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"

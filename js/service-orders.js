@@ -32,7 +32,7 @@ async function svcOrders() {
   </div>
   <div class="pg"><span class="pi">第 ${svcOrderPage}/${tp} 頁，共 ${count||0} 筆</span>
     ${svcOrderPage>1?`<button class="btn btn-s" onclick="svcOrderPage--;svcOrders()">上一頁</button>`:''}
-    ${svcOrderPage<tp?`<button class="btn btn-s" onclick="svcOrderPage++;svcOrders()">下一頁</button>`:''}
+    ${svcOrderPage<tp?`<button class="btn btn-s" onclick="svcOrderPage++;svcOrders()">下一頁</button>`:''}${pageJump('svcOrderPage',tp,'svcOrders')}
   </div>`;
 }
 
@@ -467,8 +467,9 @@ function renderSvcItems() {
   <div class="tc">
     <div class="tb"><span class="tt">訂單品項</span></div>
     <div class="tw"><table style="width:100%">
-      <tr><th>類型</th><th>項目</th><th>數量</th><th>單價</th><th>成本</th><th>小計</th><th>技師</th><th></th></tr>
-      ${window._svcItems.map(i=>`<tr>
+      <tr><th>#</th><th>類型</th><th>項目</th><th>數量</th><th>單價</th><th>成本</th><th>小計</th><th>技師</th><th></th></tr>
+      ${window._svcItems.map((i,idx)=>`<tr>
+        <td style="font-size:12px;color:var(--tx3)">${idx+1}</td>
         <td><span class="badge ${i.item_type==='service'?'bg':i.item_type==='gift_product'?'ba':'br2'}" style="font-size:10px">${i.item_type==='service'?'服務':i.item_type==='gift_product'?'贈品':'耗材'}</span></td>
         <td style="font-size:13px">${i.item_name}${i.is_gift?' <span class="badge ba" style="font-size:10px">贈</span>':''}</td>
         <td>${i.qty}${i.unit}</td>
@@ -481,6 +482,7 @@ function renderSvcItems() {
     </table></div>
   </div>
   <div style="text-align:right;margin-top:6px">
+    <div style="font-size:12px;color:var(--tx3)">共 ${window._svcItems.length} 項品項</div>
     ${consumableCost>0?`<div style="font-size:12px;color:var(--rd)">耗材成本合計：${fM(consumableCost)}</div>`:''}
     <div style="font-weight:700;font-size:15px">合計：${fM(total)}</div>
   </div>`;
