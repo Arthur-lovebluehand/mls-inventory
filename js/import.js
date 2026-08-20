@@ -90,6 +90,7 @@ const COL_LABELS = {
   deposit_item_id:'寄放品項ID', use_date:'使用/取回日期', qty_used:'使用/取回數量', use_type:'使用類型',
   service_order_no:'服務單號', deposit_no:'寄放單號', source_order_no:'來源訂單', deposit_id:'寄放品項ID',
   kit_id:'套組ID', source_type:'來源類型',
+  expense_no:'成本記錄號', expense_date:'日期', category:'類別', is_recurring:'每月固定',
   unit_cost:'單位成本', total_cost:'總成本', item_no:'耗材編號', stock_qty:'庫存數量', updated_at:'更新時間',
   default_price:'預設單價', item_type:'品項類型', technician_id:'技師ID', technician_name:'技師姓名',
   commission_amount:'抽成金額', technician_pay:'技師抽成', paid_by_credit:'儲值金支付', paid_by_cash:'現金支付',
@@ -167,6 +168,7 @@ const EXPORT_TABLES = [
     {custom:'totalFinance',label:'總財報（月度）'},
     {custom:'techPay',label:'技師月薪表'},
     {custom:'ownerProfit',label:'老闆娘個人淨利'},
+    {t:'operating_expenses',label:'營運成本原始記錄'},
   ]},
   { group:'財務／其他', tables:[
     {t:'bonus_records',label:'獎金/分潤記錄'},
@@ -287,16 +289,25 @@ const CUSTOM_EXPORTERS = {
     const { mMap, months } = await window.computeTotalFinanceData();
     return months.map(ym=>{
       const d=mMap[ym];
-      return { 月份:ym, 銷售收入:d.salesRev, 進貨支出:d.purchCost, 銷售淨利:d.salesRev-d.purchCost };
+      const net = d.salesRev + d.bonusIn - d.purchCost - d.bonusOut;
+      return { 月份:ym, 銷售收入:d.salesRev, 獎金收入:d.bonusIn, 進貨支出:d.purchCost, 獎金支出:d.bonusOut, 銷售淨利:net };
     });
   },
   async svcFinance(){
-    if(!window.computeTotalFinanceData) throw new Error('財報功能尚未載入，請重新整理頁面再試');
-    const { mMap, months } = await window.computeTotalFinanceData();
-    return months.map(ym=>{
+    const [{ data:orders },{ data:transfers },{ data:items }] = await Promise.all([
+      sb.from('service_orders').select('order_date,total,consumable_cost'),
+      sb.from('service_transfers').select('transfer_date,total_cost'),
+      sb.from('service_order_items').select('order_date:service_orders(order_date),technician_pay').eq('item_type','service'),
+    ]);
+    const mMap = {};
+    const addM = (ym,key,val) => { if(!ym) return; if(!mMap[ym]) mMap[ym]={rev:0,cost:0,trCost:0,techPay:0}; mMap[ym][key]+=val||0; };
+    (orders||[]).forEach(o=>{ const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'rev',o.total); addM(ym,'cost',o.consumable_cost); }});
+    (transfers||[]).forEach(t=>{ const ym=(t.transfer_date||'').slice(0,7); if(ym) addM(ym,'trCost',t.total_cost); });
+    (items||[]).forEach(i=>{ const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',i.technician_pay); });
+    return Object.keys(mMap).sort().reverse().map(ym=>{
       const d=mMap[ym];
-      const costSub=d.svcCost+d.techPay;
-      return { 月份:ym, 服務收入:d.svcRev, 耗材成本:d.svcCost, 技師薪資:d.techPay, 成本小計:costSub, 服務淨利:d.svcRev-costSub };
+      const costSub=d.cost+d.techPay;
+      return { 月份:ym, 服務收入:d.rev, 耗材成本:d.cost, 技師薪資:d.techPay, 成本小計:costSub, '撥轉成本(參考)':d.trCost, 服務淨利:d.rev-costSub };
     });
   },
   async totalFinance(){
@@ -306,7 +317,7 @@ const CUSTOM_EXPORTERS = {
       const d=mMap[ym];
       return {
         月份:ym, 銷售收入:d.salesRev, 服務收入:d.svcRev, 獎金收入:d.bonusIn,
-        進貨支出:d.purchCost, 耗材成本:d.svcCost, 技師薪資:d.techPay, 獎金支出:d.bonusOut,
+        進貨支出:d.purchCost, 耗材成本:d.svcCost, 技師薪資:d.techPay, 獎金支出:d.bonusOut, 營運成本:d.opCost,
         總淨利:window.netRow(d)
       };
     });
@@ -352,10 +363,11 @@ const CUSTOM_EXPORTERS = {
       const pay = ownerPayByMonth[ym]||0;
       const svcNet = d.svcRev - costSub + pay;
       const bonus = d.bonusIn - d.bonusOut;
+      const opCost = d.opCost||0;
       return {
         月份:ym, 計算對象:ownerName||'—',
         服務營收:d.svcRev, 服務成本小計:costSub, [`${ownerName||'技師'}收入`]:pay, 服務類淨利:svcNet,
-        銷售淨利:salesNet, 獎金淨額:bonus, 個人月淨利:salesNet+svcNet+bonus
+        銷售淨利:salesNet, 獎金淨額:bonus, 營運成本:opCost, 個人月淨利:salesNet+svcNet+bonus-opCost
       };
     });
   },
