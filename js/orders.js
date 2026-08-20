@@ -4,10 +4,11 @@
 
 async function orders(){
   try{
-    let q=sb.from('sales_orders').select('order_no,order_date,customer_name,agent_level,subtotal,total,payment_done,is_return,status,ship_status',{count:'exact'}).order('order_date',{ascending:false}).order('order_no',{ascending:false});
+    let q=sb.from('sales_orders').select('order_no,order_date,customer_name,agent_level,order_type,subtotal,total,payment_done,is_return,status,ship_status',{count:'exact'}).order('order_date',{ascending:false}).order('order_no',{ascending:false});
     if(oS) q=q.or(`order_no.ilike.%${oS}%,customer_name.ilike.%${oS}%`);
     if(oF==='unpaid') q=q.eq('payment_done',false);
     if(oF==='unshipped') q=q.neq('ship_status','全部出貨');
+    if(oF==='selfuse') q=q.eq('order_type','自用');
     if(oF==='return') q=q.eq('is_return',true);
     const{data,count}=await q.range((oP-1)*30,oP*30-1);
     const tp=Math.ceil((count||0)/30);
@@ -20,6 +21,7 @@ async function orders(){
         <div class="tab ${oF==='unpaid'?'on':''}" onclick="oF='unpaid';oP=1;orders()">未收款</div>
         <div class="tab ${oF==='unshipped'?'on':''}" onclick="oF='unshipped';oP=1;orders()">未出貨</div>
         <div class="tab ${oF==='return'?'on':''}" onclick="oF='return';oP=1;orders()">退貨</div>
+        <div class="tab ${oF==='selfuse'?'on':''}" onclick="oF='selfuse';oP=1;orders()">自用</div>
       </div>
       <div class="tc">
         <div class="tb"><span class="tt">訂單列表</span>
@@ -31,7 +33,7 @@ async function orders(){
           ${(data||[]).map(o=>`<tr>
             <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${o.order_no}</td>
             <td style="font-size:12px">${fD(o.order_date)}</td>
-            <td style="font-weight:500">${o.customer_name||'—'}</td>
+            <td style="font-weight:500">${o.customer_name||'—'}${o.order_type&&o.order_type!=='一般訂單'?`<div><span class="badge ba" style="font-size:10px">${o.order_type}</span></div>`:''}</td>
             <td>${lvBadge(o.agent_level)}</td>
             <td class="num">${fM(o.subtotal)}</td>
             <td class="num" style="font-weight:600">${fM(o.total)}</td>
@@ -168,6 +170,7 @@ async function addOrder(){
     ${fi('ofee','運費','number','0')}
     ${fi('oinv','發票號碼','text')}
     <div class="fl"><label>位階（決定商品自動售價）</label><select id="f-oalv" onchange="updateItemPricesByLevel(this.value)">${LEVELS.map(l=>`<option>${l}</option>`).join('')}</select></div>
+    <div class="fl"><label>訂單類型</label><select id="f-otype">${ORDER_TYPES.map(t=>`<option ${t==='一般訂單'?'selected':''}>${t}</option>`).join('')}</select></div>
   </div>
   <div style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
@@ -288,7 +291,7 @@ async function saveOrder(editNo){
   const its=_items.filter(i=>i.pno&&((i.qty||0)+(i.giftQty||0))>0);
   if(!its.length){toast('請至少選一項商品','e');return;}
   const sub=its.reduce((s,i)=>s+i.amt,0),fee=n('ofee')||0,tax=0,total=sub+fee;
-  const payload={order_date:dt,customer_name:nm,phone:v('ophone'),ship_address:v('oaddr'),payment_method:v('opay'),shipping_method:v('oshp'),shipping_fee:fee,note:v('onote'),agent_level:v('oalv'),invoice_no:v('oinv')||null,subtotal:sub,tax,total,payment_done:editNo?undefined:false,products_summary:its.map(i=>(_allProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、')};
+  const payload={order_date:dt,customer_name:nm,phone:v('ophone'),ship_address:v('oaddr'),payment_method:v('opay'),shipping_method:v('oshp'),shipping_fee:fee,note:v('onote'),agent_level:v('oalv'),order_type:v('otype')||'一般訂單',invoice_no:v('oinv')||null,subtotal:sub,tax,total,payment_done:editNo?undefined:false,products_summary:its.map(i=>(_allProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、')};
   const custNoEl=document.getElementById('ss-val-cust');
   if(custNoEl) payload.customer_no=custNoEl.value||null; // 只有新增畫面才有搜尋框，避免修改時誤把已存的客戶編號覆蓋掉
   if(editNo){
@@ -345,6 +348,7 @@ async function editOrder(no){
     ${fi('ofee','運費','number',o?.shipping_fee||0)}
     ${fi('oinv','發票號碼','text',o?.invoice_no||'')}
     <div class="fl"><label>位階</label><select id="f-oalv" onchange="updateItemPricesByLevel(this.value)">${LEVELS.map(l=>`<option ${l===o?.agent_level?'selected':''}>${l}</option>`).join('')}</select></div>
+    <div class="fl"><label>訂單類型</label><select id="f-otype">${ORDER_TYPES.map(t=>`<option ${t===(o?.order_type||'一般訂單')?'selected':''}>${t}</option>`).join('')}</select></div>
   </div>
   <div style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">

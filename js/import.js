@@ -191,7 +191,7 @@ const CUSTOM_EXPORTERS = {
     orders.forEach(o=>{
       const its=itemsByOrder[o.order_no]||[{}];
       its.forEach(i=>rows.push({
-        訂單編號:o.order_no, 訂單日期:o.order_date, 客戶編號:o.customer_no, 客戶名稱:o.customer_name,
+        訂單編號:o.order_no, 訂單日期:o.order_date, 訂單類型:o.order_type||'一般訂單', 客戶編號:o.customer_no, 客戶名稱:o.customer_name,
         手機:excelText(o.phone), 位階:o.agent_level, 出貨狀態:o.ship_status, 已收款:fmtVal(o.payment_done),
         收款日期:o.payment_date, 商品名稱:i.product_name||'', 商品編號:i.product_no||'', 數量:i.qty??'',
         贈品數:i.gift_qty??'', 已出貨數量:i.shipped_qty??'', 單價:i.unit_price??'', 品項金額:i.amount??'',

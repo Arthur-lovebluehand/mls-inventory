@@ -150,6 +150,7 @@ const today=()=>new Date().toISOString().slice(0,10);
 const ym=d=>(d||today()).slice(0,7);
 
 const LEVELS=['創始','大區','市代','經銷','VIP','零售'];
+const ORDER_TYPES=['一般訂單','零售訂單','自用','代理補貨','代理升等','新入代理','下家新入同階代理','贈品銷貨單','分潤獎金','草本境獎金'];
 const LEVEL_COLS={創始:'price_founder',大區:'price_region',市代:'price_city',經銷:'price_dealer',VIP:'price_vip',零售:'price_retail'};
 function lvBadge(l){
   const cls={創始:'bbr',大區:'bbr',市代:'bb',經銷:'bg',VIP:'ba',零售:'bgr'};

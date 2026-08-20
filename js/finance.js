@@ -324,9 +324,9 @@ function normYM(ym){
   s=s.replace(/^(\d{4})-(\d)$/,'$1-0$2');
   return s;
 }
-async function computeTotalFinanceData() {
+async function computeTotalFinanceData(includeSelfUse) {
   const [{ data:sOrders },{ data:pOrders },{ data:bnRecs },{ data:svOrders },{ data:svItems }] = await Promise.all([
-    sb.from('sales_orders').select('order_date,year_month,total,payment_done,payment_date'),
+    sb.from('sales_orders').select('order_date,year_month,total,payment_done,payment_date,order_type'),
     sb.from('purchase_orders').select('year_month,total'),
     sb.from('bonus_records').select('year_month,amount,direction'),
     sb.from('service_orders').select('order_date,total,consumable_cost'),
@@ -338,6 +338,7 @@ async function computeTotalFinanceData() {
   const addM = (ym, key, val) => { if(!ym) return; if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0}; mMap[ym][key]+=val||0; };
   // 銷售：已收款算在收款月份、未收款算在訂單原本的年月（跟銷售財報同一套規則，只有已收款才真的算收入）
   (sOrders||[]).forEach(o => {
+    if(o.order_type==='自用' && !includeSelfUse) return; // 預設不把自用訂單算進真實營收
     const orderK = normYM(o.year_month);
     const payK = o.payment_done ? normYM((o.payment_date||o.order_date||'').slice(0,7)) : null;
     const showK = payK || orderK;
@@ -369,11 +370,18 @@ const netRow = d => d.salesRev + d.svcRev + d.bonusIn - d.purchCost - d.svcCost 
 window.computeTotalFinanceData = computeTotalFinanceData;
 window.netRow = netRow;
 
+var _includeSelfUse = false;
 async function showTotalFinance() {
-  const { mMap, yMap, months, years } = await computeTotalFinanceData();
+  const { mMap, yMap, months, years } = await computeTotalFinanceData(_includeSelfUse);
 
   $('main').innerHTML += `
   <div class="pc">
+    <div class="tc" style="margin-bottom:16px;padding:12px 16px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+        <input type="checkbox" ${_includeSelfUse?'checked':''} onchange="_includeSelfUse=this.checked;accounts()">
+        包含「自用」類型的訂單營收（預設不含，只看對外真實銷售）
+      </label>
+    </div>
     <div class="tc" style="margin-bottom:16px">
       <div class="tb"><span class="tt">年度總財報</span></div>
       <div class="al al-w" style="font-size:12px;margin:0 16px 10px">月份分類規則跟「銷售財報」一致：銷售訂單已收款算在收款月份、未收款算在訂單月份；服務成本＝耗材成本＋技師薪資（不含撥轉成本，那只是搬庫存不是真花費）；有把獎金/分潤也算進來。</div>
@@ -429,7 +437,7 @@ async function showOwnerProfit() {
   const names = [...new Set((techs||[]).map(t=>t.name))];
   if(ownerTechName===null) ownerTechName = names.find(n=>n.includes('闆'))||names[0]||null;
 
-  const { mMap, months } = await computeTotalFinanceData();
+  const { mMap, months } = await computeTotalFinanceData(_includeSelfUse);
 
   let ownerPayByMonth = {};
   if(ownerTechName) {
@@ -446,6 +454,12 @@ async function showOwnerProfit() {
 
   $('main').innerHTML += `
   <div class="pc">
+    <div class="tc" style="margin-bottom:16px;padding:12px 16px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+        <input type="checkbox" ${_includeSelfUse?'checked':''} onchange="_includeSelfUse=this.checked;accounts()">
+        包含「自用」類型的訂單營收（預設不含，只看對外真實銷售）
+      </label>
+    </div>
     <div class="tc" style="margin-bottom:16px">
       <div class="tb"><span class="tt">選擇要計算的人</span></div>
       <div style="padding:14px">
