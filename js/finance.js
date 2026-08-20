@@ -9,10 +9,6 @@ var opexP = 1;
 async function opex(){
   const{data,count}=await sb.from('operating_expenses').select('*',{count:'exact'}).order('expense_date',{ascending:false}).range((opexP-1)*30,opexP*30-1);
   const tp=Math.max(1,Math.ceil((count||0)/30));
-  const { data:settingRow } = await sb.from('settings').select('value').eq('key','opex_categories').maybeSingle();
-  let cats = ['房租','水電','網路','電話','保險','清潔費','雜項'];
-  try{ if(settingRow?.value) cats = JSON.parse(settingRow.value); }catch(e){}
-  window._opexCats = cats;
 
   const thisMonth = new Date().toISOString().slice(0,7);
   const { data:allForTotal } = await sb.from('operating_expenses').select('amount,expense_date');
@@ -59,7 +55,7 @@ function addOpex() {
   OM('新增營運成本', `
   <div class="fg">
     ${fi('oxdate','日期','date',today())}
-    <div class="fl"><label>類別</label><select id="f-oxcat">${window._opexCats.map(c=>`<option>${c}</option>`).join('')}</select></div>
+    <div class="fl"><label>類別</label><select id="f-oxcat">${_opexCategories.map(c=>`<option>${c}</option>`).join('')}</select></div>
     ${fi('oxamt','金額 *','number')}
     <label style="display:flex;align-items:center;gap:6px;margin-top:22px;cursor:pointer;font-size:13px">
       <input type="checkbox" id="f-oxrecur"> 這是每月固定會有的支出
@@ -76,7 +72,7 @@ async function editOpex(id) {
   OM('編輯營運成本', `
   <div class="fg">
     ${fi('oxdate','日期','date',r.expense_date)}
-    <div class="fl"><label>類別</label><select id="f-oxcat">${window._opexCats.map(c=>`<option ${c===r.category?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="fl"><label>類別</label><select id="f-oxcat">${_opexCategories.map(c=>`<option ${c===r.category?'selected':''}>${c}</option>`).join('')}</select></div>
     ${fi('oxamt','金額 *','number',r.amount)}
     <label style="display:flex;align-items:center;gap:6px;margin-top:22px;cursor:pointer;font-size:13px">
       <input type="checkbox" id="f-oxrecur" ${r.is_recurring?'checked':''}> 這是每月固定會有的支出

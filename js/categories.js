@@ -19,11 +19,13 @@ async function categories() {
     <div class="tab${tab==='payment'?' on':''}" onclick="window._catTab='payment';categories()">付款方式</div>
     <div class="tab${tab==='shipping'?' on':''}" onclick="window._catTab='shipping';categories()">寄送方式</div>
     <div class="tab${tab==='ordertype'?' on':''}" onclick="window._catTab='ordertype';categories()">訂單類型</div>
+    <div class="tab${tab==='opex'?' on':''}" onclick="window._catTab='opex';categories()">營運成本類別</div>
   </div>`;
   if(tab==='roles') { await categoriesRoles(); return; }
   if(tab==='payment') { await categoriesPayment(); return; }
   if(tab==='shipping') { await categoriesShipping(); return; }
   if(tab==='ordertype') { await categoriesOrderType(); return; }
+  if(tab==='opex') { await categoriesOpex(); return; }
   await categoriesProducts();
 }
 
@@ -402,6 +404,79 @@ window.editOrderTypeModal = editOrderTypeModal;
 window.saveOrderType = saveOrderType;
 window.toggleOrderType = toggleOrderType;
 window.deleteOrderType = deleteOrderType;
+
+// ══════════════════════════════
+// 營運成本類別管理
+// ══════════════════════════════
+async function categoriesOpex() {
+  const { data } = await sb.from('opex_categories').select('*').order('sort_order').order('name');
+  $('main').innerHTML += `
+  <div class="pc">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <button class="btn btn-p btn-s" onclick="addOpexCatModal()">＋ 新增類別</button>
+  </div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理「營運成本」的類別選項，每間店的固定支出項目不同，可以自己新增、編輯、排序、刪除。</div>
+  <div class="tc"><div class="tw"><table style="width:100%">
+    <tr><th>名稱</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
+    ${(data||[]).map(c=>`<tr>
+      <td style="font-weight:500">${c.name}</td>
+      <td style="text-align:center">${c.sort_order}</td>
+      <td><span class="badge ${c.is_active?'bg':'br2'}">${c.is_active?'啟用':'停用'}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn btn-s" onclick="editOpexCatModal(${c.id},'${c.name.replace(/'/g,"\\'")}',${c.sort_order},${c.is_active})">編輯</button>
+        <button class="btn btn-s" onclick="toggleOpexCat(${c.id},${c.is_active})">${c.is_active?'停用':'啟用'}</button>
+        <button class="btn btn-s btn-r" onclick="deleteOpexCat(${c.id},'${c.name.replace(/'/g,"\\'")}')">刪除</button>
+      </div></td>
+    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無類別，請先新增</td></tr>'}
+  </table></div></div></div>`;
+}
+function addOpexCatModal() {
+  OM('新增營運成本類別', `
+  ${fi('oxcname','名稱 *')}
+  ${fi('oxcsort','排序','number','99')}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveOpexCat()">新增</button>`);
+}
+function editOpexCatModal(id,name,sort,active) {
+  OM('編輯營運成本類別', `
+  ${fi('oxcname','名稱 *','text',name)}
+  ${fi('oxcsort','排序','number',sort)}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveOpexCat(${id})">儲存</button>`);
+}
+async function saveOpexCat(id) {
+  const name = v('oxcname').trim();
+  if(!name) { toast('請輸入名稱','e'); return; }
+  const payload = { name, sort_order: parseInt(v('oxcsort'))||99 };
+  if(id) {
+    const { error } = await sb.from('opex_categories').update(payload).eq('id',id);
+    if(error) { toast('更新失敗：'+error.message,'e'); return; }
+  } else {
+    const { error } = await sb.from('opex_categories').insert({...payload, is_active:true});
+    if(error) { toast('新增失敗：'+error.message,'e'); return; }
+  }
+  toast('✅ 已儲存');
+  CM();
+  await loadOpexCategories();
+  categories();
+}
+async function toggleOpexCat(id, current) {
+  await sb.from('opex_categories').update({is_active:!current}).eq('id',id);
+  await loadOpexCategories();
+  categories();
+}
+async function deleteOpexCat(id, name) {
+  if(!confirm(`確定刪除類別「${name}」？`)) return;
+  await sb.from('opex_categories').delete().eq('id',id);
+  await loadOpexCategories();
+  categories();
+}
+window.categoriesOpex = categoriesOpex;
+window.addOpexCatModal = addOpexCatModal;
+window.editOpexCatModal = editOpexCatModal;
+window.saveOpexCat = saveOpexCat;
+window.toggleOpexCat = toggleOpexCat;
+window.deleteOpexCat = deleteOpexCat;
 window.addShipMethodModal = addShipMethodModal;
 window.editShipMethodModal = editShipMethodModal;
 window.saveShipMethod = saveShipMethod;

@@ -39,7 +39,7 @@ window.addEventListener('error',e=>{
       showLoginPage();
       return;
     }
-    Promise.all([loadPayMethods(),loadShipMethods(),loadBrandNames(),loadOrderTypes()]).then(() => go('dashboard'));
+    Promise.all([loadPayMethods(),loadShipMethods(),loadBrandNames(),loadOrderTypes(),loadOpexCategories()]).then(() => go('dashboard'));
   };
   s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
   document.head.appendChild(s);
@@ -162,6 +162,12 @@ async function loadOrderTypes(){
 }
 function orderTypeNames(){ return _orderTypes.map(t=>t.name); }
 function orderTypeColor(name){ return (_orderTypes.find(t=>t.name===name)||{}).color || 'bgr'; }
+
+var _opexCategories = ['房租','水電','網路','電話','保險','清潔費','雜項'];
+async function loadOpexCategories(){
+  const{data}=await sb.from('opex_categories').select('name').eq('is_active',true).order('sort_order').order('name');
+  if(data&&data.length) _opexCategories=data.map(x=>x.name);
+}
 const LEVEL_COLS={創始:'price_founder',大區:'price_region',市代:'price_city',經銷:'price_dealer',VIP:'price_vip',零售:'price_retail'};
 function lvBadge(l){
   const cls={創始:'bbr',大區:'bbr',市代:'bb',經銷:'bg',VIP:'ba',零售:'bgr'};
