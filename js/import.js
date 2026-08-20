@@ -118,6 +118,14 @@ function excelText(v){
   if(/^\d+$/.test(s) && (s.length>=8 || /^0/.test(s))) return '="'+s.replace(/"/g,'""')+'"';
   return s;
 }
+// YYYY-MM 這種「只有年月沒有日」的字串，Excel會自動判斷成日期、用它自己的英文月份格式顯示（例如Aug-26），
+// 這個不限欄位名稱，任何格子的值長這樣都強制當文字，避免月份欄位被誤判成日期
+function guardYearMonth(v){
+  if(v==null||v==='') return v;
+  const s=String(v);
+  if(/^\d{4}-\d{2}$/.test(s)) return '="'+s.replace(/"/g,'""')+'"';
+  return v;
+}
 
 // ── 匯出／備份：全部資料表清單（分類顯示）──
 const EXPORT_TABLES = [
@@ -481,7 +489,7 @@ function toCSV(rows){
     const s=typeof v==='object'?JSON.stringify(v):String(v);
     return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
   };
-  const cellVal=(h,v)=> PHONE_LIKE_COLS.has(h) ? excelText(fmtVal(v)) : fmtVal(v);
+  const cellVal=(h,v)=> PHONE_LIKE_COLS.has(h) ? excelText(fmtVal(v)) : guardYearMonth(fmtVal(v));
   const lines=[headers.map(labelCol).join(',')];
   rows.forEach(r=>lines.push(headers.map(h=>esc(cellVal(h,r[h]))).join(',')));
   return '\uFEFF'+lines.join('\n');
