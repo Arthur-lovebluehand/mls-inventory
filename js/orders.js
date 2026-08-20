@@ -318,18 +318,23 @@ async function saveOrder(editNo){
     if(error){toast('修改失敗：'+error.message,'e');return;}
     await syncOrderCreditDeduction(editNo);
   } else {
-    payload.order_no=no;payload.payment_done=false;payload.stock_deducted_at_creation=false;
+    payload.order_no=no;
+    payload.payment_done = otype==='自用' ? true : false;
+    payload.stock_deducted_at_creation=false;
+    if(otype==='自用') { payload.ship_status='全部出貨'; payload.actual_ship_date=dt; }
     const{error}=await sb.from('sales_orders').insert(payload);
     if(error){toast('建立失敗：'+error.message,'e');return;}
   }
   const rows=its.map(i=>{
     const p=_allProds.find(x=>x.product_no===i.pno);
+    const actualOut=(i.qty||0)+(i.giftQty||0);
     return {
       order_no:no, product_no:i.pno, product_name:i._pname||p?.name||i.pno,
       unit_price:i.is_gift?0:i.price,
       qty:i.qty||0,
       gift_qty:i.giftQty||0,
-      actual_qty:(i.qty||0)+(i.giftQty||0),
+      actual_qty:actualOut,
+      shipped_qty: (!editNo && otype==='自用') ? actualOut : undefined,
       amount:i.amt||0,
       year_month:ym(dt),
       promo_code:i.promo_code||null,
@@ -343,6 +348,16 @@ async function saveOrder(editNo){
   if(itemsErr){
     toast('⚠️ 訂單已建立，但品項儲存失敗：'+itemsErr.message+'（請立即修改此訂單重新加入品項！）','e');
     CM();orders();return;
+  }
+  // 自用訂單：東西已經被拿走了，直接當下扣庫存，不用等出貨記錄
+  if(!editNo && otype==='自用') {
+    for(const i of its) {
+      const actualOut=(i.qty||0)+(i.giftQty||0);
+      if(actualOut<=0) continue;
+      const{data:p}=await sb.from('products').select('stock').eq('product_no',i.pno).single();
+      if(p) await sb.from('products').update({stock:Math.max(0,(p.stock||0)-actualOut)}).eq('product_no',i.pno);
+    }
+    toast('✅ 自用訂單建立成功，庫存已直接扣除');CM();orders();return;
   }
   toast(editNo?'訂單已修改！':'訂單建立成功！請至「出貨記錄」登記實際出貨數量，庫存會在出貨時才扣除');CM();orders();
 }
