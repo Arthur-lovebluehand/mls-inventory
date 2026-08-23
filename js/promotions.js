@@ -153,22 +153,31 @@ async function togglePromo(code, active) {
 async function openBundlePicker(mode) {
   // mode: 'order' | 'po' | 'loan'
   const today_s = today();
+  // 不再把過期套組排除掉——小店不一定天天建單，套組過期後還是常常需要照當初的內容補單，
+  // 過期的套組改成用標示提醒，仍然可以直接選用，不用因為過期就整個手動重建品項/贈品
   const { data: promos } = await sb.from('promotions').select('*')
     .eq('is_active', true)
-    .or(`end_date.is.null,end_date.gte.${today_s}`)
     .order('name');
+  const sorted = (promos||[]).slice().sort((a,b)=>{
+    const aExp = a.end_date && a.end_date < today_s;
+    const bExp = b.end_date && b.end_date < today_s;
+    if(aExp!==bExp) return aExp?1:-1; // 未過期排前面
+    return (a.name||'').localeCompare(b.name||'');
+  });
   OM2('選用套組/活動', `
-  <div class="al al-w" style="font-size:12px">選擇套組後，子項目數量會依「組數」自動計算（買2組送的也自動×2）。</div>
-  ${(promos || []).length === 0 ? '<div style="color:var(--tx3);padding:20px;text-align:center">目前無有效套組</div>' :
-    (promos || []).map(p => `
-    <div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px 12px;margin-bottom:8px">
+  <div class="al al-w" style="font-size:12px">選擇套組後，子項目數量會依「組數」自動計算（買2組送的也自動×2）。已過期的套組一樣可以選用，只是特別標示提醒你留意。</div>
+  ${sorted.length === 0 ? '<div style="color:var(--tx3);padding:20px;text-align:center">目前無套組</div>' :
+    sorted.map(p => {
+      const expired = p.end_date && p.end_date < today_s;
+      return `
+    <div style="border:1px solid ${expired?'var(--rd)':'var(--bd)'};border-radius:var(--r);padding:10px 12px;margin-bottom:8px;${expired?'opacity:.8':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="font-weight:500">${p.name}</span>
+        <span style="font-weight:500">${p.name}${expired?' <span class="badge br2" style="font-size:10px">已過期</span>':''}</span>
         <span class="badge ${p.type === '固定套組' ? 'bb' : p.type === '買幾送幾' ? 'bg' : 'ba'}">${p.type}</span>
       </div>
       <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">
         ${p.description || ''} ${p.bundle_price ? `・套組價 ${fM(p.bundle_price)}` : ''}
-        ${p.end_date ? `・有效至 ${p.end_date}` : ''}
+        ${p.end_date ? `・<span style="${expired?'color:var(--rd)':''}">有效至 ${p.end_date}</span>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <label style="font-size:12px;color:var(--tx2)">幾組：</label>
@@ -178,7 +187,7 @@ async function openBundlePicker(mode) {
           加入 →
         </button>
       </div>
-    </div>`).join('')}`, '');
+    </div>`;}).join('')}`, '');
 }
 window.openBundlePicker = openBundlePicker;
 window.promotions = promotions;
@@ -352,11 +361,12 @@ async function showPromo(code) {
   </div>
   <div class="sh">各位階套組總價（不含贈品，直接算好，不用去訂單才看得到）</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-bottom:16px">
-    ${LEVELS.map(lv=>`
-      <div style="background:var(--sf2);border-radius:var(--r);padding:10px;text-align:center">
-        <div style="font-size:11px;color:var(--tx3);margin-bottom:4px">${lv}</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ac)">${fM(levelTotals[lv])}</div>
-      </div>`).join('')}
+    ${LEVELS.map(lv=>{
+      const cls={創始:'bbr',大區:'bbr',市代:'bb',經銷:'bg',VIP:'ba',零售:'bgr'}[lv]||'bgr';
+      return `<div class="badge ${cls}" style="border-radius:var(--r);padding:10px;text-align:center;display:block">
+        <div style="font-size:11px;opacity:.8;margin-bottom:4px">${lv}</div>
+        <div style="font-size:16px;font-weight:700">${fM(levelTotals[lv])}</div>
+      </div>`;}).join('')}
   </div>
   <div class="sh">套組包含商品</div>
   <table class="itb">
@@ -382,37 +392,6 @@ async function togglePromo(code, active) {
 }
 
 // ── 在訂單/進貨/借貨新增表單中：選用套組 ──
-async function openBundlePicker(mode) {
-  // mode: 'order' | 'po' | 'loan'
-  const today_s = today();
-  const { data: promos } = await sb.from('promotions').select('*')
-    .eq('is_active', true)
-    .or(`end_date.is.null,end_date.gte.${today_s}`)
-    .order('name');
-  OM2('選用套組/活動', `
-  <div class="al al-w" style="font-size:12px">選擇套組後，子項目數量會依「組數」自動計算（買2組送的也自動×2）。</div>
-  ${(promos || []).length === 0 ? '<div style="color:var(--tx3);padding:20px;text-align:center">目前無有效套組</div>' :
-    (promos || []).map(p => `
-    <div style="border:1px solid var(--bd);border-radius:var(--r);padding:10px 12px;margin-bottom:8px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="font-weight:500">${p.name}</span>
-        <span class="badge ${p.type === '固定套組' ? 'bb' : p.type === '買幾送幾' ? 'bg' : 'ba'}">${p.type}</span>
-      </div>
-      <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">
-        ${p.description || ''} ${p.bundle_price ? `・套組價 ${fM(p.bundle_price)}` : ''}
-        ${p.end_date ? `・有效至 ${p.end_date}` : ''}
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <label style="font-size:12px;color:var(--tx2)">幾組：</label>
-        <input type="number" id="bqty-${p.promo_code}" value="1" min="1" max="99"
-          style="width:65px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);font-size:14px;font-weight:600;text-align:center;outline:none">
-        <button class="btn btn-p btn-s" onclick="applyPromo('${p.promo_code}','${mode}',parseInt(document.getElementById('bqty-${p.promo_code}')?.value)||1)">
-          加入 →
-        </button>
-      </div>
-    </div>`).join('')}`, '');
-}
-
 async function applyPromo(code, mode, sets) {
   sets = Math.max(1, parseInt(sets) || 1);
   const [{ data: p }, { data: its }] = await Promise.all([
