@@ -146,36 +146,6 @@ async function savePromo(editCode) {
   if (items.length) await sb.from('promotion_items').insert(items);
   toast(editCode ? '套組已更新' : '套組新增成功！'); CM(); promotions();
 }
-async function showPromo(code) {
-  const [{ data: p }, { data: its }] = await Promise.all([
-    sb.from('promotions').select('*').eq('promo_code', code).single(),
-    sb.from('promotion_items').select('*').eq('promo_code', code).order('is_gift'),
-  ]);
-  const today_s = today();
-  const expired = p?.end_date && p.end_date < today_s;
-  OM(`套組：${p?.name}`, `
-  <div class="dg" style="margin-bottom:13px">
-    <div class="dr"><span class="dlb">代碼</span><span class="dv" style="font-family:monospace">${p?.promo_code}</span></div>
-    <div class="dr"><span class="dlb">類型</span><span class="dv">${p?.type}</span></div>
-    <div class="dr"><span class="dlb">有效期間</span><span class="dv">${p?.start_date || '即日起'} ～ ${p?.end_date || '永久'}</span></div>
-    <div class="dr"><span class="dlb">狀態</span><span class="dv"><span class="badge ${!expired && p?.is_active ? 'bg' : 'br2'}">${expired ? '已過期' : p?.is_active ? '使用中' : '停用'}</span></span></div>
-    ${p?.bundle_price ? `<div class="dr"><span class="dlb">套組售價</span><span class="dv" style="font-weight:600;color:var(--ac)">${fM(p.bundle_price)}</span></div>` : ''}
-    ${p?.buy_qty ? `<div class="dr"><span class="dlb">買幾送幾</span><span class="dv">買 ${p.buy_qty} 送 ${p.get_qty}</span></div>` : ''}
-    ${p?.discount_amount ? `<div class="dr"><span class="dlb">折扣金額</span><span class="dv">折 ${fM(p.discount_amount)}</span></div>` : ''}
-    ${p?.discount_pct ? `<div class="dr"><span class="dlb">折扣比例</span><span class="dv">${p.discount_pct}% off</span></div>` : ''}
-    ${p?.description ? `<div class="dr" style="grid-column:1/-1"><span class="dlb">說明</span><span class="dv">${p.description}</span></div>` : ''}
-  </div>
-  <div class="sh">套組包含商品</div>
-  <table class="itb">
-    <tr><th>商品</th><th>數量</th><th>套組價</th><th>性質</th></tr>
-    ${(its || []).map(i => `<tr>
-      <td>${i.product_name || '—'}</td>
-      <td class="num">${fN(i.qty)}</td>
-      <td class="num">${i.price_override ? fM(i.price_override) : '依位階定價'}</td>
-      <td><span class="badge ${i.is_gift ? 'ba' : 'bg'}">${i.is_gift ? '贈品' : '商品'}</span></td>
-    </tr>`).join('')}
-  </table>`);
-}
 async function togglePromo(code, active) {
   await sb.from('promotions').update({ is_active: !active }).eq('promo_code', code);
   toast(!active ? '已啟用' : '已停用'); promotions();
@@ -348,6 +318,24 @@ async function showPromo(code) {
     sb.from('promotions').select('*').eq('promo_code', code).single(),
     sb.from('promotion_items').select('*').eq('promo_code', code).order('is_gift'),
   ]);
+  // 把用到的商品的各位階售價一次抓回來，才能算出這個套組在每個位階實際會是多少錢
+  const prodNos = [...new Set((its||[]).filter(i=>!i.price_override).map(i=>i.product_no).filter(Boolean))];
+  let prodPriceMap = {};
+  if(prodNos.length) {
+    const { data:prods } = await sb.from('products').select('product_no,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').in('product_no',prodNos);
+    (prods||[]).forEach(pr=>{ prodPriceMap[pr.product_no]=pr; });
+  }
+  // 依每個位階算這個套組的總價（贈品不計價，有寫死售價的品項用寫死的，其他用商品在該位階的售價 × 數量）
+  const levelTotals = {};
+  LEVELS.forEach(lv=>{
+    const col = LEVEL_COLS[lv];
+    levelTotals[lv] = (its||[]).reduce((sum,i)=>{
+      if(i.is_gift) return sum;
+      const unitPrice = i.price_override!=null ? i.price_override : (prodPriceMap[i.product_no]?.[col]||0);
+      return sum + unitPrice*(i.qty||1);
+    }, 0);
+  });
+
   const today_s = today();
   const expired = p?.end_date && p.end_date < today_s;
   OM(`套組：${p?.name}`, `
@@ -362,15 +350,29 @@ async function showPromo(code) {
     ${p?.discount_pct ? `<div class="dr"><span class="dlb">折扣比例</span><span class="dv">${p.discount_pct}% off</span></div>` : ''}
     ${p?.description ? `<div class="dr" style="grid-column:1/-1"><span class="dlb">說明</span><span class="dv">${p.description}</span></div>` : ''}
   </div>
+  <div class="sh">各位階套組總價（不含贈品，直接算好，不用去訂單才看得到）</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-bottom:16px">
+    ${LEVELS.map(lv=>`
+      <div style="background:var(--sf2);border-radius:var(--r);padding:10px;text-align:center">
+        <div style="font-size:11px;color:var(--tx3);margin-bottom:4px">${lv}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ac)">${fM(levelTotals[lv])}</div>
+      </div>`).join('')}
+  </div>
   <div class="sh">套組包含商品</div>
   <table class="itb">
-    <tr><th>商品</th><th>數量</th><th>套組價</th><th>性質</th></tr>
-    ${(its || []).map(i => `<tr>
+    <tr><th>商品</th><th>數量</th><th>性質</th>${LEVELS.map(lv=>`<th style="font-size:11px">${lv}</th>`).join('')}</tr>
+    ${(its || []).map(i => {
+      const pr = prodPriceMap[i.product_no];
+      return `<tr>
       <td>${i.product_name || '—'}</td>
       <td class="num">${fN(i.qty)}</td>
-      <td class="num">${i.price_override ? fM(i.price_override) : '依位階定價'}</td>
       <td><span class="badge ${i.is_gift ? 'ba' : 'bg'}">${i.is_gift ? '贈品' : '商品'}</span></td>
-    </tr>`).join('')}
+      ${LEVELS.map(lv=>{
+        if(i.is_gift) return `<td class="num" style="color:var(--tx3);font-size:12px">贈</td>`;
+        const unitPrice = i.price_override!=null ? i.price_override : (pr?.[LEVEL_COLS[lv]]||0);
+        return `<td class="num" style="font-size:12px">${fM(unitPrice*(i.qty||1))}</td>`;
+      }).join('')}
+    </tr>`;}).join('')}
   </table>`);
 }
 
