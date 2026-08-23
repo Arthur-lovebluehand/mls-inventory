@@ -91,6 +91,7 @@ const COL_LABELS = {
   service_order_no:'服務單號', deposit_no:'寄放單號', source_order_no:'來源訂單', deposit_id:'寄放品項ID',
   kit_id:'套組ID', source_type:'來源類型',
   expense_no:'成本記錄號', expense_date:'日期', category:'類別', is_recurring:'每月固定',
+  wallet_type:'帳戶類型',
   unit_cost:'單位成本', total_cost:'總成本', item_no:'耗材編號', stock_qty:'庫存數量', updated_at:'更新時間',
   default_price:'預設單價', item_type:'品項類型', technician_id:'技師ID', technician_name:'技師姓名',
   commission_amount:'抽成金額', technician_pay:'技師抽成', paid_by_credit:'儲值金支付', paid_by_cash:'現金支付',

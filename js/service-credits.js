@@ -1,33 +1,38 @@
 // ══════════════════════════════
 // service-credits.js
+// 客戶儲值 —— 一位客戶可以有「服務」「產品」兩個獨立帳戶，互不共用餘額
 // ══════════════════════════════
+
+const WALLET_TYPES = ['服務','產品'];
 
 async function svcCredits() {
   const { data } = await sb.from('store_credits')
-    .select('*').order('customer_name');
+    .select('*').order('customer_name').order('wallet_type');
 
   $('svc-content').innerHTML = `
   <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
     <button class="btn btn-p btn-s" onclick="svcAddCredit()">＋ 新增儲值</button>
   </div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:12px">服務儲值跟產品儲值是分開的兩個帳戶，各自獨立算餘額，不會互相扣用。</div>
   <div class="tc"><div class="tb"><span class="tt">儲值帳戶</span></div>
   <div class="tw"><table style="width:100%">
-    <tr><th>客戶</th><th>目前餘額</th><th>操作</th></tr>
+    <tr><th>客戶</th><th>帳戶類型</th><th>目前餘額</th><th>操作</th></tr>
     ${(data||[]).map(c=>`<tr>
       <td style="font-weight:500">${c.customer_name||c.customer_no}</td>
+      <td><span class="badge ${c.wallet_type==='產品'?'bb':'bg'}">${c.wallet_type}</span></td>
       <td class="num" style="font-weight:700;color:${c.balance>0?'var(--ac)':c.balance<0?'var(--rd)':'var(--tx3)'}">
         ${fM(c.balance)}
       </td>
       <td>
-        <button class="btn btn-s" onclick="svcCreditHistory('${c.customer_no}')">記錄</button>
-        <button class="btn btn-s" onclick="svcAddCredit('${c.customer_no}','${(c.customer_name||'').replace(/'/g,"\\'")}')">儲值</button>
+        <button class="btn btn-s" onclick="svcCreditHistory('${c.customer_no}','${c.wallet_type}')">記錄</button>
+        <button class="btn btn-s" onclick="svcAddCredit('${c.customer_no}','${(c.customer_name||'').replace(/'/g,"\\'")}','${c.wallet_type}')">儲值</button>
       </td>
-    </tr>`).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">尚無儲值帳戶</td></tr>'}
+    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無儲值帳戶</td></tr>'}
   </table></div></div>`;
 }
 
 window.svcCredits      = svcCredits;
-async function svcAddCredit(custNo, custName) {
+async function svcAddCredit(custNo, custName, walletType) {
   const [{ data:custs },{ data:allProds }] = await Promise.all([
     sb.from('customers').select('customer_no,name,phone').order('name'),
     sb.from('products').select('product_no,name,spec,stock').eq('is_active',true).order('name'),
@@ -38,7 +43,7 @@ async function svcAddCredit(custNo, custName) {
 
   OM('新增儲值',`
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">
-    儲值金額和贈送金額會合計加入餘額，記錄中可區分來源。
+    儲值金額和贈送金額會合計加入餘額，記錄中可區分來源。服務帳戶跟產品帳戶是分開的，選錯帳戶會扣錯錢，請注意確認。
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     <div class="fl"><label>客戶</label>
@@ -50,10 +55,15 @@ async function svcAddCredit(custNo, custName) {
         <div class="ss-drop" id="ss-drop-crcust"></div>
       </div>
     </div>
-    ${fi('cr-date','日期','date',new Date().toISOString().split('T')[0])}
+    <div class="fl"><label>帳戶類型</label>
+      <select id="f-cr-wallet">${WALLET_TYPES.map(w=>`<option ${w===(walletType||'服務')?'selected':''}>${w}</option>`).join('')}</select>
+    </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    ${fi('cr-date','日期','date',new Date().toISOString().split('T')[0])}
     ${fi('cr-amount','儲值金額 *','number','')}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('cr-bonus','贈送金額（選填）','number','0')}
   </div>
   ${fi('cr-note','備註（例如：存5萬送3千）')}
@@ -128,6 +138,7 @@ window.crRmGift = crRmGift;
 async function saveCredit() {
   const custNo = $('ss-val-crcust')?.value;
   const custName = $('ss-inp-crcust')?.value;
+  const walletType = v('cr-wallet')||'服務';
   const date = v('cr-date');
   const amount = parseFloat(v('cr-amount'))||0;
   const bonus = parseFloat(v('cr-bonus'))||0;
@@ -135,25 +146,25 @@ async function saveCredit() {
   const gifts = window._crGifts||[];
   if(!custNo||!date||(amount<=0 && !gifts.length)){ toast('請填寫客戶、日期，並至少填儲值金額或贈送商品其中一項','e'); return; }
 
-  const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
+  const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle();
   const oldBal = cr?.balance||0;
   const newBal = oldBal + amount + bonus;
 
   if(cr) {
-    await sb.from('store_credits').update({balance:newBal,customer_name:custName,updated_at:new Date().toISOString()}).eq('customer_no',custNo);
+    await sb.from('store_credits').update({balance:newBal,customer_name:custName,updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',walletType);
   } else if(amount>0 || bonus>0) {
-    await sb.from('store_credits').insert({customer_no:custNo,customer_name:custName,balance:newBal});
+    await sb.from('store_credits').insert({customer_no:custNo,customer_name:custName,wallet_type:walletType,balance:newBal});
   }
 
   if(amount>0) {
     await sb.from('store_credit_records').insert({
-      customer_no:custNo, record_date:date, type:'deposit',
+      customer_no:custNo, wallet_type:walletType, record_date:date, type:'deposit',
       amount, balance_after:oldBal+amount, note:note||null
     });
   }
   if(bonus>0) {
     await sb.from('store_credit_records').insert({
-      customer_no:custNo, record_date:date, type:'bonus',
+      customer_no:custNo, wallet_type:walletType, record_date:date, type:'bonus',
       amount:bonus, balance_after:newBal, note:`贈送 ${fM(bonus)}`
     });
   }
@@ -162,7 +173,7 @@ async function saveCredit() {
     const { data:p } = await sb.from('products').select('stock').eq('product_no',g.product_no).single();
     if(p) await sb.from('products').update({stock:Math.max(0,(p.stock||0)-g.qty)}).eq('product_no',g.product_no);
     await sb.from('store_credit_records').insert({
-      customer_no:custNo, record_date:date, type:'gift', amount:0, balance_after:newBal,
+      customer_no:custNo, wallet_type:walletType, record_date:date, type:'gift', amount:0, balance_after:newBal,
       product_no:g.product_no, product_name:g.product_name, product_qty:g.qty,
       note:`贈品：${g.product_name} × ${g.qty}`
     });
@@ -176,9 +187,10 @@ async function saveCredit() {
 window.saveCredit      = saveCredit;
 
 // 依日期/建立時間重新計算整條餘額鏈（修改或刪除記錄後用）
-async function recomputeCreditChain(custNo) {
+async function recomputeCreditChain(custNo, walletType) {
+  walletType = walletType || '服務';
   const { data:recs } = await sb.from('store_credit_records').select('*')
-    .eq('customer_no',custNo).order('record_date').order('created_at');
+    .eq('customer_no',custNo).eq('wallet_type',walletType).order('record_date').order('created_at');
   let bal = 0;
   for(const r of (recs||[])) {
     bal += parseFloat(r.amount)||0;
@@ -186,19 +198,20 @@ async function recomputeCreditChain(custNo) {
       await sb.from('store_credit_records').update({balance_after:bal}).eq('id',r.id);
     }
   }
-  await sb.from('store_credits').update({balance:bal,updated_at:new Date().toISOString()}).eq('customer_no',custNo);
+  await sb.from('store_credits').update({balance:bal,updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',walletType);
   return bal;
 }
 window.recomputeCreditChain = recomputeCreditChain;
 
-async function svcCreditHistory(custNo) {
+async function svcCreditHistory(custNo, walletType) {
+  walletType = walletType || '服務';
   const [{ data:cr },{ data:recs }] = await Promise.all([
-    sb.from('store_credits').select('*').eq('customer_no',custNo).single(),
-    sb.from('store_credit_records').select('*').eq('customer_no',custNo)
+    sb.from('store_credits').select('*').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle(),
+    sb.from('store_credit_records').select('*').eq('customer_no',custNo).eq('wallet_type',walletType)
       .order('record_date',{ascending:false}).order('created_at',{ascending:false}).limit(50),
   ]);
   const typeLabel = {deposit:'儲值',bonus:'贈送',deduct:'扣款',gift:'贈品'};
-  OM(`儲值記錄：${cr?.customer_name||custNo}`,`
+  OM(`儲值記錄：${cr?.customer_name||custNo}（${walletType}帳戶）`,`
   <div style="font-size:16px;font-weight:700;margin-bottom:14px;color:${(cr?.balance||0)>0?'var(--ac)':'var(--rd)'}">
     目前餘額：${fM(cr?.balance||0)}
   </div>
@@ -211,18 +224,18 @@ async function svcCreditHistory(custNo) {
       <td class="num">${fM(r.balance_after)}</td>
       <td style="font-size:12px;color:var(--tx3)">${r.note||''}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-s" onclick="editCreditRecord(${r.id},'${custNo}')">編輯</button>
-        <button class="btn btn-s btn-r" onclick="deleteCreditRecord(${r.id},'${custNo}')">刪除</button>
+        <button class="btn btn-s" onclick="editCreditRecord(${r.id},'${custNo}','${walletType}')">編輯</button>
+        <button class="btn btn-s btn-r" onclick="deleteCreditRecord(${r.id},'${custNo}','${walletType}')">刪除</button>
       </td>
     </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
   </table></div></div>`,
   `<button class="btn" onclick="CM()">關閉</button>
-   <button class="btn btn-p" onclick="CM();svcAddCredit('${custNo}','')">新增儲值</button>`);
+   <button class="btn btn-p" onclick="CM();svcAddCredit('${custNo}','','${walletType}')">新增儲值</button>`);
 }
 
 window.svcCreditHistory= svcCreditHistory;
 
-async function editCreditRecord(id, custNo) {
+async function editCreditRecord(id, custNo, walletType) {
   const { data:r } = await sb.from('store_credit_records').select('*').eq('id',id).single();
   if(!r) return;
   const isProduct = r.type==='gift' && r.product_no;
@@ -234,22 +247,22 @@ async function editCreditRecord(id, custNo) {
   </div>
   ${fi('ecr-note','備註','text',r.note)}`,
   `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveEditCreditRecord(${id},'${custNo}',${isProduct})">儲存</button>`);
+   <button class="btn btn-p" onclick="saveEditCreditRecord(${id},'${custNo}','${walletType}',${isProduct})">儲存</button>`);
 }
 window.editCreditRecord = editCreditRecord;
 
-async function saveEditCreditRecord(id, custNo, isProduct) {
+async function saveEditCreditRecord(id, custNo, walletType, isProduct) {
   const payload = { record_date:v('ecr-date'), note:v('ecr-note')||null };
   if(!isProduct) payload.amount = parseFloat(v('ecr-amount'))||0;
   await sb.from('store_credit_records').update(payload).eq('id',id);
-  await recomputeCreditChain(custNo);
+  await recomputeCreditChain(custNo, walletType);
   toast('✅ 已更新');
   CM();
-  svcCreditHistory(custNo);
+  svcCreditHistory(custNo, walletType);
 }
 window.saveEditCreditRecord = saveEditCreditRecord;
 
-async function deleteCreditRecord(id, custNo) {
+async function deleteCreditRecord(id, custNo, walletType) {
   const { data:r } = await sb.from('store_credit_records').select('*').eq('id',id).single();
   if(!r) return;
   let restoreStock = false;
@@ -263,8 +276,8 @@ async function deleteCreditRecord(id, custNo) {
     if(p) await sb.from('products').update({stock:(p.stock||0)+(r.product_qty||0)}).eq('product_no',r.product_no);
   }
   await sb.from('store_credit_records').delete().eq('id',id);
-  await recomputeCreditChain(custNo);
+  await recomputeCreditChain(custNo, walletType);
   toast('✅ 已刪除');
-  svcCreditHistory(custNo);
+  svcCreditHistory(custNo, walletType);
 }
 window.deleteCreditRecord = deleteCreditRecord;

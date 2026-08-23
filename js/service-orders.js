@@ -48,7 +48,7 @@ async function svcShowOrder(no) {
   let curBalance = null, txBalance = null;
   if(o.customer_no) {
     const [{ data:cr },{ data:txRec }] = await Promise.all([
-      sb.from('store_credits').select('balance').eq('customer_no',o.customer_no).single(),
+      sb.from('store_credits').select('balance').eq('customer_no',o.customer_no).eq('wallet_type','服務').maybeSingle(),
       o.paid_by_credit>0 ? sb.from('store_credit_records').select('balance_after').eq('order_no',no).eq('type','deduct').maybeSingle() : Promise.resolve({data:null}),
     ]);
     curBalance = cr?.balance ?? 0;
@@ -301,14 +301,14 @@ async function svcPickCust(custNo, custName) {
     $('ss-inp-svcust').value = custName;
     $('f-sv-cname').value = custName;
     $('ss-drop-svcust')?.classList.remove('open');
-    // 查儲值餘額
-    sb.from('store_credits').select('balance').eq('customer_no',custNo).single()
+    // 查儲值餘額（服務帳戶）
+    sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type','服務').maybeSingle()
       .then(({data})=>{
         const bal = data?.balance||0;
         let hint = document.getElementById('sv-credit-hint');
         if(!hint){ hint=document.createElement('div'); hint.id='sv-credit-hint';
           $('f-sv-cname').parentNode.appendChild(hint); }
-        hint.innerHTML=`<div style="font-size:11px;color:${bal>0?'var(--ac)':'var(--tx3)'};margin-top:4px">儲值餘額：${fM(bal)}</div>`;
+        hint.innerHTML=`<div style="font-size:11px;color:${bal>0?'var(--ac)':'var(--tx3)'};margin-top:4px">服務儲值餘額：${fM(bal)}</div>`;
       });
     // 查這位客戶自己的寄放商品，加進耗材搜尋選項
     const deposits = await window.getCustomerDeposits?.(custNo) || [];
@@ -523,7 +523,7 @@ async function saveSvcOrder() {
   // 儲值扣款計算
   let paidByCredit = 0, paidByCash = total;
   if(payMethod.includes('儲值') && custNo) {
-    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
+    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type','服務').maybeSingle();
     const bal = cr?.balance||0;
     if(payMethod==='儲值扣款') {
       // 純儲值扣款：這筆錢就是要從儲值扣，餘額不夠也照扣，允許變成負數（代表客戶已經欠款，之後補儲值時會自動抵掉）
@@ -593,13 +593,14 @@ async function saveSvcOrder() {
     }
   }));
 
-  // 4. 儲值扣款記錄
+  // 4. 儲值扣款記錄（服務帳戶）
   if(paidByCredit>0 && custNo) {
-    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
+    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type','服務').maybeSingle();
     const newBal = (cr?.balance||0)-paidByCredit;
-    await sb.from('store_credits').update({balance:newBal,updated_at:new Date().toISOString()}).eq('customer_no',custNo);
+    if(cr) await sb.from('store_credits').update({balance:newBal,updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type','服務');
+    else await sb.from('store_credits').insert({customer_no:custNo,customer_name:custName,wallet_type:'服務',balance:newBal});
     await sb.from('store_credit_records').insert({
-      customer_no:custNo, record_date:date, type:'deduct',
+      customer_no:custNo, wallet_type:'服務', record_date:date, type:'deduct',
       amount:-paidByCredit, balance_after:newBal, note:`服務單 ${no}`, order_no:no
     });
   }
@@ -640,10 +641,10 @@ async function reverseSvcOrderEffects(no) {
     if(p) await sb.from('products').update({stock:(p.stock||0)+item.qty}).eq('product_no',item.product_no);
   }
   if(o?.paid_by_credit>0 && o?.customer_no) {
-    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',o.customer_no).single();
-    if(cr) await sb.from('store_credits').update({balance:(cr.balance||0)+o.paid_by_credit,updated_at:new Date().toISOString()}).eq('customer_no',o.customer_no);
+    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',o.customer_no).eq('wallet_type','服務').maybeSingle();
+    if(cr) await sb.from('store_credits').update({balance:(cr.balance||0)+o.paid_by_credit,updated_at:new Date().toISOString()}).eq('customer_no',o.customer_no).eq('wallet_type','服務');
     await sb.from('store_credit_records').delete().eq('order_no',no);
-    if(o.customer_no) await window.recomputeCreditChain?.(o.customer_no);
+    if(o.customer_no) await window.recomputeCreditChain?.(o.customer_no,'服務');
   }
   await sb.from('service_order_items').delete().eq('order_no',no);
 }

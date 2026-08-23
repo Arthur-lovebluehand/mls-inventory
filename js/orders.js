@@ -413,6 +413,7 @@ async function resolveCustNoByName(name) {
 // 統一處理：確保「已收款 + 儲值扣款」跟「儲值記錄」永遠一致。
 // 不管是標記收款、取消收款、還是單純編輯改了付款方式，存檔後都呼叫這個來對齊。
 async function syncOrderCreditDeduction(no) {
+  const WALLET = '產品'; // 銷售訂單（買產品）一律扣「產品」帳戶，不動服務帳戶
   const { data:o } = await sb.from('sales_orders').select('payment_method,payment_done,customer_no,customer_name,total,payment_date,order_date').eq('order_no',no).single();
   if(!o) return;
   const { data:existing } = await sb.from('store_credit_records').select('id').eq('order_no',no).maybeSingle();
@@ -422,23 +423,23 @@ async function syncOrderCreditDeduction(no) {
     // 應該扣但還沒扣：補扣
     const custNo = o.customer_no || await resolveCustNoByName(o.customer_name);
     if(!custNo) { toast('⚠️ 這位客戶在客戶清單裡找不到對應資料，儲值金無法自動扣款，請手動處理','e'); return; }
-    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
+    const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',WALLET).maybeSingle();
     const newBal = (cr?.balance||0)-(o.total||0);
-    if(cr) await sb.from('store_credits').update({balance:newBal,updated_at:new Date().toISOString()}).eq('customer_no',custNo);
-    else await sb.from('store_credits').insert({customer_no:custNo,customer_name:o.customer_name,balance:newBal});
+    if(cr) await sb.from('store_credits').update({balance:newBal,updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',WALLET);
+    else await sb.from('store_credits').insert({customer_no:custNo,customer_name:o.customer_name,wallet_type:WALLET,balance:newBal});
     await sb.from('store_credit_records').insert({
-      customer_no:custNo, record_date:o.payment_date||o.order_date||today(), type:'deduct',
+      customer_no:custNo, wallet_type:WALLET, record_date:o.payment_date||o.order_date||today(), type:'deduct',
       amount:-(o.total||0), balance_after:newBal, note:`銷售單 ${no}`, order_no:no
     });
-    if(custNo) await window.recomputeCreditChain?.(custNo);
+    if(custNo) await window.recomputeCreditChain?.(custNo, WALLET);
   } else if(!shouldDeduct && existing) {
     // 不該扣了（取消收款，或改成別的付款方式）但之前扣過：還原
     const custNo = o.customer_no || await resolveCustNoByName(o.customer_name);
     if(custNo) {
-      const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).single();
-      if(cr) await sb.from('store_credits').update({balance:(cr.balance||0)+(o.total||0),updated_at:new Date().toISOString()}).eq('customer_no',custNo);
+      const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',WALLET).maybeSingle();
+      if(cr) await sb.from('store_credits').update({balance:(cr.balance||0)+(o.total||0),updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',WALLET);
       await sb.from('store_credit_records').delete().eq('order_no',no);
-      await window.recomputeCreditChain?.(custNo);
+      await window.recomputeCreditChain?.(custNo, WALLET);
     }
   }
   // 兩種都不成立（該扣的已經扣了、不該扣的也沒扣）就什麼都不用做
