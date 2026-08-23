@@ -33,6 +33,23 @@ const IMP_FIELDS = {
     { key:'store_credit', label:'儲值金餘額', req:false, alias:['儲值金','點數','儲值','credit'] },
     { key:'note',         label:'備註', req:false, alias:['備註','note'] },
   ],
+  vendors: [
+    { key:'name',      label:'廠商名稱', req:true, alias:['廠商名稱','公司名稱','廠商','name'] },
+    { key:'contact',   label:'聯絡窗口', req:false, alias:['聯絡人','聯絡窗口','contact'] },
+    { key:'phone',     label:'電話', req:false, alias:['電話','phone'] },
+    { key:'mobile',    label:'手機', req:false, alias:['手機','mobile'] },
+    { key:'fax',       label:'傳真', req:false, alias:['傳真','fax'] },
+    { key:'email',     label:'Email', req:false, alias:['email','信箱'] },
+    { key:'tax_no',    label:'統一編號', req:false, alias:['統一編號','統編','tax_no'] },
+    { key:'payment_method', label:'付款方式', req:false, alias:['付款方式','payment'] },
+    { key:'payment_terms',  label:'付款條件', req:false, alias:['付款條件','terms'] },
+    { key:'bank_name',   label:'銀行名稱', req:false, alias:['銀行名稱','銀行','bank'] },
+    { key:'bank_account',label:'銀行帳號', req:false, alias:['銀行帳號','帳號','account'] },
+    { key:'bank_holder', label:'戶名', req:false, alias:['戶名','holder'] },
+    { key:'full_address',label:'登記地址', req:false, alias:['登記地址','地址','address'] },
+    { key:'ship_address',label:'實際收送地址', req:false, alias:['收送地址','實際地址'] },
+    { key:'note',      label:'備註', req:false, alias:['備註','note'] },
+  ],
   orders: [
     { key:'group_key',    label:'原始訂單編號（同號會合併成一張單）', req:true, alias:['訂單編號','原始單號','order_no','order_id','單號'] },
     { key:'order_date',   label:'訂單日期', req:true, alias:['日期','訂單日期','order_date','date'] },
@@ -47,7 +64,7 @@ const IMP_FIELDS = {
     { key:'note',         label:'備註', req:false, alias:['備註','note'] },
   ]
 };
-const IMP_TYPE_LABEL = { products:'商品主檔', customers:'客戶名單', orders:'歷史訂單（含明細）' };
+const IMP_TYPE_LABEL = { products:'商品主檔', customers:'客戶名單', vendors:'廠商名單', orders:'歷史訂單（含明細）' };
 
 // ── 欄位中文標題字典（匯出CSV抬頭用）──
 const COL_LABELS = {
@@ -66,7 +83,7 @@ const COL_LABELS = {
   invoice_title:'發票抬頭', tax_no:'統編', email:'Email', birthday:'生日', lunar_mark:'農曆註記',
   bill_district:'帳單行政區', ship_district:'送貨行政區', bill_zip:'帳單郵遞區號', ship_zip:'送貨郵遞區號',
   bill_address:'帳單地址', ship_address:'送貨地址', bill_full_address:'帳單完整地址', ship_full_address:'送貨完整地址',
-  store_credit:'儲值金餘額', store_credit_used:'已用儲值金', created_at:'建立時間', is_service_customer:'服務客戶',
+  store_credit_used:'已用儲值金', created_at:'建立時間', is_service_customer:'服務客戶',
   loan_no:'借貨單號', returned_qty:'已還數量', return_date:'退回/退貨日期', promo_code:'活動代碼',
   bundle_group:'套組群組', is_gift:'是否贈品', loan_type:'借貨類型', status:'狀態', loan_date:'借貨日期',
   year_month:'年月', address:'地址', products_summary:'商品摘要', returned:'已歸還', shipping_fee:'運費',
@@ -91,7 +108,7 @@ const COL_LABELS = {
   service_order_no:'服務單號', deposit_no:'寄放單號', source_order_no:'來源訂單', deposit_id:'寄放品項ID',
   kit_id:'套組ID', source_type:'來源類型',
   expense_no:'成本記錄號', expense_date:'日期', category:'類別', is_recurring:'每月固定',
-  wallet_type:'帳戶類型',
+  wallet_type:'帳戶類型', wallet_mode:'錢包模式', color:'顏色',
   unit_cost:'單位成本', total_cost:'總成本', item_no:'耗材編號', stock_qty:'庫存數量', updated_at:'更新時間',
   default_price:'預設單價', item_type:'品項類型', technician_id:'技師ID', technician_name:'技師姓名',
   commission_amount:'抽成金額', technician_pay:'技師抽成', paid_by_credit:'儲值金支付', paid_by_cash:'現金支付',
@@ -185,6 +202,8 @@ const EXPORT_TABLES = [
     {t:'yearly_accounts',label:'年度對帳'},
     {t:'payment_methods',label:'付款方式設定'},
     {t:'shipping_methods',label:'寄送方式設定'},
+    {t:'order_types',label:'訂單類型設定'},
+    {t:'opex_categories',label:'營運成本類別設定'},
     {t:'settings',label:'系統設定'},
     {t:'audit_logs',label:'操作記錄'},
   ]},
@@ -679,6 +698,7 @@ async function impRun(){
   let result;
   if(imp.type==='products') result = await impRunProducts(mapped);
   else if(imp.type==='customers') result = await impRunCustomers(mapped);
+  else if(imp.type==='vendors') result = await impRunVendors(mapped);
   else result = await impRunOrders(mapped);
 
   resultEl.innerHTML = `
@@ -732,7 +752,7 @@ async function impRunCustomers(rows){
       const payload={
         name:r.name, phone:r.phone||null, agent_level:r.agent_level||'零售',
         email:r.email||null, ship_address:r.ship_address||null,
-        store_credit:parseFloat(r.store_credit)||0, note:r.note||null
+        note:r.note||null
       };
       if(customer_no){
         const{data:exist}=await sb.from('customers').select('customer_no').eq('customer_no',customer_no).maybeSingle();
@@ -743,6 +763,43 @@ async function impRunCustomers(rows){
         const{error}=await sb.from('customers').insert({...payload,customer_no});
         if(error) throw error;
       }
+      // 儲值金餘額：正確寫進儲值系統（預設共用帳戶），不是舊的customers.store_credit欄位
+      const creditAmt = parseFloat(r.store_credit)||0;
+      if(creditAmt) {
+        const{data:cr}=await sb.from('store_credits').select('balance').eq('customer_no',customer_no).eq('wallet_type','共用').maybeSingle();
+        if(cr){
+          await sb.from('store_credits').update({balance:cr.balance+creditAmt,customer_name:r.name}).eq('customer_no',customer_no).eq('wallet_type','共用');
+        } else {
+          await sb.from('store_credits').insert({customer_no,customer_name:r.name,wallet_type:'共用',balance:creditAmt});
+        }
+        await sb.from('store_credit_records').insert({
+          customer_no, wallet_type:'共用', record_date:today(), type:'deposit',
+          amount:creditAmt, balance_after:(cr?.balance||0)+creditAmt, note:'CSV匯入'
+        });
+      }
+      ok++;
+    }catch(e){ fail++; errors.push(`第${i+2}列（${r.name}）：${e.message}`); }
+  }
+  return {ok,fail,errors};
+}
+
+async function impRunVendors(rows){
+  let ok=0, fail=0; const errors=[];
+  for(const [i,r] of rows.entries()){
+    if(!r.name){ fail++; errors.push(`第${i+2}列：缺少廠商名稱，已跳過`); continue; }
+    try{
+      // 廠商編號一律用系統規則自動產生，不採用CSV裡可能帶的舊編號，避免格式亂掉
+      const vendor_no = await genVendorNo();
+      const payload={
+        vendor_no, name:r.name, contact:r.contact||null, phone:r.phone||null, mobile:r.mobile||null,
+        fax:r.fax||null, email:r.email||null, tax_no:r.tax_no||null,
+        payment_method:r.payment_method||null, payment_terms:r.payment_terms||null,
+        bank_name:r.bank_name||null, bank_account:r.bank_account||null, bank_holder:r.bank_holder||null,
+        full_address:r.full_address||null, ship_address:r.ship_address||null, note:r.note||null,
+        is_active:true
+      };
+      const{error}=await sb.from('vendors').insert(payload);
+      if(error) throw error;
       ok++;
     }catch(e){ fail++; errors.push(`第${i+2}列（${r.name}）：${e.message}`); }
   }
@@ -780,7 +837,7 @@ async function impRunOrders(rows){
       let cust = (head.customer_phone && custByPhone[head.customer_phone]) || custByName[head.customer_name];
       if(!cust){
         const customer_no = await impNextCustomerNo(custNoCache);
-        const payload={ customer_no, name:head.customer_name, phone:head.customer_phone||null, agent_level:'零售', store_credit:0 };
+        const payload={ customer_no, name:head.customer_name, phone:head.customer_phone||null, agent_level:'零售' };
         const{error}=await sb.from('customers').insert(payload);
         if(error) throw error;
         cust={customer_no,name:head.customer_name,phone:head.customer_phone};
