@@ -62,9 +62,41 @@ const IMP_FIELDS = {
     { key:'unit_price',   label:'單價', req:true, alias:['單價','售價','price','unit_price'] },
     { key:'paid',         label:'是否已收款（Y/N，留空預設已收）', req:false, alias:['是否收款','已收款','付款狀態','paid'] },
     { key:'note',         label:'備註', req:false, alias:['備註','note'] },
-  ]
+  ],
+  brands: [
+    { key:'name',     label:'品牌名稱', req:true, alias:['品牌名稱','品牌','name'] },
+    { key:'category', label:'類別', req:false, alias:['類別','分類','category'] },
+    { key:'origin',   label:'產地/國家', req:false, alias:['產地','國家','origin'] },
+    { key:'website',  label:'官網', req:false, alias:['官網','網址','website'] },
+    { key:'note',     label:'備註', req:false, alias:['備註','note'] },
+  ],
+  serviceItems: [
+    { key:'name',          label:'服務項目名稱', req:true, alias:['服務項目','項目名稱','名稱','name'] },
+    { key:'category',      label:'分類', req:false, alias:['分類','類別','category'] },
+    { key:'default_price', label:'預設價格', req:false, alias:['價格','售價','預設價格','price'] },
+    { key:'unit',          label:'單位', req:false, alias:['單位','unit'] },
+    { key:'description',   label:'說明', req:false, alias:['說明','描述','description'] },
+  ],
+  technicians: [
+    { key:'name',            label:'技師姓名', req:true, alias:['技師','姓名','技師姓名','name'] },
+    { key:'role',            label:'身分（例如按摩師/美容師）', req:false, alias:['身分','角色','role'] },
+    { key:'phone',           label:'電話', req:false, alias:['電話','手機','phone'] },
+    { key:'commission_rate', label:'抽成比例（例如0.5代表50%）', req:false, alias:['抽成','抽成比例','commission'] },
+  ],
+  purchaseOrders: [
+    { key:'group_key',    label:'原始進貨單編號（同號會合併成一張單）', req:true, alias:['進貨單編號','原始單號','po_no','單號'] },
+    { key:'po_date',      label:'進貨日期', req:true, alias:['日期','進貨日期','po_date','date'] },
+    { key:'vendor_name',  label:'廠商名稱', req:true, alias:['廠商','廠商名稱','vendor'] },
+    { key:'product_no',   label:'商品編號（有的話優先用來比對）', req:false, alias:['商品編號','貨號','sku'] },
+    { key:'product_name', label:'商品名稱', req:true, alias:['商品','品名','商品名稱','product'] },
+    { key:'qty',          label:'訂購數量', req:true, alias:['數量','訂購數','qty'] },
+    { key:'gift_qty',     label:'贈品數', req:false, alias:['贈品','贈品數','gift'] },
+    { key:'unit_price',   label:'進貨單價', req:true, alias:['單價','進貨價','price','unit_price'] },
+    { key:'done',         label:'是否已完成收貨（Y/N，留空預設已完成）', req:false, alias:['是否完成','已收貨','done'] },
+    { key:'note',         label:'備註', req:false, alias:['備註','note'] },
+  ],
 };
-const IMP_TYPE_LABEL = { products:'商品主檔', customers:'客戶名單', vendors:'廠商名單', orders:'歷史訂單（含明細）' };
+const IMP_TYPE_LABEL = { products:'商品主檔', customers:'客戶名單', vendors:'廠商名單', brands:'品牌', serviceItems:'服務項目', technicians:'技師名單', orders:'歷史銷售訂單（含明細）', purchaseOrders:'歷史進貨單（含明細）' };
 
 // ── 欄位中文標題字典（匯出CSV抬頭用）──
 const COL_LABELS = {
@@ -468,6 +500,8 @@ function dataImport(){
         <div class="al al-w" style="font-size:12px;margin-bottom:10px">
           ${imp.type==='orders'
             ? '每一列是「一筆訂單裡的一個商品」，同一張訂單的多個商品請填相同的「原始訂單編號」，系統會自動合併成一張單，並改用我們自己的編號規則（不會使用舊系統的單號）。歷史訂單匯入<b>不會</b>異動目前的商品庫存數字（庫存請以你目前實際盤點的數字為準，另外用商品主檔匯入或直接編輯）。'
+            : imp.type==='purchaseOrders'
+            ? '每一列是「一張進貨單裡的一個商品」，同一張進貨單的多個商品請填相同的「原始進貨單編號」，系統會自動合併成一張單，並改用我們自己的編號規則。廠商如果在系統裡找不到會自動新建（用我們的編號規則產生廠商編號）。歷史進貨單匯入<b>不會</b>異動目前的商品庫存數字（庫存請以你目前實際盤點的數字為準，另外用商品主檔匯入或直接編輯）。'
             : '第一列請是欄位標題（例如：商品名稱、售價、庫存…），下面每一列是一筆資料。'}
         </div>
         <input type="file" id="impFile" accept=".csv,.txt,.tsv" onchange="impFileLoad(this)" style="margin-bottom:10px">
@@ -674,6 +708,17 @@ async function impNextOrderNo(dateStr, cache){
   }
   const no=prefix+String(cache[prefix]).padStart(3,'0'); cache[prefix]++; return no;
 }
+async function impNextPONo(dateStr, cache){
+  const td=(dateStr||'').replace(/[^0-9]/g,'').slice(0,8) || today().replace(/-/g,'');
+  const prefix='PO-'+td+'-';
+  if(cache[prefix]==null){
+    const{data}=await sb.from('purchase_orders').select('po_no').like('po_no',prefix+'%');
+    let max=0;
+    (data||[]).forEach(r=>{ const m=(r.po_no||'').replace(prefix,''); const n=parseInt(m); if(!isNaN(n)) max=Math.max(max,n); });
+    cache[prefix]=max+1;
+  }
+  const no=prefix+String(cache[prefix]).padStart(3,'0'); cache[prefix]++; return no;
+}
 function impNormDate(s){
   if(!s) return today();
   s=s.trim();
@@ -699,6 +744,10 @@ async function impRun(){
   if(imp.type==='products') result = await impRunProducts(mapped);
   else if(imp.type==='customers') result = await impRunCustomers(mapped);
   else if(imp.type==='vendors') result = await impRunVendors(mapped);
+  else if(imp.type==='brands') result = await impRunBrands(mapped);
+  else if(imp.type==='serviceItems') result = await impRunServiceItems(mapped);
+  else if(imp.type==='technicians') result = await impRunTechnicians(mapped);
+  else if(imp.type==='purchaseOrders') result = await impRunPurchaseOrders(mapped);
   else result = await impRunOrders(mapped);
 
   resultEl.innerHTML = `
@@ -806,6 +855,69 @@ async function impRunVendors(rows){
   return {ok,fail,errors};
 }
 
+async function impRunBrands(rows){
+  let ok=0, fail=0; const errors=[];
+  const { data:existing } = await sb.from('brands').select('name');
+  const existNames = new Set((existing||[]).map(b=>b.name));
+  for(const [i,r] of rows.entries()){
+    if(!r.name){ fail++; errors.push(`第${i+2}列：缺少品牌名稱，已跳過`); continue; }
+    if(existNames.has(r.name)){ fail++; errors.push(`第${i+2}列（${r.name}）：品牌已存在，已跳過`); continue; }
+    try{
+      const{error}=await sb.from('brands').insert({
+        name:r.name, category:r.category||null, origin:r.origin||null,
+        website:r.website||null, note:r.note||null, is_active:true
+      });
+      if(error) throw error;
+      existNames.add(r.name);
+      ok++;
+    }catch(e){ fail++; errors.push(`第${i+2}列（${r.name}）：${e.message}`); }
+  }
+  await loadBrandNames?.();
+  return {ok,fail,errors};
+}
+
+async function impRunServiceItems(rows){
+  let ok=0, fail=0; const errors=[];
+  const { data:existing } = await sb.from('service_items').select('name');
+  const existNames = new Set((existing||[]).map(s=>s.name));
+  for(const [i,r] of rows.entries()){
+    if(!r.name){ fail++; errors.push(`第${i+2}列：缺少服務項目名稱，已跳過`); continue; }
+    if(existNames.has(r.name)){ fail++; errors.push(`第${i+2}列（${r.name}）：服務項目已存在，已跳過`); continue; }
+    try{
+      const{error}=await sb.from('service_items').insert({
+        name:r.name, category:r.category||null, default_price:parseFloat(r.default_price)||0,
+        unit:r.unit||'次', description:r.description||null, is_active:true
+      });
+      if(error) throw error;
+      existNames.add(r.name);
+      ok++;
+    }catch(e){ fail++; errors.push(`第${i+2}列（${r.name}）：${e.message}`); }
+  }
+  return {ok,fail,errors};
+}
+
+async function impRunTechnicians(rows){
+  let ok=0, fail=0; const errors=[];
+  const { data:existing } = await sb.from('technicians').select('name,role');
+  const existKeys = new Set((existing||[]).map(t=>t.name+'__'+(t.role||'')));
+  for(const [i,r] of rows.entries()){
+    if(!r.name){ fail++; errors.push(`第${i+2}列：缺少技師姓名，已跳過`); continue; }
+    const key = r.name+'__'+(r.role||'');
+    if(existKeys.has(key)){ fail++; errors.push(`第${i+2}列（${r.name}）：這個姓名+身分的組合已存在，已跳過`); continue; }
+    try{
+      const{error}=await sb.from('technicians').insert({
+        name:r.name, role:r.role||null, phone:r.phone||null,
+        commission_rate:r.commission_rate!=null&&r.commission_rate!==''?parseFloat(r.commission_rate):0.5,
+        is_active:true
+      });
+      if(error) throw error;
+      existKeys.add(key);
+      ok++;
+    }catch(e){ fail++; errors.push(`第${i+2}列（${r.name}）：${e.message}`); }
+  }
+  return {ok,fail,errors};
+}
+
 async function impRunOrders(rows){
   let ok=0, fail=0; const errors=[];
   const custNoCache={}; const prodNoCache={}; const orderNoCache={};
@@ -887,6 +999,91 @@ async function impRunOrders(rows){
       if(oErr) throw oErr;
 
       const{error:iErr}=await sb.from('sales_order_items').insert(orderItems.map(x=>({...x, order_no})));
+      if(iErr) throw iErr;
+
+      ok++;
+    }catch(e){ fail++; errors.push(`原始單號「${key}」：${e.message}`); }
+  }
+  return {ok,fail,errors};
+}
+
+async function impRunPurchaseOrders(rows){
+  let ok=0, fail=0; const errors=[];
+  const prodNoCache={}; const poNoCache={};
+
+  // 先把現有廠商、商品抓進記憶體做比對快取
+  const [{data:allVend},{data:allProd}] = await Promise.all([
+    sb.from('vendors').select('vendor_no,name'),
+    sb.from('products').select('product_no,name'),
+  ]);
+  const vendByName={};
+  (allVend||[]).forEach(v=>{ vendByName[v.name]=v; });
+  const prodByNo={}, prodByName={};
+  (allProd||[]).forEach(p=>{ prodByNo[p.product_no]=p; prodByName[p.name]=p; });
+
+  // 依「原始進貨單編號」分組
+  const groups={};
+  rows.forEach((r,i)=>{
+    const key=r.group_key||('_row'+i);
+    if(!groups[key]) groups[key]=[];
+    groups[key].push({...r, _line:i+2});
+  });
+
+  for(const key of Object.keys(groups)){
+    const items=groups[key];
+    const head=items[0];
+    try{
+      if(!head.vendor_name){ throw new Error('缺少廠商名稱'); }
+      // 廠商比對／建立（找不到就用系統規則自動新建，編號不採用CSV裡的舊編號）
+      let vend = vendByName[head.vendor_name];
+      if(!vend){
+        const vendor_no = await genVendorNo();
+        const{error}=await sb.from('vendors').insert({vendor_no, name:head.vendor_name, is_active:true});
+        if(error) throw error;
+        vend={vendor_no,name:head.vendor_name};
+        vendByName[vend.name]=vend;
+      }
+
+      // 品項比對／自動建立缺少的商品
+      const poItems=[];
+      let subtotal=0;
+      for(const it of items){
+        if(!it.product_name && !it.product_no){ throw new Error(`第${it._line}列缺少商品名稱`); }
+        const qty=parseFloat(it.qty)||0;
+        const giftQty=parseFloat(it.gift_qty)||0;
+        const price=parseFloat(it.unit_price)||0;
+        if(qty<=0 && giftQty<=0){ throw new Error(`第${it._line}列數量為0，已跳過該列`); }
+        let prod = (it.product_no && prodByNo[it.product_no]) || prodByName[it.product_name];
+        if(!prod){
+          const product_no = await impNextProductNo(prodNoCache);
+          const payload={ product_no, name:it.product_name||it.product_no, category:'匯入商品', unit:'個', cost:price, price_retail:0, stock:0, is_active:true };
+          const{error}=await sb.from('products').insert(payload);
+          if(error) throw error;
+          prod={product_no,name:payload.name};
+          prodByNo[prod.product_no]=prod; prodByName[prod.name]=prod;
+        }
+        const amount=qty*price;
+        subtotal+=amount;
+        poItems.push({
+          product_no:prod.product_no, product_name:prod.name, qty, gift_qty:giftQty,
+          unit_price:price, amount, received_qty:qty+giftQty
+        });
+      }
+
+      const po_date=impNormDate(head.po_date);
+      const po_no = await impNextPONo(po_date, poNoCache);
+      const doneVal = (head.done||'').trim();
+      const done = doneVal ? /^(y|是|已完成|已收貨|true|1)/i.test(doneVal) : true;
+
+      const{error:pErr}=await sb.from('purchase_orders').insert({
+        po_no, po_date, vendor_no:vend.vendor_no, vendor_name:vend.name,
+        subtotal, total:subtotal, shipping_fee:0, done, receipt_status:done?'全部到貨':'部分到貨',
+        products_summary: poItems.map(x=>x.product_name).join('、'),
+        note:(head.note||'')+' CSV匯入 原始單號:'+key, year_month:po_date.slice(0,7)
+      });
+      if(pErr) throw pErr;
+
+      const{error:iErr}=await sb.from('purchase_order_items').insert(poItems.map(x=>({...x, po_no, po_date, vendor_name:vend.name})));
       if(iErr) throw iErr;
 
       ok++;
