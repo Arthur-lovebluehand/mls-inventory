@@ -167,12 +167,15 @@ async function svcNewOrder(editNo) {
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
     <div class="fl"><label>選擇客戶</label>
-      <div class="ss-wrap" id="ss-svcust">
-        <input class="ss-input" id="ss-inp-svcust" placeholder="輸入姓名搜尋…" autocomplete="off" value="${existingOrder?.customer_name||''}"
-          oninput="svcFilterCust(this.value)" onfocus="svcFilterCust(this.value)"
-          onblur="setTimeout(()=>$('ss-drop-svcust')?.classList.remove('open'),200)">
-        <input type="hidden" id="f-sv-cust" value="${existingOrder?.customer_no||''}">
-        <div class="ss-drop" id="ss-drop-svcust"></div>
+      <div style="display:flex;gap:6px">
+        <div class="ss-wrap" id="ss-svcust" style="flex:1">
+          <input class="ss-input" id="ss-inp-svcust" placeholder="輸入姓名搜尋…" autocomplete="off" value="${existingOrder?.customer_name||''}"
+            oninput="svcFilterCust(this.value)" onfocus="svcFilterCust(this.value)"
+            onblur="setTimeout(()=>$('ss-drop-svcust')?.classList.remove('open'),200)">
+          <input type="hidden" id="f-sv-cust" value="${existingOrder?.customer_no||''}">
+          <div class="ss-drop" id="ss-drop-svcust"></div>
+        </div>
+        <button type="button" class="btn btn-s" style="flex-shrink:0" onclick="svcQuickAddCustomer()">＋ 新增客戶</button>
       </div>
     </div>
     ${fi('sv-cname','客戶姓名 *','text',existingOrder?.customer_name||'')}
@@ -303,6 +306,34 @@ async function svcNewOrder(editNo) {
 
 window.svcNewOrder     = svcNewOrder;
 window.svcPickCust     = svcPickCust;
+window.svcQuickAddCustomer = function(){
+  OM2('新增客戶（快速）', `
+  <div class="fg">
+    ${fi('sqc-name','姓名 *')}
+    ${fi('sqc-phone','手機')}
+    <div class="fl"><label>位階</label><select id="f-sqc-lv">${LEVELS.map(l=>`<option>${l}</option>`).join('')}</select></div>
+  </div>`,
+  `<button class="btn" onclick="CM2()">取消</button>
+   <button class="btn btn-p" onclick="saveSvcQuickCustomer()">新增並帶入</button>`);
+};
+window.saveSvcQuickCustomer = async function(){
+  const nm=v('sqc-name');
+  if(!nm){ toast('請填寫姓名','e'); return; }
+  const{data:last}=await sb.from('customers').select('customer_no').like('customer_no','C-0____').order('customer_no',{ascending:false}).limit(5);
+  let nextNo='C-00001';
+  if(last&&last.length){
+    const nums=last.map(r=>{const m=r.customer_no?.match(/^C-0(\d{4})$/);return m?parseInt('0'+m[1]):0;}).filter(n=>n>0&&n<10000);
+    if(nums.length){const mx=Math.max(...nums);nextNo='C-'+String(mx+1).padStart(5,'0');}
+  }
+  const obj={customer_no:nextNo,name:nm,agent_level:v('sqc-lv'),phone:v('sqc-phone')};
+  const{error}=await sb.from('customers').insert(obj);
+  if(error){ toast('新增客戶失敗：'+error.message,'e'); return; }
+  toast('✅ 客戶已新增');
+  window._svcAllCusts.push({customer_no:nextNo,name:nm,phone:obj.phone});
+  CM2();
+  svcPickCust(nextNo, nm);
+};
+
 async function svcPickCust(custNo, custName) {
   if(custNo) {
     $('f-sv-cust').value = custNo;

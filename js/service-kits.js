@@ -4,7 +4,10 @@
 // ═══════════════════════════════════════
 
 async function svcKits() {
-  const { data:kits } = await sb.from('service_kits').select('*').order('sort_order').order('name');
+  const { data:allKits } = await sb.from('service_kits').select('*').order('sort_order').order('name');
+  const hideInactive = window._svcKitsHideInactive!==false; // 預設隱藏
+  const kits = hideInactive ? (allKits||[]).filter(k=>k.is_active!==false) : (allKits||[]);
+  const inactiveCount = (allKits||[]).filter(k=>k.is_active===false).length;
   const kitIds = (kits||[]).map(k=>k.id);
   let itemsByKit = {};
   if(kitIds.length) {
@@ -13,13 +16,18 @@ async function svcKits() {
   }
 
   $('svc-content').innerHTML = `
-  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+  <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--tx3)">
+      <input type="checkbox" ${hideInactive?'checked':''} onchange="window._svcKitsHideInactive=!this.checked;svcKits()">
+      隱藏已停用${inactiveCount>0?`（${inactiveCount}組）`:''}
+    </label>
     <button class="btn btn-p btn-s" onclick="svcKitModal()">＋ 新增套組</button>
   </div>
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">
     把固定會一起用到的耗材（例如「做臉基礎組」6項）存成套組，建服務單時在「加入耗材」按「套用套組」一次全部帶入，不用一項一項加。
   </div>
-  ${(kits||[]).map(k=>{
+  ${kits.length===0 ? `<div class="tc"><div style="padding:20px;text-align:center;color:var(--tx3)">${hideInactive&&inactiveCount>0?'全部都是已停用的套組，取消勾選「隱藏已停用」即可看到':'尚無套組，請先新增'}</div></div>` :
+  kits.map(k=>{
     const its = itemsByKit[k.id]||[];
     return `<div class="tc" style="margin-bottom:14px;${k.is_active===false?'opacity:.5':''}">
       <div class="tb"><span class="tt">${k.name}</span><span class="badge bg" style="font-size:11px;margin-left:8px">${its.length} 項</span>
@@ -34,7 +42,7 @@ async function svcKits() {
       </div>
       ${k.note?`<div style="padding:0 16px 10px;font-size:12px;color:var(--tx3)">備註：${k.note}</div>`:''}
     </div>`;
-  }).join('')||'<div class="tc"><div style="padding:20px;text-align:center;color:var(--tx3)">尚無套組，請先新增</div></div>'}`;
+  }).join('')}`;
 }
 window.svcKits = svcKits;
 
