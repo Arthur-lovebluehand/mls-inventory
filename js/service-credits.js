@@ -41,7 +41,7 @@ async function svcAddCredit(custNo, custName, walletType) {
   window._crAllProds = allProds||[];
   window._crGifts = [];
   const initialCust = custNo ? window._crCusts.find(c=>c.customer_no===custNo) : null;
-  const initialShared = !initialCust || initialCust.wallet_mode!=='separate';
+  const initialShared = !!initialCust && initialCust.wallet_mode!=='separate';
 
   OM('新增儲值',`
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">
