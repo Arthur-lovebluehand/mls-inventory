@@ -4,10 +4,23 @@
 
 async function customers(){
   try{
-    let q=sb.from('customers').select('customer_no,name,agent_level,phone,email,ship_full_address,store_credit',{count:'exact'}).order('customer_no');
+    let q=sb.from('customers').select('customer_no,name,agent_level,phone,email,ship_full_address',{count:'exact'}).order('customer_no');
     if(cS) q=q.or(`name.ilike.%${cS}%,phone.ilike.%${cS}%,customer_no.ilike.%${cS}%`);
     const{data,count}=await q.range((cP-1)*30,cP*30-1);
     const tp=Math.ceil((count||0)/30);
+    // 即時查這一頁客戶的儲值帳戶餘額（不用舊的customers.store_credit欄位，那個沒有跟真正的儲值系統連動）
+    const custNos = (data||[]).map(c=>c.customer_no);
+    let creditMap = {};
+    if(custNos.length) {
+      const { data:credits } = await sb.from('store_credits').select('customer_no,wallet_type,balance').in('customer_no',custNos);
+      (credits||[]).forEach(cr=>{ (creditMap[cr.customer_no]=creditMap[cr.customer_no]||[]).push(cr); });
+    }
+    const creditCell = cno => {
+      const wallets = creditMap[cno];
+      if(!wallets||!wallets.length) return '—';
+      if(wallets.length===1) return fM(wallets[0].balance);
+      return wallets.map(w=>`${w.wallet_type[0]}:${fM(w.balance)}`).join(' ');
+    };
     $('main').innerHTML=`
     <div class="ph"><div><div class="pt">客戶資料</div><div class="ps">${count||0} 位</div></div>
       <div class="ha"><button class="btn btn-p btn-s" onclick="addCust()">＋ 新增客戶</button></div></div>
@@ -19,7 +32,7 @@ async function customers(){
         <input placeholder="姓名/電話/編號…（輸入後按 Enter 搜尋）" value="${cS}" onkeydown="if(event.key==='Enter'){cS=this.value;cP=1;customers();}"></div>
       </div>
       <div class="tw"><table style="width:100%">
-        <tr><th>編號</th><th>姓名</th><th>位階</th><th>手機</th><th>Email</th><th>送貨地址</th><th>儲值金</th><th>操作</th></tr>
+        <tr><th>編號</th><th>姓名</th><th>位階</th><th>手機</th><th>Email</th><th>送貨地址</th><th>儲值餘額</th><th>操作</th></tr>
         ${(data||[]).map(c=>`<tr>
           <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${c.customer_no}</td>
           <td style="font-weight:500">${c.name}</td>
@@ -27,7 +40,7 @@ async function customers(){
           <td>${c.phone||'—'}</td>
           <td style="font-size:12px">${c.email||'—'}</td>
           <td style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.ship_full_address||'—'}</td>
-          <td class="num">${c.store_credit?fM(c.store_credit):'—'}</td>
+          <td class="num" style="font-size:12px">${creditCell(c.customer_no)}</td>
           <td><div style="display:flex;gap:3px">
             <button class="btn btn-s" onclick="showCust('${c.customer_no}')">查看</button>
             <button class="btn btn-s" onclick="eCust('${c.customer_no}')">編輯</button>
@@ -44,10 +57,14 @@ async function customers(){
   }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
 }
 async function showCust(no){
-  const[{data:c},{data:os}]=await Promise.all([
+  const[{data:c},{data:os},{data:credits}]=await Promise.all([
     sb.from('customers').select('*').eq('customer_no',no).single(),
     sb.from('sales_orders').select('order_no,order_date,total,payment_done').eq('customer_no',no).order('order_date',{ascending:false}).limit(30),
+    sb.from('store_credits').select('wallet_type,balance').eq('customer_no',no),
   ]);
+  const creditDisplay = (credits&&credits.length)
+    ? credits.map(cr=>`<div>${cr.wallet_type}：<b style="color:${cr.balance>0?'var(--ac)':cr.balance<0?'var(--rd)':'var(--tx3)'}">${fM(cr.balance)}</b></div>`).join('')
+    : '<div style="color:var(--tx3)">尚未開過儲值帳戶</div>';
   OM(`客戶：${c?.name}`,`
   <div class="dg" style="margin-bottom:13px">
     <div class="dr"><span class="dlb">客戶編號</span><span class="dv">${c?.customer_no}</span></div>
@@ -57,7 +74,7 @@ async function showCust(no){
     <div class="dr"><span class="dlb">生日</span><span class="dv">${c?.birthday||'—'}</span></div>
     <div class="dr"><span class="dlb">13月亮印記</span><span class="dv">${c?.lunar_mark||'—'}</span></div>
     <div class="dr"><span class="dlb">愛閃耀會員編號</span><span class="dv" style="font-family:monospace">${c?.member_no||'—'}</span></div>
-    <div class="dr"><span class="dlb">儲值金</span><span class="dv ok" style="font-weight:600">${fM(c?.store_credit)}</span></div>
+    <div class="dr"><span class="dlb">儲值餘額</span><span class="dv ok" style="font-weight:600">${creditDisplay}</span></div>
     <div class="dr"><span class="dlb">付款方式</span><span class="dv">${c?.payment_method||'—'}</span></div>
     <div class="dr" style="grid-column:1/-1"><span class="dlb">送貨地址</span><span class="dv">${c?.ship_full_address||c?.ship_address||'—'}</span></div>
     <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${c?.note||'—'}</span></div>
@@ -122,7 +139,7 @@ async function saveCust(existingNo){
     const{error}=await sb.from('customers').update(obj).eq('customer_no',existingNo);
     if(error){toast('儲存失敗：'+error.message,'e');return;}
   } else {
-    const no=v('cno');obj.customer_no=no||null;obj.store_credit=0;
+    const no=v('cno');obj.customer_no=no||null;
     const{error}=await sb.from('customers').insert(obj);
     if(error){toast('新增失敗：'+error.message,'e');return;}
   }
