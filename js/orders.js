@@ -93,16 +93,29 @@ async function showOrder(no){
     <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${o?.note||'—'}</span></div>
   </div>
   <table class="itb"><tr><th>#</th><th>商品</th><th>單價</th><th>銷售數</th><th style="color:var(--am)">贈品數</th><th>訂購合計</th><th class="ok">已出貨</th><th>金額</th></tr>
-  ${(its||[]).map((i,idx)=>`<tr>
-    <td style="color:var(--tx3);font-size:12px">${idx+1}</td>
-    <td>${i.product_name||'—'}</td>
-    <td class="num">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString('zh-TW'):'贈品'}</td>
-    <td class="num">${fN(i.qty)}</td>
-    <td class="num" style="color:var(--am);font-weight:600">${i.gift_qty?fN(i.gift_qty):'—'}</td>
-    <td class="num" style="font-weight:600">${fN((i.qty||0)+(i.gift_qty||0))}</td>
-    <td class="num ok">${fN(i.shipped_qty||0)}</td>
-    <td class="num">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString('zh-TW'):'—'}</td>
-  </tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
+  ${(()=>{
+    let html='', prevBG='', idx=0;
+    (its||[]).forEach(i=>{
+      idx++;
+      if(i.bundle_group && i.bundle_group!==prevBG){
+        prevBG=i.bundle_group;
+        const bItems=(its||[]).filter(x=>x.bundle_group===i.bundle_group);
+        const bTotal=bItems.reduce((s,x)=>s+(x.amount||0),0);
+        html+=`<tr><td colspan="8" style="background:var(--bll);padding:6px 10px;font-weight:600;color:var(--bl);font-size:12px">📦 ${i.bundle_name||i.promo_code||'套組'}${bTotal?`（合計 ${fM(bTotal)}）`:''}</td></tr>`;
+      } else if(!i.bundle_group){ prevBG=''; }
+      html+=`<tr${i.bundle_group?' style="border-left:3px solid var(--bl)"':''}>
+        <td style="color:var(--tx3);font-size:12px">${idx}</td>
+        <td>${i.product_name||'—'}</td>
+        <td class="num">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString('zh-TW'):'贈品'}</td>
+        <td class="num">${fN(i.qty)}</td>
+        <td class="num" style="color:var(--am);font-weight:600">${i.gift_qty?fN(i.gift_qty):'—'}</td>
+        <td class="num" style="font-weight:600">${fN((i.qty||0)+(i.gift_qty||0))}</td>
+        <td class="num ok">${fN(i.shipped_qty||0)}</td>
+        <td class="num">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString('zh-TW'):'—'}</td>
+      </tr>`;
+    });
+    return html||'<tr><td colspan="8" style="text-align:center;color:var(--tx3)">無明細</td></tr>';
+  })()}
   </table>
   <div style="background:var(--sf2);border-radius:var(--r);padding:10px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:13px">
     <span>小計（稅前參考）</span><span class="num" style="text-align:right">${fM(o?.subtotal)}</span>
@@ -145,7 +158,18 @@ async function printOrder(no){
   <div class="row"><div><div class="lbl">寄送方式</div><div>${o?.shipping_method||'—'}</div></div><div><div class="lbl">付款方式</div><div>${o?.payment_method||'—'}</div></div></div>
   <table>
     <tr><th style="text-align:center;width:28px">#</th><th>商品名稱</th><th style="text-align:right">單價</th><th style="text-align:right">數量</th><th style="text-align:right">金額</th></tr>
-    ${(its||[]).map((i,idx)=>`<tr><td style="text-align:center;color:#888">${idx+1}</td><td>${i.product_name||'—'}${i.gift_qty&&i.gift_qty>0?` <span style="background:#fef9e7;color:#b8860b;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">含贈品×${i.gift_qty}</span>`:''}</td><td style="text-align:right">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString():''}</td><td style="text-align:right">${(i.qty||0)+(i.gift_qty||0)}${i.gift_qty&&i.gift_qty>0?`<span style="font-size:10px;color:#b8860b;display:block">（贈${i.gift_qty}）</span>`:''}</td><td style="text-align:right">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString():'贈品'}</td></tr>`).join('')}
+    ${(()=>{
+      let html='', prevBG='', idx=0;
+      (its||[]).forEach(i=>{
+        idx++;
+        if(i.bundle_group && i.bundle_group!==prevBG){
+          prevBG=i.bundle_group;
+          html+=`<tr><td colspan="5" style="background:#f0f4fa;padding:5px 8px;font-weight:700;font-size:12px;color:#3a5a8c">📦 ${i.bundle_name||i.promo_code||'套組'}</td></tr>`;
+        } else if(!i.bundle_group){ prevBG=''; }
+        html+=`<tr><td style="text-align:center;color:#888">${idx}</td><td>${i.product_name||'—'}${i.gift_qty&&i.gift_qty>0?` <span style="background:#fef9e7;color:#b8860b;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">含贈品×${i.gift_qty}</span>`:''}</td><td style="text-align:right">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString():''}</td><td style="text-align:right">${(i.qty||0)+(i.gift_qty||0)}${i.gift_qty&&i.gift_qty>0?`<span style="font-size:10px;color:#b8860b;display:block">（贈${i.gift_qty}）</span>`:''}</td><td style="text-align:right">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString():'贈品'}</td></tr>`;
+      });
+      return html;
+    })()}
     <tr><td colspan="3" style="text-align:right;font-size:11px;color:#888;border:none">共 ${(its||[]).length} 項</td><td style="border:none"></td><td style="border:none"></td></tr>
   </table>
   <div class="tot">
