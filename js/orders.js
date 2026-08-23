@@ -160,13 +160,20 @@ async function printOrder(no){
     <tr><th style="text-align:center;width:28px">#</th><th>商品名稱</th><th style="text-align:right">單價</th><th style="text-align:right">數量</th><th style="text-align:right">金額</th></tr>
     ${(()=>{
       let html='', prevBG='', idx=0;
-      (its||[]).forEach(i=>{
+      const list=its||[];
+      list.forEach((i,arrIdx)=>{
         idx++;
         if(i.bundle_group && i.bundle_group!==prevBG){
           prevBG=i.bundle_group;
-          html+=`<tr><td colspan="5" style="background:#f0f4fa;padding:5px 8px;font-weight:700;font-size:12px;color:#3a5a8c">📦 ${i.bundle_name||i.promo_code||'套組'}</td></tr>`;
+          html+=`<tr><td colspan="5" style="background:#dbe6f5;padding:5px 8px;font-weight:700;font-size:12px;color:#2c4a75">📦 ${i.bundle_name||i.promo_code||'套組'}</td></tr>`;
         } else if(!i.bundle_group){ prevBG=''; }
-        html+=`<tr><td style="text-align:center;color:#888">${idx}</td><td>${i.product_name||'—'}${i.gift_qty&&i.gift_qty>0?` <span style="background:#fef9e7;color:#b8860b;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">含贈品×${i.gift_qty}</span>`:''}</td><td style="text-align:right">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString():''}</td><td style="text-align:right">${(i.qty||0)+(i.gift_qty||0)}${i.gift_qty&&i.gift_qty>0?`<span style="font-size:10px;color:#b8860b;display:block">（贈${i.gift_qty}）</span>`:''}</td><td style="text-align:right">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString():'贈品'}</td></tr>`;
+        const rowBg = i.bundle_group ? 'background:#f0f4fa' : '';
+        html+=`<tr style="${rowBg}"><td style="text-align:center;color:#888">${idx}</td><td>${i.product_name||'—'}${i.gift_qty&&i.gift_qty>0?` <span style="background:#fef9e7;color:#b8860b;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">含贈品×${i.gift_qty}</span>`:''}</td><td style="text-align:right">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString():''}</td><td style="text-align:right">${(i.qty||0)+(i.gift_qty||0)}${i.gift_qty&&i.gift_qty>0?`<span style="font-size:10px;color:#b8860b;display:block">（贈${i.gift_qty}）</span>`:''}</td><td style="text-align:right">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString():'贈品'}</td></tr>`;
+        // 套組結束、下一項不是同套組（或是最後一項）時，補一條分隔線讓套組跟接下來的單獨商品明顯分開
+        const next = list[arrIdx+1];
+        if(i.bundle_group && (!next || next.bundle_group!==i.bundle_group)){
+          html+=`<tr><td colspan="5" style="border-bottom:2px solid #c3d3ea;padding:0"></td></tr>`;
+        }
       });
       return html;
     })()}
