@@ -38,7 +38,7 @@ async function customers(){
       <div class="pg"><span class="pi">第${cP}/${tp}頁</span>
         <div style="display:flex;gap:5px">
           ${cP>1?`<button class="btn btn-s" onclick="cP--;customers()">上一頁</button>`:''}
-          ${cP<tp?`<button class="btn btn-s" onclick="cP++;customers()">下一頁</button>`:''}
+          ${cP<tp?`<button class="btn btn-s" onclick="cP++;customers()">下一頁</button>`:''}${pageJump('cP',tp,'customers')}
         </div></div>
     </div></div>`;
   }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
@@ -92,6 +92,10 @@ function custForm(c){
     ${fi('cbday','生日','text',c.birthday)} ${fi('clmk','13月亮印記','text',c.lunar_mark)}
     ${payMethodSel('cpay',c.payment_method||'')}
     ${shipMethodSel('cshp',c.shipping_method||'')}
+    <div class="fl"><label>儲值錢包模式</label><select id="f-cwallet">
+      <option value="shared" ${(c.wallet_mode||'shared')==='shared'?'selected':''}>共用一個（服務+產品同一筆餘額）</option>
+      <option value="separate" ${c.wallet_mode==='separate'?'selected':''}>服務、產品分開算</option>
+    </select></div>
     <div class="fl fw">${fi('caddr','送貨地址','text',c.ship_full_address||c.ship_address)}</div>
     <div class="fl fw">${fa('cnote','備註',c.note)}</div>
   </div>`;
@@ -113,7 +117,7 @@ async function eCust(no){
 }
 async function saveCust(existingNo){
   const nm=v('cname');if(!nm){toast('請填寫姓名','e');return;}
-  const obj={name:nm,agent_level:v('clv'),member_no:v('cmno')||null,phone:v('cph'),email:v('ceml'),birthday:v('cbday')||null,lunar_mark:v('clmk')||null,payment_method:v('cpay'),shipping_method:v('cshp')||null,ship_address:v('caddr'),ship_full_address:v('caddr'),note:v('cnote')||null};
+  const obj={name:nm,agent_level:v('clv'),member_no:v('cmno')||null,phone:v('cph'),email:v('ceml'),birthday:v('cbday')||null,lunar_mark:v('clmk')||null,payment_method:v('cpay'),shipping_method:v('cshp')||null,wallet_mode:v('cwallet')||'shared',ship_address:v('caddr'),ship_full_address:v('caddr'),note:v('cnote')||null};
   if(existingNo){
     const{error}=await sb.from('customers').update(obj).eq('customer_no',existingNo);
     if(error){toast('儲存失敗：'+error.message,'e');return;}

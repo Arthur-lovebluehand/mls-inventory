@@ -34,12 +34,14 @@ async function svcCredits() {
 window.svcCredits      = svcCredits;
 async function svcAddCredit(custNo, custName, walletType) {
   const [{ data:custs },{ data:allProds }] = await Promise.all([
-    sb.from('customers').select('customer_no,name,phone').order('name'),
+    sb.from('customers').select('customer_no,name,phone,wallet_mode').order('name'),
     sb.from('products').select('product_no,name,spec,stock').eq('is_active',true).order('name'),
   ]);
   window._crCusts = custs||[];
   window._crAllProds = allProds||[];
   window._crGifts = [];
+  const initialCust = custNo ? window._crCusts.find(c=>c.customer_no===custNo) : null;
+  const initialShared = !initialCust || initialCust.wallet_mode!=='separate';
 
   OM('新增儲值',`
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">
@@ -56,7 +58,8 @@ async function svcAddCredit(custNo, custName, walletType) {
       </div>
     </div>
     <div class="fl"><label>帳戶類型</label>
-      <select id="f-cr-wallet">${WALLET_TYPES.map(w=>`<option ${w===(walletType||'服務')?'selected':''}>${w}</option>`).join('')}</select>
+      <select id="f-cr-wallet" ${initialShared?'disabled':''}>${WALLET_TYPES.map(w=>`<option ${w===(walletType||'服務')?'selected':''}>${w}</option>`).join('')}</select>
+      <div id="cr-wallet-hint" style="font-size:11px;color:var(--tx3);margin-top:3px">${initialShared?'這位客戶用的是共用錢包，固定存進「服務」帳戶':''}</div>
     </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
@@ -97,6 +100,11 @@ async function svcAddCredit(custNo, custName, walletType) {
     $('ss-inp-crcust').value = name;
     $('ss-val-crcust').value = cno;
     $('ss-drop-crcust')?.classList.remove('open');
+    const c = window._crCusts.find(x=>x.customer_no===cno);
+    const isShared = !c || c.wallet_mode!=='separate';
+    const sel = $('f-cr-wallet'), hint = $('cr-wallet-hint');
+    if(sel) { sel.disabled = isShared; if(isShared) sel.value = '服務'; }
+    if(hint) hint.textContent = isShared ? '這位客戶用的是共用錢包，固定存進「服務」帳戶' : '';
   };
   window.crFilterGiftProd = q=>{
     const fil = (q ? window._crAllProds.filter(p=>p.name.includes(q)) : window._crAllProds);

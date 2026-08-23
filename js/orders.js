@@ -159,7 +159,7 @@ window.onOrderTypeChange = onOrderTypeChange;
 async function addOrder(){
   const[{data:pr},{data:cu}]=await Promise.all([
     sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('name'),
-    sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address').order('name'),
+    sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address,wallet_mode').order('name'),
   ]);
   _allProds=pr||[]; _allCusts=cu||[];
   _items=[{id:1,pno:'',qty:1,price:0,giftQty:0,amt:0}];
@@ -222,6 +222,17 @@ async function addOrder(){
     if(c.agent_level) $('f-oalv').value=c.agent_level;
     $('ss-drop-cust')?.classList.remove('open');
     updateItemPricesByLevel(c.agent_level||'零售');
+    // 顯示這位客戶的儲值餘額（依她的錢包模式抓對應帳戶），方便建單當下直接看，不用另外跑去儲值記錄查
+    const walletType = c.wallet_mode==='separate' ? '產品' : '服務';
+    sb.from('store_credits').select('balance').eq('customer_no',cno).eq('wallet_type',walletType).maybeSingle()
+      .then(({data})=>{
+        const bal = data?.balance||0;
+        let hint = document.getElementById('o-credit-hint');
+        if(!hint){ hint=document.createElement('div'); hint.id='o-credit-hint';
+          $('ss-inp-cust').parentNode.parentNode.appendChild(hint); }
+        const label = c.wallet_mode==='separate' ? '產品儲值餘額' : '儲值餘額';
+        hint.innerHTML=`<div style="font-size:11px;color:${bal>0?'var(--ac)':'var(--tx3)'};margin-top:4px">${label}：${fM(bal)}</div>`;
+      });
   };
   renderItems();
 }
@@ -368,7 +379,7 @@ async function editOrder(no){
     sb.from('sales_orders').select('*').eq('order_no',no).single(),
     sb.from('sales_order_items').select('*').eq('order_no',no),
     sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('name'),
-    sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address').order('name'),
+    sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address,wallet_mode').order('name'),
   ]);
   _allProds=pr||[]; _allCusts=cu||[];
   _items=(its||[]).map((i,idx)=>({id:idx+1,pno:i.product_no,_pname:i.product_name||'',qty:i.qty||0,price:i.unit_price||0,giftQty:i.gift_qty||0,amt:i.amount||0}));
@@ -413,15 +424,21 @@ async function resolveCustNoByName(name) {
 // 統一處理：確保「已收款 + 儲值扣款」跟「儲值記錄」永遠一致。
 // 不管是標記收款、取消收款、還是單純編輯改了付款方式，存檔後都呼叫這個來對齊。
 async function syncOrderCreditDeduction(no) {
-  const WALLET = '產品'; // 銷售訂單（買產品）一律扣「產品」帳戶，不動服務帳戶
   const { data:o } = await sb.from('sales_orders').select('payment_method,payment_done,customer_no,customer_name,total,payment_date,order_date').eq('order_no',no).single();
   if(!o) return;
+  const custNoEarly = o.customer_no || await resolveCustNoByName(o.customer_name);
+  let walletMode = 'shared';
+  if(custNoEarly) {
+    const { data:custRow } = await sb.from('customers').select('wallet_mode').eq('customer_no',custNoEarly).maybeSingle();
+    walletMode = custRow?.wallet_mode || 'shared';
+  }
+  const WALLET = walletMode==='separate' ? '產品' : '服務'; // 共用錢包的客戶，銷售訂單也是扣她唯一的那個「服務」帳戶
   const { data:existing } = await sb.from('store_credit_records').select('id').eq('order_no',no).maybeSingle();
   const shouldDeduct = o.payment_done && (o.payment_method||'').includes('儲值');
 
   if(shouldDeduct && !existing) {
     // 應該扣但還沒扣：補扣
-    const custNo = o.customer_no || await resolveCustNoByName(o.customer_name);
+    const custNo = custNoEarly;
     if(!custNo) { toast('⚠️ 這位客戶在客戶清單裡找不到對應資料，儲值金無法自動扣款，請手動處理','e'); return; }
     const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',WALLET).maybeSingle();
     const newBal = (cr?.balance||0)-(o.total||0);
@@ -434,7 +451,7 @@ async function syncOrderCreditDeduction(no) {
     if(custNo) await window.recomputeCreditChain?.(custNo, WALLET);
   } else if(!shouldDeduct && existing) {
     // 不該扣了（取消收款，或改成別的付款方式）但之前扣過：還原
-    const custNo = o.customer_no || await resolveCustNoByName(o.customer_name);
+    const custNo = custNoEarly;
     if(custNo) {
       const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',WALLET).maybeSingle();
       if(cr) await sb.from('store_credits').update({balance:(cr.balance||0)+(o.total||0),updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',WALLET);
