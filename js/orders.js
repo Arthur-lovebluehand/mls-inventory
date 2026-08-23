@@ -62,6 +62,21 @@ async function showOrder(no){
     sb.from('sales_orders').select('*').eq('order_no',no).single(),
     sb.from('sales_order_items').select('*').eq('order_no',no),
   ]);
+  let curBalance = null, txBalance = null, walletLabel = '儲值';
+  if(o?.payment_method?.includes('儲值')) {
+    const custNo = o.customer_no || await resolveCustNoByName(o.customer_name);
+    if(custNo) {
+      const { data:custRow } = await sb.from('customers').select('wallet_mode').eq('customer_no',custNo).maybeSingle();
+      const walletType = custRow?.wallet_mode==='separate' ? '產品' : '服務';
+      walletLabel = custRow?.wallet_mode==='separate' ? '產品儲值' : '儲值';
+      const [{ data:cr },{ data:txRec }] = await Promise.all([
+        sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle(),
+        sb.from('store_credit_records').select('balance_after').eq('order_no',no).eq('type','deduct').maybeSingle(),
+      ]);
+      curBalance = cr?.balance ?? 0;
+      txBalance = txRec?.balance_after ?? null;
+    }
+  }
   OM(`訂單：${no}`,`
   <div class="dg" style="margin-bottom:13px">
     <div class="dr"><span class="dlb">日期</span><span class="dv">${fD(o?.order_date)}</span></div>
@@ -73,6 +88,8 @@ async function showOrder(no){
     <div class="dr"><span class="dlb">收款</span><span class="dv"><span class="badge ${o?.payment_done?'bg':'br2'}">${o?.payment_done?'已收款':'未收款'}</span></span></div>
     <div class="dr"><span class="dlb">促銷</span><span class="dv">${o?.promo_name||'—'}</span></div>
     <div class="dr"><span class="dlb">發票號碼</span><span class="dv" style="font-family:monospace">${o?.invoice_no||'—'}</span></div>
+    ${txBalance!=null?`<div class="dr" style="grid-column:1/-1"><span class="dlb">${walletLabel}扣款後餘額</span><span class="dv" style="font-weight:700;color:${txBalance>0?'var(--ac)':'var(--rd)'}">${fM(txBalance)}</span></div>`:''}
+    ${curBalance!=null?`<div class="dr" style="grid-column:1/-1"><span class="dlb">目前（現在）${walletLabel}餘額</span><span class="dv" style="color:var(--tx3)">${fM(curBalance)}</span></div>`:''}
     <div class="dr" style="grid-column:1/-1"><span class="dlb">送貨地址</span><span class="dv">${o?.ship_address||'—'}</span></div>
     <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${o?.note||'—'}</span></div>
   </div>
