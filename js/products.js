@@ -210,6 +210,7 @@ async function loadCatList(){
   // 補上預設類別
   const defaults=['保養品','保健食品','洗面乳','髮品','精油','外泌體','化妝品','輔消品','輔助設備','贈品','其他'];
   const all=[...new Set([...defaults,...cats])];
+  window._cats = all;
   // 等 DOM 有 datalist 才填
   setTimeout(()=>{
     const dl=document.getElementById('catDL')||document.getElementById('cat-list');

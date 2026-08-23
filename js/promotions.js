@@ -2,26 +2,56 @@
 // promotions.js
 // ═══════════════════════════════════════
 
+var _promoTab = 'all';
+var _promoPage = 1;
 async function promotions() {
-  const { data, count } = await sb.from('promotions').select('*', { count: 'exact' }).order('is_active', { ascending: false }).order('end_date', { ascending: true });
   const today_s = today();
-  const fmt_date = d => d ? d : '—';
   const typeColor = { '固定套組': 'bb', '買幾送幾': 'bg', '折扣金額': 'ba', '百分比折扣': 'bbr' };
+  const fmt_date = d => d ? d : '—';
+
+  // 先把全部抓回來，在前端依頁籤篩選（活動/套組通常數量不多，這樣篩選跟排序邏輯比較單純）
+  const { data: allData } = await sb.from('promotions').select('*');
+  const withStatus = (allData||[]).map(p=>({...p, _expired: p.end_date && p.end_date < today_s}));
+
+  let filtered;
+  if(_promoTab==='active') filtered = withStatus.filter(p=>!p._expired);
+  else if(_promoTab==='expired') filtered = withStatus.filter(p=>p._expired);
+  else filtered = withStatus;
+
+  // 全部頁籤：未過期排前面，已過期排後面；同組內依名稱排序
+  filtered = filtered.slice().sort((a,b)=>{
+    if(_promoTab==='all' && a._expired!==b._expired) return a._expired?1:-1;
+    return (a.end_date||'9999').localeCompare(b.end_date||'9999');
+  });
+
+  const count = filtered.length;
+  const tp = Math.max(1, Math.ceil(count/20));
+  if(_promoPage>tp) _promoPage=tp;
+  const pageData = filtered.slice((_promoPage-1)*20, _promoPage*20);
+
+  const allCount = withStatus.length;
+  const activeCount = withStatus.filter(p=>!p._expired).length;
+  const expiredCount = withStatus.filter(p=>p._expired).length;
 
   $('main').innerHTML = `
-  <div class="ph"><div><div class="pt">活動/套組管理</div><div class="ps">${count || 0} 個</div></div>
+  <div class="ph"><div><div class="pt">活動/套組管理</div><div class="ps">${allCount} 個</div></div>
     <div class="ha"><button class="btn btn-p btn-s" onclick="addPromo()">＋ 新增活動/套組</button></div></div>
   <div class="pc">
     <div class="al al-w" style="font-size:12px">
       <b>設計說明：</b>建立套組後，在新增訂單/進貨/借貨時點「加入套組」，系統自動展開所有商品品項（含贈品），不需逐一手動輸入。
-      套組有時效性，過期後無法選用。
+      套組過期後仍然可以選用（畫面上會特別標示提醒），過期超過3個月才會從選單中消失。
+    </div>
+    <div class="tab-bar" style="margin-bottom:12px">
+      <div class="tab${_promoTab==='all'?' on':''}" onclick="_promoTab='all';_promoPage=1;promotions()">全部（${allCount}）</div>
+      <div class="tab${_promoTab==='active'?' on':''}" onclick="_promoTab='active';_promoPage=1;promotions()">進行中（${activeCount}）</div>
+      <div class="tab${_promoTab==='expired'?' on':''}" onclick="_promoTab='expired';_promoPage=1;promotions()">已過期（${expiredCount}）</div>
     </div>
     <div class="tc">
       <div class="tb"><span class="tt">活動/套組列表</span></div>
       <div class="tw"><table style="width:100%">
         <tr><th>代碼</th><th>名稱</th><th>類型</th><th>有效期間</th><th>套組內容</th><th>狀態</th><th>操作</th></tr>
-        ${(data || []).map(p => {
-          const expired = p.end_date && p.end_date < today_s;
+        ${pageData.map(p => {
+          const expired = p._expired;
           const active = p.is_active && !expired;
           return `<tr>
             <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${p.promo_code}</td>
@@ -38,8 +68,12 @@ async function promotions() {
               </button>
             </div></td>
           </tr>`;
-        }).join('')}
+        }).join('')||`<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3)">尚無資料</td></tr>`}
       </table></div>
+      <div class="pg"><span class="pi">第 ${_promoPage}/${tp} 頁，共 ${count} 筆</span>
+        ${_promoPage>1?`<button class="btn btn-s" onclick="_promoPage--;promotions()">上一頁</button>`:''}
+        ${_promoPage<tp?`<button class="btn btn-s" onclick="_promoPage++;promotions()">下一頁</button>`:''}${pageJump('_promoPage',tp,'promotions')}
+      </div>
     </div>
   </div>`;
 }
@@ -417,9 +451,6 @@ async function applyPromo(code, mode, sets) {
     sb.from('promotion_items').select('*').eq('promo_code', code).order('is_gift'),
   ]);
   if (!its || !its.length) { toast('此套組尚無商品設定', 'w'); return; }
-
-  const today_s = today();
-  if (p.end_date && p.end_date < today_s) { toast('此套組已過有效期！', 'e'); return; }
 
   const bundleGroup = 'BG-' + Date.now();
 
