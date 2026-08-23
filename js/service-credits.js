@@ -30,14 +30,14 @@ async function svcCredits() {
       </table></div>
     </div>`;
 
-  $('svc-content').innerHTML = `
-  <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
-    <button class="btn btn-p btn-s" onclick="svcAddCredit()">＋ 新增儲值</button>
-  </div>
+  $('main').innerHTML = `
+  <div class="ph"><div><div class="pt">客戶儲值</div></div>
+    <div class="ha"><button class="btn btn-p btn-s" onclick="svcAddCredit()">＋ 新增儲值</button></div></div>
+  <div class="pc">
   ${section('共用帳戶','服務、產品共用同一筆餘額，這是大部分客戶預設的模式。', groups['共用'])}
   ${section('服務帳戶','只有設定成「分開算」的客戶才會有這個帳戶，只能用在服務單消費。', groups['服務'])}
   ${section('產品帳戶','只有設定成「分開算」的客戶才會有這個帳戶，只能用在銷售訂單消費。', groups['產品'])}
-  `;
+  </div>`;
 }
 
 window.svcCredits      = svcCredits;

@@ -14,7 +14,6 @@ function serviceHub() {
     { id:'kits',      label:'耗材套組' },
     { id:'consumables', label:'服務耗材' },
     { id:'transfer',  label:'撥轉記錄' },
-    { id:'credits',   label:'儲值管理' },
     { id:'items',     label:'服務項目' },
     { id:'technicians', label:'技師管理' },
   ];
@@ -34,7 +33,6 @@ function serviceHub() {
   if(svcTab==='inventory')   window.svcInventory?.();
   if(svcTab==='consumables') window.svcConsumables?.();
   if(svcTab==='transfer')    window.svcTransfers?.();
-  if(svcTab==='credits')     window.svcCredits?.();
   if(svcTab==='items')       window.svcItems?.();
   if(svcTab==='technicians') window.svcTechnicians?.();
 }

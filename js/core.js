@@ -59,6 +59,7 @@ function _getPages(){
     serviceHub:()=>window.serviceHub?.(),
     dataImport:()=>window.dataImport?.(),
     customerDeposits:()=>window.customerDeposits?.(),
+    svcCredits:()=>window.svcCredits?.(),
     opex:()=>window.opex?.()
   };
 }
