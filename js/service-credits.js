@@ -4,31 +4,40 @@
 // ══════════════════════════════
 
 const WALLET_TYPES = ['服務','產品'];
+const SHARED_WALLET = '共用';
 
 async function svcCredits() {
   const { data } = await sb.from('store_credits')
-    .select('*').order('customer_name').order('wallet_type');
+    .select('*').order('customer_name');
+
+  const groups = { '共用':[], '服務':[], '產品':[] };
+  (data||[]).forEach(c=>{ (groups[c.wallet_type]=groups[c.wallet_type]||[]).push(c); });
+
+  const section = (title, hint, list, badgeClass) => `
+    <div class="tc" style="margin-bottom:16px">
+      <div class="tb"><span class="tt">${title}</span><span class="badge bgr" style="font-size:11px;margin-left:8px">${list.length} 位</span></div>
+      <div class="al al-w" style="font-size:12px;margin:0 16px 10px">${hint}</div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>客戶</th><th>目前餘額</th><th>操作</th></tr>
+        ${list.map(c=>`<tr>
+          <td style="font-weight:500">${c.customer_name||c.customer_no}</td>
+          <td class="num" style="font-weight:700;color:${c.balance>0?'var(--ac)':c.balance<0?'var(--rd)':'var(--tx3)'}">${fM(c.balance)}</td>
+          <td>
+            <button class="btn btn-s" onclick="svcCreditHistory('${c.customer_no}','${c.wallet_type}')">記錄</button>
+            <button class="btn btn-s" onclick="svcAddCredit('${c.customer_no}','${(c.customer_name||'').replace(/'/g,"\\'")}','${c.wallet_type}')">儲值</button>
+          </td>
+        </tr>`).join('')||`<tr><td colspan="3" style="text-align:center;padding:16px;color:var(--tx3)">尚無記錄</td></tr>`}
+      </table></div>
+    </div>`;
 
   $('svc-content').innerHTML = `
   <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
     <button class="btn btn-p btn-s" onclick="svcAddCredit()">＋ 新增儲值</button>
   </div>
-  <div class="al al-w" style="font-size:12px;margin-bottom:12px">服務儲值跟產品儲值是分開的兩個帳戶，各自獨立算餘額，不會互相扣用。</div>
-  <div class="tc"><div class="tb"><span class="tt">儲值帳戶</span></div>
-  <div class="tw"><table style="width:100%">
-    <tr><th>客戶</th><th>帳戶類型</th><th>目前餘額</th><th>操作</th></tr>
-    ${(data||[]).map(c=>`<tr>
-      <td style="font-weight:500">${c.customer_name||c.customer_no}</td>
-      <td><span class="badge ${c.wallet_type==='產品'?'bb':'bg'}">${c.wallet_type}</span></td>
-      <td class="num" style="font-weight:700;color:${c.balance>0?'var(--ac)':c.balance<0?'var(--rd)':'var(--tx3)'}">
-        ${fM(c.balance)}
-      </td>
-      <td>
-        <button class="btn btn-s" onclick="svcCreditHistory('${c.customer_no}','${c.wallet_type}')">記錄</button>
-        <button class="btn btn-s" onclick="svcAddCredit('${c.customer_no}','${(c.customer_name||'').replace(/'/g,"\\'")}','${c.wallet_type}')">儲值</button>
-      </td>
-    </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無儲值帳戶</td></tr>'}
-  </table></div></div>`;
+  ${section('共用帳戶','服務、產品共用同一筆餘額，這是大部分客戶預設的模式。', groups['共用'])}
+  ${section('服務帳戶','只有設定成「分開算」的客戶才會有這個帳戶，只能用在服務單消費。', groups['服務'])}
+  ${section('產品帳戶','只有設定成「分開算」的客戶才會有這個帳戶，只能用在銷售訂單消費。', groups['產品'])}
+  `;
 }
 
 window.svcCredits      = svcCredits;
@@ -41,11 +50,15 @@ async function svcAddCredit(custNo, custName, walletType) {
   window._crAllProds = allProds||[];
   window._crGifts = [];
   const initialCust = custNo ? window._crCusts.find(c=>c.customer_no===custNo) : null;
-  const initialShared = !!initialCust && initialCust.wallet_mode!=='separate';
+  const knownShared = !!initialCust && initialCust.wallet_mode!=='separate';
+  const knownSeparate = !!initialCust && initialCust.wallet_mode==='separate';
+  const initialOptions = knownShared ? [SHARED_WALLET] : knownSeparate ? WALLET_TYPES : [SHARED_WALLET, ...WALLET_TYPES];
+  const initialSelected = walletType || (knownShared ? SHARED_WALLET : '服務');
+  const initialDisabled = knownShared; // 只有確定是共用模式客戶才鎖定（只有一個選項可選，不用讓你挑）
 
   OM('新增儲值',`
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">
-    儲值金額和贈送金額會合計加入餘額，記錄中可區分來源。服務帳戶跟產品帳戶是分開的，選錯帳戶會扣錯錢，請注意確認。
+    儲值金額和贈送金額會合計加入餘額，記錄中可區分來源。大部分客戶是「共用」一個帳戶；只有客戶資料裡特別設定成「分開算」的，才會有獨立的服務/產品帳戶可以選。
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     <div class="fl"><label>客戶</label>
@@ -58,8 +71,8 @@ async function svcAddCredit(custNo, custName, walletType) {
       </div>
     </div>
     <div class="fl"><label>帳戶類型</label>
-      <select id="f-cr-wallet" ${initialShared?'disabled':''}>${WALLET_TYPES.map(w=>`<option ${w===(walletType||'服務')?'selected':''}>${w}</option>`).join('')}</select>
-      <div id="cr-wallet-hint" style="font-size:11px;color:var(--tx3);margin-top:3px">${initialShared?'這位客戶用的是共用錢包，固定存進「服務」帳戶':''}</div>
+      <select id="f-cr-wallet" ${initialDisabled?'disabled':''}>${initialOptions.map(w=>`<option ${w===initialSelected?'selected':''}>${w}</option>`).join('')}</select>
+      <div id="cr-wallet-hint" style="font-size:11px;color:var(--tx3);margin-top:3px">${initialDisabled?'這位客戶用的是共用帳戶':''}</div>
     </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
@@ -103,8 +116,12 @@ async function svcAddCredit(custNo, custName, walletType) {
     const c = window._crCusts.find(x=>x.customer_no===cno);
     const isShared = !c || c.wallet_mode!=='separate';
     const sel = $('f-cr-wallet'), hint = $('cr-wallet-hint');
-    if(sel) { sel.disabled = isShared; if(isShared) sel.value = '服務'; }
-    if(hint) hint.textContent = isShared ? '這位客戶用的是共用錢包，固定存進「服務」帳戶' : '';
+    if(sel) {
+      const opts = isShared ? [SHARED_WALLET] : WALLET_TYPES;
+      sel.innerHTML = opts.map(w=>`<option>${w}</option>`).join('');
+      sel.disabled = isShared;
+    }
+    if(hint) hint.textContent = isShared ? '這位客戶用的是共用帳戶' : '';
   };
   window.crFilterGiftProd = q=>{
     const fil = (q ? window._crAllProds.filter(p=>p.name.includes(q)) : window._crAllProds);
@@ -146,7 +163,7 @@ window.crRmGift = crRmGift;
 async function saveCredit() {
   const custNo = $('ss-val-crcust')?.value;
   const custName = $('ss-inp-crcust')?.value;
-  const walletType = v('cr-wallet')||'服務';
+  const walletType = v('cr-wallet')||'共用';
   const date = v('cr-date');
   const amount = parseFloat(v('cr-amount'))||0;
   const bonus = parseFloat(v('cr-bonus'))||0;

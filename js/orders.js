@@ -62,17 +62,16 @@ async function showOrder(no){
     sb.from('sales_orders').select('*').eq('order_no',no).single(),
     sb.from('sales_order_items').select('*').eq('order_no',no),
   ]);
-  let curBalance = null, txBalance = null, walletLabel = '儲值';
+  let curBalance = null, txBalance = null, walletLabel = '';
   if(o?.payment_method?.includes('儲值')) {
     const custNo = o.customer_no || await resolveCustNoByName(o.customer_name);
     if(custNo) {
-      const { data:custRow } = await sb.from('customers').select('wallet_mode').eq('customer_no',custNo).maybeSingle();
-      const walletType = custRow?.wallet_mode==='separate' ? '產品' : '服務';
-      walletLabel = custRow?.wallet_mode==='separate' ? '產品儲值' : '儲值';
-      const [{ data:cr },{ data:txRec }] = await Promise.all([
-        sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle(),
-        sb.from('store_credit_records').select('balance_after').eq('order_no',no).eq('type','deduct').maybeSingle(),
-      ]);
+      // 先查這筆訂單實際扣款記錄本身標的是哪個帳戶，兩個數字都用「同一個」帳戶去抓，
+      // 避免客戶後來改了錢包模式、或帳戶判斷邏輯前後版本不一致，導致兩個數字來自不同帳戶而看起來對不上
+      const { data:txRec } = await sb.from('store_credit_records').select('balance_after,wallet_type').eq('order_no',no).eq('type','deduct').maybeSingle();
+      const walletType = txRec?.wallet_type || '共用';
+      walletLabel = walletType;
+      const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle();
       curBalance = cr?.balance ?? 0;
       txBalance = txRec?.balance_after ?? null;
     }
@@ -88,8 +87,8 @@ async function showOrder(no){
     <div class="dr"><span class="dlb">收款</span><span class="dv"><span class="badge ${o?.payment_done?'bg':'br2'}">${o?.payment_done?'已收款':'未收款'}</span></span></div>
     <div class="dr"><span class="dlb">促銷</span><span class="dv">${o?.promo_name||'—'}</span></div>
     <div class="dr"><span class="dlb">發票號碼</span><span class="dv" style="font-family:monospace">${o?.invoice_no||'—'}</span></div>
-    ${txBalance!=null?`<div class="dr" style="grid-column:1/-1"><span class="dlb">${walletLabel}扣款後餘額</span><span class="dv" style="font-weight:700;color:${txBalance>0?'var(--ac)':'var(--rd)'}">${fM(txBalance)}</span></div>`:''}
-    ${curBalance!=null?`<div class="dr" style="grid-column:1/-1"><span class="dlb">目前（現在）${walletLabel}餘額</span><span class="dv" style="color:var(--tx3)">${fM(curBalance)}</span></div>`:''}
+    ${txBalance!=null?`<div class="dr" style="grid-column:1/-1"><span class="dlb">扣款帳戶（${walletLabel}）本筆後餘額</span><span class="dv" style="font-weight:700;color:${txBalance>0?'var(--ac)':'var(--rd)'}">${fM(txBalance)}</span></div>`:''}
+    ${curBalance!=null?`<div class="dr" style="grid-column:1/-1"><span class="dlb">${walletLabel}帳戶目前（現在）餘額</span><span class="dv" style="color:var(--tx3)">${fM(curBalance)}</span></div>`:''}
     <div class="dr" style="grid-column:1/-1"><span class="dlb">送貨地址</span><span class="dv">${o?.ship_address||'—'}</span></div>
     <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${o?.note||'—'}</span></div>
   </div>
@@ -240,14 +239,14 @@ async function addOrder(){
     $('ss-drop-cust')?.classList.remove('open');
     updateItemPricesByLevel(c.agent_level||'零售');
     // 顯示這位客戶的儲值餘額（依她的錢包模式抓對應帳戶），方便建單當下直接看，不用另外跑去儲值記錄查
-    const walletType = c.wallet_mode==='separate' ? '產品' : '服務';
+    const walletType = c.wallet_mode==='separate' ? '產品' : '共用';
     sb.from('store_credits').select('balance').eq('customer_no',cno).eq('wallet_type',walletType).maybeSingle()
       .then(({data})=>{
         const bal = data?.balance||0;
         let hint = document.getElementById('o-credit-hint');
         if(!hint){ hint=document.createElement('div'); hint.id='o-credit-hint';
           $('ss-inp-cust').parentNode.parentNode.appendChild(hint); }
-        const label = c.wallet_mode==='separate' ? '產品儲值餘額' : '儲值餘額';
+        const label = c.wallet_mode==='separate' ? '產品儲值餘額' : '共用儲值餘額';
         hint.innerHTML=`<div style="font-size:11px;color:${bal>0?'var(--ac)':'var(--tx3)'};margin-top:4px">${label}：${fM(bal)}</div>`;
       });
   };
@@ -449,8 +448,8 @@ async function syncOrderCreditDeduction(no) {
     const { data:custRow } = await sb.from('customers').select('wallet_mode').eq('customer_no',custNoEarly).maybeSingle();
     walletMode = custRow?.wallet_mode || 'shared';
   }
-  const WALLET = walletMode==='separate' ? '產品' : '服務'; // 共用錢包的客戶，銷售訂單也是扣她唯一的那個「服務」帳戶
-  const { data:existing } = await sb.from('store_credit_records').select('id').eq('order_no',no).maybeSingle();
+  const WALLET = walletMode==='separate' ? '產品' : '共用'; // 共用模式的客戶，銷售訂單扣她唯一的「共用」帳戶
+  const { data:existing } = await sb.from('store_credit_records').select('id,wallet_type').eq('order_no',no).maybeSingle();
   const shouldDeduct = o.payment_done && (o.payment_method||'').includes('儲值');
 
   if(shouldDeduct && !existing) {
@@ -467,13 +466,14 @@ async function syncOrderCreditDeduction(no) {
     });
     if(custNo) await window.recomputeCreditChain?.(custNo, WALLET);
   } else if(!shouldDeduct && existing) {
-    // 不該扣了（取消收款，或改成別的付款方式）但之前扣過：還原
+    // 不該扣了（取消收款，或改成別的付款方式）但之前扣過：用「這筆記錄實際標的帳戶」還原，不用重新判斷客戶模式（避免客戶模式事後被改，導致還原到錯的帳戶）
     const custNo = custNoEarly;
+    const refundWallet = existing.wallet_type || WALLET;
     if(custNo) {
-      const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',WALLET).maybeSingle();
-      if(cr) await sb.from('store_credits').update({balance:(cr.balance||0)+(o.total||0),updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',WALLET);
+      const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',refundWallet).maybeSingle();
+      if(cr) await sb.from('store_credits').update({balance:(cr.balance||0)+(o.total||0),updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',refundWallet);
       await sb.from('store_credit_records').delete().eq('order_no',no);
-      await window.recomputeCreditChain?.(custNo, WALLET);
+      await window.recomputeCreditChain?.(custNo, refundWallet);
     }
   }
   // 兩種都不成立（該扣的已經扣了、不該扣的也沒扣）就什麼都不用做
