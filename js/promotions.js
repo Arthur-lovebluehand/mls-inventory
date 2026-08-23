@@ -150,34 +150,41 @@ async function togglePromo(code, active) {
   await sb.from('promotions').update({ is_active: !active }).eq('promo_code', code);
   toast(!active ? '已啟用' : '已停用'); promotions();
 }
+var _bundlePickerTab = 'active';
 async function openBundlePicker(mode) {
   // mode: 'order' | 'po' | 'loan'
   const today_s = today();
-  // 不再把過期套組排除掉——小店不一定天天建單，套組過期後還是常常需要照當初的內容補單，
-  // 過期的套組改成用標示提醒，仍然可以直接選用，不用因為過期就整個手動重建品項/贈品
+  const cutoff_s = new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10); // 3個月前
+
+  // 過期超過3個月的套組，直接不查出來——通常不會有人拖3個月才照舊套組補單，清單才不會無限變長
   const { data: promos } = await sb.from('promotions').select('*')
     .eq('is_active', true)
+    .or(`end_date.is.null,end_date.gte.${cutoff_s}`)
     .order('name');
-  const sorted = (promos||[]).slice().sort((a,b)=>{
-    const aExp = a.end_date && a.end_date < today_s;
-    const bExp = b.end_date && b.end_date < today_s;
-    if(aExp!==bExp) return aExp?1:-1; // 未過期排前面
-    return (a.name||'').localeCompare(b.name||'');
-  });
-  OM2('選用套組/活動', `
-  <div class="al al-w" style="font-size:12px">選擇套組後，子項目數量會依「組數」自動計算（買2組送的也自動×2）。已過期的套組一樣可以選用，只是特別標示提醒你留意。</div>
-  ${sorted.length === 0 ? '<div style="color:var(--tx3);padding:20px;text-align:center">目前無套組</div>' :
-    sorted.map(p => {
-      const expired = p.end_date && p.end_date < today_s;
-      return `
-    <div style="border:1px solid ${expired?'var(--rd)':'var(--bd)'};border-radius:var(--r);padding:10px 12px;margin-bottom:8px;${expired?'opacity:.8':''}">
+
+  window._bundlePickerData = {
+    mode,
+    active: (promos||[]).filter(p=>!p.end_date || p.end_date>=today_s),
+    expired: (promos||[]).filter(p=>p.end_date && p.end_date<today_s),
+  };
+  _bundlePickerTab = 'active';
+  renderBundlePickerBody();
+}
+function renderBundlePickerBody() {
+  const { mode, active, expired } = window._bundlePickerData||{};
+  const tab = _bundlePickerTab;
+  const list = tab==='active' ? active : expired;
+  const cardHtml = p => {
+    const isExpired = tab==='expired';
+    return `
+    <div style="border:1px solid ${isExpired?'var(--rd)':'var(--bd)'};border-radius:var(--r);padding:10px 12px;margin-bottom:8px;${isExpired?'opacity:.8':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="font-weight:500">${p.name}${expired?' <span class="badge br2" style="font-size:10px">已過期</span>':''}</span>
+        <span style="font-weight:500">${p.name}${isExpired?' <span class="badge br2" style="font-size:10px">已過期</span>':''}</span>
         <span class="badge ${p.type === '固定套組' ? 'bb' : p.type === '買幾送幾' ? 'bg' : 'ba'}">${p.type}</span>
       </div>
       <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">
         ${p.description || ''} ${p.bundle_price ? `・套組價 ${fM(p.bundle_price)}` : ''}
-        ${p.end_date ? `・<span style="${expired?'color:var(--rd)':''}">有效至 ${p.end_date}</span>` : ''}
+        ${p.end_date ? `・<span style="${isExpired?'color:var(--rd)':''}">有效至 ${p.end_date}</span>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <label style="font-size:12px;color:var(--tx2)">幾組：</label>
@@ -187,8 +194,19 @@ async function openBundlePicker(mode) {
           加入 →
         </button>
       </div>
-    </div>`;}).join('')}`, '');
+    </div>`;
+  };
+  OM2('選用套組/活動', `
+  <div class="al al-w" style="font-size:12px">選擇套組後，子項目數量會依「組數」自動計算（買2組送的也自動×2）。已過期的套組一樣可以選用；過期超過3個月的套組不會再出現在這裡。</div>
+  <div class="tab-bar" style="margin-bottom:10px">
+    <div class="tab${tab==='active'?' on':''}" onclick="_bundlePickerTab='active';renderBundlePickerBody()">進行中（${active.length}）</div>
+    <div class="tab${tab==='expired'?' on':''}" onclick="_bundlePickerTab='expired';renderBundlePickerBody()">已過期（${expired.length}）</div>
+  </div>
+  ${list.length === 0 ? `<div style="color:var(--tx3);padding:20px;text-align:center">${tab==='active'?'目前無進行中的套組':'沒有已過期的套組（3個月內）'}</div>` :
+    list.map(cardHtml).join('')}`, '');
 }
+window.renderBundlePickerBody = renderBundlePickerBody;
+
 window.openBundlePicker = openBundlePicker;
 window.promotions = promotions;
 window.addPromo = addPromo;
