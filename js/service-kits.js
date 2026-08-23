@@ -18,7 +18,7 @@ async function svcKits() {
   $('svc-content').innerHTML = `
   <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px">
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--tx3)">
-      <input type="checkbox" ${hideInactive?'checked':''} onchange="window._svcKitsHideInactive=!this.checked;svcKits()">
+      <input type="checkbox" ${hideInactive?'checked':''} onchange="window._svcKitsHideInactive=this.checked;svcKits()">
       隱藏已停用${inactiveCount>0?`（${inactiveCount}組）`:''}
     </label>
     <button class="btn btn-p btn-s" onclick="svcKitModal()">＋ 新增套組</button>

@@ -40,7 +40,7 @@ async function svcItems() {
   $('svc-content').innerHTML = `
   <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px">
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--tx3)">
-      <input type="checkbox" ${hideInactive?'checked':''} onchange="window._svcHideInactive=!this.checked;svcItems()">
+      <input type="checkbox" ${hideInactive?'checked':''} onchange="window._svcHideInactive=this.checked;svcItems()">
       隱藏已停用${inactiveCount>0?`（${inactiveCount}項）`:''}
     </label>
     <div style="display:flex;gap:8px">
