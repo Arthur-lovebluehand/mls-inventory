@@ -7,26 +7,34 @@ const WALLET_TYPES = ['服務','產品'];
 const SHARED_WALLET = '共用';
 
 async function svcCredits() {
-  const { data } = await sb.from('store_credits')
-    .select('*').order('customer_name');
+  const [{ data },{ data:custModes }] = await Promise.all([
+    sb.from('store_credits').select('*').order('customer_name'),
+    sb.from('customers').select('customer_no,wallet_mode'),
+  ]);
+  const modeMap = {}; (custModes||[]).forEach(c=>modeMap[c.customer_no]=c.wallet_mode);
 
   const groups = { '共用':[], '服務':[], '產品':[] };
   (data||[]).forEach(c=>{ (groups[c.wallet_type]=groups[c.wallet_type]||[]).push(c); });
 
-  const section = (title, hint, list, badgeClass) => `
+  const section = (title, hint, list, walletKey) => `
     <div class="tc" style="margin-bottom:16px">
       <div class="tb"><span class="tt">${title}</span><span class="badge bgr" style="font-size:11px;margin-left:8px">${list.length} 位</span></div>
       <div class="al al-w" style="font-size:12px;margin:0 16px 10px">${hint}</div>
       <div class="tw"><table style="width:100%">
         <tr><th>客戶</th><th>目前餘額</th><th>操作</th></tr>
-        ${list.map(c=>`<tr>
-          <td style="font-weight:500">${c.customer_name||c.customer_no}</td>
+        ${list.map(c=>{
+          // 檢查這位客戶目前的錢包設定，跟這筆帳戶類型是否對不上（例如帳戶還在「共用」，但客戶已改設「分開算」）
+          const custMode = modeMap[c.customer_no]||'shared';
+          const mismatch = (walletKey==='共用' && custMode==='separate') || (walletKey!=='共用' && custMode==='shared');
+          return `<tr>
+          <td style="font-weight:500">${c.customer_name||c.customer_no}${mismatch?`<div><span class="badge ba" style="font-size:10px">跟客戶目前設定不一致</span></div>`:''}</td>
           <td class="num" style="font-weight:700;color:${c.balance>0?'var(--ac)':c.balance<0?'var(--rd)':'var(--tx3)'}">${fM(c.balance)}</td>
           <td>
             <button class="btn btn-s" onclick="svcCreditHistory('${c.customer_no}','${c.wallet_type}')">記錄</button>
             <button class="btn btn-s" onclick="svcAddCredit('${c.customer_no}','${(c.customer_name||'').replace(/'/g,"\\'")}','${c.wallet_type}')">儲值</button>
+            ${mismatch?`<button class="btn btn-s" style="color:var(--am);border-color:var(--am)" onclick="convertWalletModal('${c.customer_no}','${(c.customer_name||'').replace(/'/g,"\\'")}','${c.wallet_type}')">轉換帳戶</button>`:''}
           </td>
-        </tr>`).join('')||`<tr><td colspan="3" style="text-align:center;padding:16px;color:var(--tx3)">尚無記錄</td></tr>`}
+        </tr>`;}).join('')||`<tr><td colspan="3" style="text-align:center;padding:16px;color:var(--tx3)">尚無記錄</td></tr>`}
       </table></div>
     </div>`;
 
@@ -34,13 +42,65 @@ async function svcCredits() {
   <div class="ph"><div><div class="pt">客戶儲值</div></div>
     <div class="ha"><button class="btn btn-p btn-s" onclick="svcAddCredit()">＋ 新增儲值</button></div></div>
   <div class="pc">
-  ${section('共用帳戶','服務、產品共用同一筆餘額，這是大部分客戶預設的模式。', groups['共用'])}
-  ${section('服務帳戶','只有設定成「分開算」的客戶才會有這個帳戶，只能用在服務單消費。', groups['服務'])}
-  ${section('產品帳戶','只有設定成「分開算」的客戶才會有這個帳戶，只能用在銷售訂單消費。', groups['產品'])}
+  ${section('共用帳戶','服務、產品共用同一筆餘額，這是大部分客戶預設的模式。', groups['共用'], '共用')}
+  ${section('服務帳戶','只有設定成「分開算」的客戶才會有這個帳戶，只能用在服務單消費。', groups['服務'], '服務')}
+  ${section('產品帳戶','只有設定成「分開算」的客戶才會有這個帳戶，只能用在銷售訂單消費。', groups['產品'], '產品')}
   </div>`;
 }
 
 window.svcCredits      = svcCredits;
+
+// ── 轉換帳戶：客戶模式改了之後，把原本帳戶類型的餘額/記錄搬到新的類型底下 ──
+async function convertWalletModal(custNo, custName, fromType) {
+  const { data:custRow } = await sb.from('customers').select('wallet_mode').eq('customer_no',custNo).maybeSingle();
+  const targetOptions = custRow?.wallet_mode==='separate' ? WALLET_TYPES : [SHARED_WALLET];
+  OM(`轉換帳戶：${custName}`, `
+  <div class="al al-w" style="font-size:12px;margin-bottom:12px">
+    這位客戶目前的錢包設定是「${custRow?.wallet_mode==='separate'?'服務、產品分開算':'共用一個'}」，但她還有一筆「${fromType}」帳戶的餘額。
+    選一個要把這筆餘額跟記錄搬過去的帳戶，搬過去之後原本「${fromType}」這個帳戶就會消失。
+  </div>
+  <div class="fl"><label>搬去哪個帳戶</label>
+    <select id="f-cvt-to">${targetOptions.filter(t=>t!==fromType).map(t=>`<option>${t}</option>`).join('')}</select>
+  </div>
+  <div id="cvt-warn" style="font-size:12px;color:var(--am);margin-top:8px"></div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="doConvertWallet('${custNo}','${fromType}')">確認轉換</button>`);
+
+  // 如果目標帳戶已經有餘額，先提醒會合併
+  const checkMerge = async ()=>{
+    const to = v('cvt-to');
+    const { data:existing } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',to).maybeSingle();
+    const warn = $('cvt-warn');
+    if(warn) warn.textContent = existing ? `注意：「${to}」帳戶目前已經有餘額 ${fM(existing.balance)}，轉換後會直接合併加總，記錄也會合在一起。` : '';
+  };
+  $('cvt-to')?.addEventListener?.('change', checkMerge);
+  setTimeout(checkMerge, 50);
+}
+window.convertWalletModal = convertWalletModal;
+
+async function doConvertWallet(custNo, fromType) {
+  const toType = v('cvt-to');
+  if(!toType || toType===fromType) { toast('請選擇要轉換到的帳戶','e'); return; }
+
+  const { data:existing } = await sb.from('store_credits').select('*').eq('customer_no',custNo).eq('wallet_type',toType).maybeSingle();
+
+  if(!existing) {
+    // 目標帳戶不存在：直接把原本帳戶的類型改名
+    await sb.from('store_credits').update({wallet_type:toType}).eq('customer_no',custNo).eq('wallet_type',fromType);
+    await sb.from('store_credit_records').update({wallet_type:toType}).eq('customer_no',custNo).eq('wallet_type',fromType);
+  } else {
+    // 目標帳戶已存在：把舊帳戶的記錄全部改標成新類型（沿用原本的建立時間排序），
+    // 讓 recomputeCreditChain 重新照日期把兩邊記錄合併排序、重算餘額鏈
+    await sb.from('store_credit_records').update({wallet_type:toType}).eq('customer_no',custNo).eq('wallet_type',fromType);
+    await sb.from('store_credits').delete().eq('customer_no',custNo).eq('wallet_type',fromType);
+  }
+  await recomputeCreditChain(custNo, toType);
+  toast('✅ 已轉換');
+  CM();
+  svcCredits();
+}
+window.doConvertWallet = doConvertWallet;
+
 async function svcAddCredit(custNo, custName, walletType) {
   const [{ data:custs },{ data:allProds }] = await Promise.all([
     sb.from('customers').select('customer_no,name,phone,wallet_mode').order('name'),
