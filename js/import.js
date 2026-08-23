@@ -95,8 +95,19 @@ const IMP_FIELDS = {
     { key:'done',         label:'是否已完成收貨（Y/N，留空預設已完成）', req:false, alias:['是否完成','已收貨','done'] },
     { key:'note',         label:'備註', req:false, alias:['備註','note'] },
   ],
+  serviceOrders: [
+    { key:'group_key',      label:'原始服務單編號（同號會合併成一張單）', req:true, alias:['服務單編號','原始單號','order_no','單號'] },
+    { key:'order_date',     label:'服務日期', req:true, alias:['日期','服務日期','order_date','date'] },
+    { key:'customer_name',  label:'客戶姓名', req:true, alias:['客戶','客戶名稱','姓名','customer'] },
+    { key:'customer_phone', label:'客戶電話', req:false, alias:['電話','手機','phone'] },
+    { key:'item_name',      label:'服務項目名稱', req:true, alias:['服務項目','項目','品名','service'] },
+    { key:'qty',            label:'數量', req:false, alias:['數量','次數','qty'] },
+    { key:'unit_price',     label:'單價', req:true, alias:['單價','售價','price','unit_price'] },
+    { key:'technician_name',label:'技師姓名', req:false, alias:['技師','技師姓名','服務人員'] },
+    { key:'note',           label:'備註', req:false, alias:['備註','note'] },
+  ],
 };
-const IMP_TYPE_LABEL = { products:'商品主檔', customers:'客戶名單', vendors:'廠商名單', brands:'品牌', serviceItems:'服務項目', technicians:'技師名單', orders:'歷史銷售訂單（含明細）', purchaseOrders:'歷史進貨單（含明細）' };
+const IMP_TYPE_LABEL = { products:'商品主檔', customers:'客戶名單', vendors:'廠商名單', brands:'品牌', serviceItems:'服務項目', technicians:'技師名單', orders:'歷史銷售訂單（含明細）', purchaseOrders:'歷史進貨單（含明細）', serviceOrders:'歷史服務單（含明細）' };
 
 // ── 欄位中文標題字典（匯出CSV抬頭用）──
 const COL_LABELS = {
@@ -502,6 +513,8 @@ function dataImport(){
             ? '每一列是「一筆訂單裡的一個商品」，同一張訂單的多個商品請填相同的「原始訂單編號」，系統會自動合併成一張單，並改用我們自己的編號規則（不會使用舊系統的單號）。歷史訂單匯入<b>不會</b>異動目前的商品庫存數字（庫存請以你目前實際盤點的數字為準，另外用商品主檔匯入或直接編輯）。'
             : imp.type==='purchaseOrders'
             ? '每一列是「一張進貨單裡的一個商品」，同一張進貨單的多個商品請填相同的「原始進貨單編號」，系統會自動合併成一張單，並改用我們自己的編號規則。廠商如果在系統裡找不到會自動新建（用我們的編號規則產生廠商編號）。歷史進貨單匯入<b>不會</b>異動目前的商品庫存數字（庫存請以你目前實際盤點的數字為準，另外用商品主檔匯入或直接編輯）。'
+            : imp.type==='serviceOrders'
+            ? '每一列是「一張服務單裡的一個服務項目」，同一張服務單的多個項目請填相同的「原始服務單編號」，系統會自動合併成一張單，並改用我們自己的編號規則。技師如果在系統裡找不到會自動新建（預設抽成50%，之後可以自己去技師名單調整）。歷史服務單匯入<b>不會</b>異動目前的耗材庫存數字，也不含耗材明細，只記服務項目本身。'
             : '第一列請是欄位標題（例如：商品名稱、售價、庫存…），下面每一列是一筆資料。'}
         </div>
         <input type="file" id="impFile" accept=".csv,.txt,.tsv" onchange="impFileLoad(this)" style="margin-bottom:10px">
@@ -719,6 +732,17 @@ async function impNextPONo(dateStr, cache){
   }
   const no=prefix+String(cache[prefix]).padStart(3,'0'); cache[prefix]++; return no;
 }
+async function impNextSVNo(dateStr, cache){
+  const td=(dateStr||'').replace(/[^0-9]/g,'').slice(0,8) || today().replace(/-/g,'');
+  const prefix='SV-'+td+'-';
+  if(cache[prefix]==null){
+    const{data}=await sb.from('service_orders').select('order_no').like('order_no',prefix+'%');
+    let max=0;
+    (data||[]).forEach(r=>{ const m=(r.order_no||'').replace(prefix,''); const n=parseInt(m); if(!isNaN(n)) max=Math.max(max,n); });
+    cache[prefix]=max+1;
+  }
+  const no=prefix+String(cache[prefix]).padStart(3,'0'); cache[prefix]++; return no;
+}
 function impNormDate(s){
   if(!s) return today();
   s=s.trim();
@@ -748,6 +772,7 @@ async function impRun(){
   else if(imp.type==='serviceItems') result = await impRunServiceItems(mapped);
   else if(imp.type==='technicians') result = await impRunTechnicians(mapped);
   else if(imp.type==='purchaseOrders') result = await impRunPurchaseOrders(mapped);
+  else if(imp.type==='serviceOrders') result = await impRunServiceOrders(mapped);
   else result = await impRunOrders(mapped);
 
   resultEl.innerHTML = `
@@ -1084,6 +1109,93 @@ async function impRunPurchaseOrders(rows){
       if(pErr) throw pErr;
 
       const{error:iErr}=await sb.from('purchase_order_items').insert(poItems.map(x=>({...x, po_no, po_date, vendor_name:vend.name})));
+      if(iErr) throw iErr;
+
+      ok++;
+    }catch(e){ fail++; errors.push(`原始單號「${key}」：${e.message}`); }
+  }
+  return {ok,fail,errors};
+}
+
+async function impRunServiceOrders(rows){
+  let ok=0, fail=0; const errors=[];
+  const custNoCache={}; const svNoCache={};
+
+  // 先把現有客戶、技師抓進記憶體做比對快取
+  const [{data:allCust},{data:allTech}] = await Promise.all([
+    sb.from('customers').select('customer_no,name,phone'),
+    sb.from('technicians').select('id,name,commission_rate').eq('is_active',true),
+  ]);
+  const custByPhone={}, custByName={};
+  (allCust||[]).forEach(c=>{ if(c.phone) custByPhone[c.phone]=c; if(c.name) custByName[c.name]=c; });
+  const techByName={};
+  (allTech||[]).forEach(t=>{ techByName[t.name]=t; });
+
+  // 依「原始服務單編號」分組
+  const groups={};
+  rows.forEach((r,i)=>{
+    const key=r.group_key||('_row'+i);
+    if(!groups[key]) groups[key]=[];
+    groups[key].push({...r, _line:i+2});
+  });
+
+  for(const key of Object.keys(groups)){
+    const items=groups[key];
+    const head=items[0];
+    try{
+      if(!head.customer_name){ throw new Error('缺少客戶姓名'); }
+      // 客戶比對／建立
+      let cust = (head.customer_phone && custByPhone[head.customer_phone]) || custByName[head.customer_name];
+      if(!cust){
+        const customer_no = await impNextCustomerNo(custNoCache);
+        const payload={ customer_no, name:head.customer_name, phone:head.customer_phone||null, agent_level:'零售' };
+        const{error}=await sb.from('customers').insert(payload);
+        if(error) throw error;
+        cust={customer_no,name:head.customer_name,phone:head.customer_phone};
+        if(cust.phone) custByPhone[cust.phone]=cust;
+        custByName[cust.name]=cust;
+      }
+
+      // 服務項目：技師比對／自動建立缺少的技師（預設抽成50%）
+      const svcItems=[];
+      let subtotal=0, totalCommission=0;
+      for(const it of items){
+        if(!it.item_name){ throw new Error(`第${it._line}列缺少服務項目名稱`); }
+        const qty=parseFloat(it.qty)||1;
+        const price=parseFloat(it.unit_price)||0;
+        const subtotalAmt=qty*price;
+        let tech=null;
+        if(it.technician_name){
+          tech = techByName[it.technician_name];
+          if(!tech){
+            const{data:newTech,error}=await sb.from('technicians').insert({name:it.technician_name,commission_rate:0.5,is_active:true}).select().single();
+            if(error) throw error;
+            tech=newTech;
+            techByName[tech.name]=tech;
+          }
+        }
+        const commissionAmt = tech ? Math.round(subtotalAmt*(tech.commission_rate||0.5)) : 0;
+        subtotal+=subtotalAmt;
+        totalCommission+=commissionAmt;
+        svcItems.push({
+          item_type:'service', item_name:it.item_name, qty, unit:'次', unit_price:price,
+          cost:0, subtotal:subtotalAmt, technician_id:tech?.id||null, technician_name:tech?.name||null,
+          commission_amount:commissionAmt, technician_pay:commissionAmt, is_gift:false
+        });
+      }
+
+      const order_date=impNormDate(head.order_date);
+      const order_no = await impNextSVNo(order_date, svNoCache);
+
+      const{error:oErr}=await sb.from('service_orders').insert({
+        order_no, order_date, customer_no:cust.customer_no, customer_name:cust.name,
+        total:subtotal, paid_by_credit:0, paid_by_cash:subtotal, payment_method:'現金',
+        consumable_cost:0, total_commission:totalCommission,
+        note:(head.note||'')+' CSV匯入 原始單號:'+key
+      });
+      if(oErr) throw oErr;
+
+      const{error:iErr}=await sb.from('service_order_items').insert(svcItems.map(x=>({...x, order_no})));
       if(iErr) throw iErr;
 
       ok++;
