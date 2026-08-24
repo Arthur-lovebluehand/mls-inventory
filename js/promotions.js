@@ -16,6 +16,7 @@ function isPromoNotStarted(p) {
 }
 
 var _promoTab = 'all';
+var _promoSearch = '';
 var _promoPage = 1;
 async function promotions() {
   const today_s = today();
@@ -30,6 +31,10 @@ async function promotions() {
   if(_promoTab==='active') filtered = withStatus.filter(p=>!p._expired);
   else if(_promoTab==='expired') filtered = withStatus.filter(p=>p._expired);
   else filtered = withStatus;
+  if(_promoSearch) {
+    const kw = _promoSearch;
+    filtered = filtered.filter(p=>(p.name||'').includes(kw)||(p.promo_code||'').includes(kw)||(p.description||'').includes(kw));
+  }
 
   // 全部頁籤：未過期排前面，已過期排後面；同組內依名稱排序
   filtered = filtered.slice().sort((a,b)=>{
@@ -48,7 +53,10 @@ async function promotions() {
 
   $('main').innerHTML = `
   <div class="ph"><div><div class="pt">活動/套組管理</div><div class="ps">${allCount} 個</div></div>
-    <div class="ha"><button class="btn btn-p btn-s" onclick="addPromo()">＋ 新增活動/套組</button></div></div>
+    <div class="ha">
+      <button class="btn btn-s" onclick="batchBuyGetModal()">⚡ 批次新增買X送Y</button>
+      <button class="btn btn-p btn-s" onclick="addPromo()">＋ 新增活動/套組</button>
+    </div></div>
   <div class="pc">
     <div class="al al-w" style="font-size:12px">
       <b>設計說明：</b>建立套組後，在新增訂單/進貨/借貨時點「加入套組」，系統自動展開所有商品品項（含贈品），不需逐一手動輸入。
@@ -60,7 +68,10 @@ async function promotions() {
       <div class="tab${_promoTab==='expired'?' on':''}" onclick="_promoTab='expired';_promoPage=1;promotions()">已過期（${expiredCount}）</div>
     </div>
     <div class="tc">
-      <div class="tb"><span class="tt">活動/套組列表</span></div>
+      <div class="tb"><span class="tt">活動/套組列表</span>
+        <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input placeholder="名稱/代碼/說明…（輸入後按 Enter 搜尋）" value="${_promoSearch}" onkeydown="if(event.key==='Enter'){_promoSearch=this.value;_promoPage=1;promotions();}"></div>
+      </div>
       <div class="tw"><table style="width:100%">
         <tr><th>代碼</th><th>名稱</th><th>類型</th><th>有效期間</th><th>套組內容</th><th>狀態</th><th>操作</th></tr>
         ${pageData.map(p => {
@@ -90,6 +101,131 @@ async function promotions() {
     </div>
   </div>`;
 }
+// ══════════════════════════════
+// 批次新增「買X送Y」——同一個活動，多個商品各自不同買/送數量，一次全部建立
+// ══════════════════════════════
+var _batchBGRows = [];
+var _batchBGAllProds = [];
+async function batchBuyGetModal() {
+  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('name');
+  _batchBGAllProds = prods || [];
+  _batchBGRows = [{ id: Date.now(), pno: '', name: '', buy: 5, get: 1 }];
+  const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
+
+  OM('批次新增「' + buyGetTypeName + '」套組', `
+  <div class="al al-w" style="font-size:12px;margin-bottom:12px">
+    先填共用的活動資訊（日期、說明），下面每一行選一個商品、填買幾送幾，送出後會一次幫你建立好每一行各自獨立的套組（各自有自己的代碼），不用一個一個重複建立。
+  </div>
+  <div class="fg" style="margin-bottom:12px">
+    <div class="fl fw"><label>活動名稱前綴（選填，例如「8週年慶」，會自動加在每個套組名稱前面）</label><input id="f-bbgprefix" placeholder="例如：8週年慶"></div>
+    <div class="fl"><label>生效日期</label><input id="f-bbgstart" type="date" value="${today()}"></div>
+    <div class="fl"><label>到期日（空白=永久）</label><input id="f-bbgend" type="date"></div>
+    <div class="fl"><label>限時開始（選填）</label><input id="f-bbgstime" type="time"></div>
+    <div class="fl"><label>限時結束（選填）</label><input id="f-bbgetime" type="time"></div>
+    <div class="fl fw"><label>說明（選填，會存到每個套組的說明欄）</label><input id="f-bbgdesc" placeholder="例如：8週年慶"></div>
+  </div>
+  <div class="sh">商品清單（每一行＝一個獨立套組）</div>
+  <div style="display:grid;grid-template-columns:2.5fr 70px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase">
+    <span>商品</span><span>買幾</span><span>送幾</span><span></span>
+  </div>
+  <div id="batchBGArea"></div>
+  <button class="btn btn-s" onclick="addBatchBGRow()" style="margin-top:6px">＋ 加一行</button>
+  `,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveBatchBuyGet()">批次建立</button>`, true);
+  renderBatchBGRows();
+}
+window.batchBuyGetModal = batchBuyGetModal;
+
+function renderBatchBGRows() {
+  const area = $('batchBGArea'); if (!area) return;
+  area.innerHTML = _batchBGRows.map(row => `
+  <div style="display:grid;grid-template-columns:2.5fr 70px 70px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+    <div style="position:relative">
+      <input type="text" value="${row.pno ? (row.name || row.pno) : ''}" placeholder="輸入關鍵字搜尋商品…"
+        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
+        oninput="filterBatchBGDrop(${row.id},this.value)" onfocus="filterBatchBGDrop(${row.id},this.value)"
+        onblur="setTimeout(()=>{const d=$('bbgdrop-${row.id}');if(d)d.style.display='none';},350)">
+      <div id="bbgdrop-${row.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1);overflow:hidden"></div>
+    </div>
+    <input type="number" value="${row.buy}" min="1" onchange="setBatchBGVal(${row.id},'buy',this.value)"
+      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="number" value="${row.get}" min="1" onchange="setBatchBGVal(${row.id},'get',this.value)"
+      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <button onclick="rmBatchBGRow(${row.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
+  </div>`).join('');
+}
+window.renderBatchBGRows = renderBatchBGRows;
+
+var _batchBGDropBrand = {};
+window.filterBatchBGDrop = (id, q) => {
+  const drop = $('bbgdrop-' + id); if (!drop) return;
+  const brands = [...new Set(_batchBGAllProds.map(p => p.source).filter(Boolean))].sort();
+  const curBrand = _batchBGDropBrand[id] || '';
+  let fil = q ? _batchBGAllProds.filter(p => p.name.includes(q) || (p.product_no || '').includes(q)) : _batchBGAllProds;
+  if (curBrand) fil = fil.filter(p => p.source === curBrand);
+  drop.style.display = 'block';
+  const qEsc = (q || '').replace(/'/g, "\\'");
+  const tabsHtml = brands.length ? `
+    <div style="display:flex;gap:4px;overflow-x:auto;padding:5px 6px;border-bottom:1px solid var(--bd);background:var(--sf2)">
+      <span onmousedown="event.preventDefault();setBatchBGDropBrand(${id},'','${qEsc}')"
+        style="flex-shrink:0;font-size:11px;padding:3px 8px;border-radius:10px;cursor:pointer;white-space:nowrap;${!curBrand ? 'background:var(--ac);color:#fff' : 'background:var(--sf);color:var(--tx2)'}">全部</span>
+      ${brands.map(b => `<span onmousedown="event.preventDefault();setBatchBGDropBrand(${id},'${b.replace(/'/g, "\\'")}','${qEsc}')"
+        style="flex-shrink:0;font-size:11px;padding:3px 8px;border-radius:10px;cursor:pointer;white-space:nowrap;${curBrand === b ? 'background:var(--ac);color:#fff' : 'background:var(--sf);color:var(--tx2)'}">${b}</span>`).join('')}
+    </div>` : '';
+  drop.innerHTML = tabsHtml + `<div style="max-height:180px;overflow-y:auto">` + (fil.map(p =>
+    `<div style="padding:6px 9px;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''"
+      onmousedown="pickBatchBGProd(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}')">
+      ${p.name}${p.spec ? ` (${p.spec})` : ''} <span style="color:var(--tx3)">庫存:${p.stock}</span>
+    </div>`).join('') || '<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>') + `</div>`;
+};
+window.setBatchBGDropBrand = (id, brand, q) => { _batchBGDropBrand[id] = brand; filterBatchBGDrop(id, q || ''); };
+window.pickBatchBGProd = (id, pno, name) => {
+  const row = _batchBGRows.find(x => x.id === id); if (!row) return;
+  row.pno = pno; row.name = name;
+  renderBatchBGRows();
+  const d = $('bbgdrop-' + id); if (d) d.style.display = 'none';
+};
+window.setBatchBGVal = (id, key, val) => { const row = _batchBGRows.find(x => x.id === id); if (row) row[key] = Math.max(1, parseInt(val) || 1); };
+window.addBatchBGRow = () => { _batchBGRows.push({ id: Date.now() + Math.random(), pno: '', name: '', buy: 5, get: 1 }); renderBatchBGRows(); };
+window.rmBatchBGRow = id => { _batchBGRows = _batchBGRows.filter(x => x.id !== id); renderBatchBGRows(); };
+
+async function saveBatchBuyGet() {
+  const rows = _batchBGRows.filter(r => r.pno);
+  if (!rows.length) { toast('請至少選一個商品', 'e'); return; }
+  const prefix = v('bbgprefix');
+  const start_date = v('bbgstart') || null;
+  const end_date = v('bbgend') || null;
+  const start_time = v('bbgstime') || null;
+  const end_time = v('bbgetime') || null;
+  const description = v('bbgdesc') || null;
+  const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
+
+  let ok = 0, fail = 0;
+  for (const [idx, row] of rows.entries()) {
+    try {
+      const code = 'PRO-' + today().replace(/-/g, '').slice(2) + '-' + String(Date.now() + idx).slice(-4);
+      const name = (prefix ? prefix + ' ' : '') + row.name + ` 買${row.buy}送${row.get}`;
+      const { error: pErr } = await sb.from('promotions').insert({
+        promo_code: code, name, type: buyGetTypeName,
+        start_date, end_date, start_time, end_time, description,
+        buy_qty: row.buy, get_qty: row.get, is_active: true,
+      });
+      if (pErr) throw pErr;
+      const { error: iErr } = await sb.from('promotion_items').insert([
+        { promo_code: code, product_no: row.pno, product_name: row.name, qty: row.buy, is_gift: false },
+        { promo_code: code, product_no: row.pno, product_name: row.name, qty: row.get, is_gift: true },
+      ]);
+      if (iErr) throw iErr;
+      ok++;
+    } catch (e) { fail++; }
+  }
+  toast(`✅ 已建立 ${ok} 個套組${fail ? `，${fail} 個失敗` : ''}`);
+  CM();
+  promotions();
+}
+window.saveBatchBuyGet = saveBatchBuyGet;
+
 async function addPromo() {
   const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('name');
   _allProdsForPromo = prods || [];
