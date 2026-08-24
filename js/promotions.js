@@ -421,9 +421,9 @@ function promoForm(p) {
     <div class="fl fw"><label>說明（顯示在訂單上）</label><input id="f-pdesc" value="${p.description || ''}"></div>
     <div class="fl fw"><label>備註</label><input id="f-pnote" value="${p.note || ''}"></div>
   </div>
-  <div class="sh">套組/活動商品</div>
-  <div style="display:grid;grid-template-columns:3fr 60px 80px 60px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
-    <span>商品</span><span>數量</span><span>套組價</span><span style="color:var(--am)">贈品</span><span></span>
+  <div class="sh">套組/活動商品<span id="promoItemCount" style="font-weight:400;color:var(--tx3);font-size:12px;margin-left:8px">共 ${_promoItems.length} 項</span></div>
+  <div style="display:grid;grid-template-columns:22px 3fr 60px 80px 60px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
+    <span>#</span><span>商品</span><span>數量</span><span>套組價</span><span style="color:var(--am)">贈品</span><span></span>
   </div>
   <div id="promoItemsArea"></div>
   <button class="btn btn-s" onclick="addPromoItem()" style="margin-top:6px">＋ 加商品</button>`;
@@ -438,8 +438,9 @@ function promoExtraFields(p) {
 }
 function renderPromoItems() {
   const area = $('promoItemsArea'); if (!area) return;
-  area.innerHTML = _promoItems.map(item => `
-  <div style="display:grid;grid-template-columns:3fr 60px 80px 60px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+  area.innerHTML = _promoItems.map((item,idx) => `
+  <div style="display:grid;grid-template-columns:22px 3fr 60px 80px 60px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+    <span style="font-size:12px;color:var(--tx3);text-align:center">${idx+1}</span>
     <div style="position:relative">
       <input type="text" value="${item.pno ? (item.name || item.pno) : ''}" placeholder="輸入關鍵字搜尋商品…"
         style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
@@ -455,6 +456,8 @@ function renderPromoItems() {
       style="width:16px;height:16px;cursor:pointer" title="勾選=贈品（免費）">
     <button onclick="rmPromoItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
   </div>`).join('');
+  const cntEl = $('promoItemCount');
+  if (cntEl) cntEl.textContent = `共 ${_promoItems.length} 項`;
 }
 async function togglePromo(code, active) {
   await sb.from('promotions').update({ is_active: !active }).eq('promo_code', code);
@@ -654,9 +657,9 @@ async function showPromo(code) {
         <div style="font-size:16px;font-weight:700">${fM(levelTotals[lv])}</div>
       </div>`;}).join('')}
   </div>
-  <div class="sh">套組包含商品</div>
+  <div class="sh">套組包含商品<span style="font-weight:400;color:var(--tx3);font-size:12px;margin-left:8px">共 ${new Set((its||[]).map(i=>i.product_no)).size} 項</span></div>
   <table class="itb">
-    <tr><th>商品</th><th>銷售數</th><th style="color:var(--am)">贈品數</th>${LEVELS.map(lv=>`<th style="font-size:11px">${lv}</th>`).join('')}</tr>
+    <tr><th>#</th><th>商品</th><th>銷售數</th><th style="color:var(--am)">贈品數</th>${LEVELS.map(lv=>`<th style="font-size:11px">${lv}</th>`).join('')}</tr>
     ${(()=>{
       // 同一個商品的銷售數跟贈品數合併成一列，不同商品才各自一列
       const grouped = {};
@@ -665,10 +668,11 @@ async function showPromo(code) {
         if(i.is_gift) grouped[i.product_no].giftQty += (i.qty||1);
         else grouped[i.product_no].qty += (i.qty||1);
       });
-      return Object.keys(grouped).map(pno=>{
+      return Object.keys(grouped).map((pno,idx)=>{
         const g = grouped[pno];
         const pr = prodPriceMap[pno];
         return `<tr>
+          <td style="color:var(--tx3);font-size:12px">${idx+1}</td>
           <td>${g.name || '—'}</td>
           <td class="num">${g.qty||'—'}</td>
           <td class="num" style="color:var(--am);font-weight:600">${g.giftQty||'—'}</td>
