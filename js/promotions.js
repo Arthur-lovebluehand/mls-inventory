@@ -536,6 +536,27 @@ async function openBundlePicker(mode) {
 }
 var _bundlePickerSearch = '';
 function renderBundlePickerBody() {
+  // 外殼（搜尋框、頁籤）只在第一次打開時畫；之後打字/換頁籤只更新下面的結果區塊，
+  // 搜尋框本身不會被重畫，才不會打斷中文輸入法的組字（打字打到一半跳掉的問題）
+  const { active, expired } = window._bundlePickerData||{};
+  OM2('選用套組/活動', `
+  <div class="al al-w" style="font-size:12px">選擇套組後，子項目數量會依「組數」自動計算（買2組送的也自動×2）。已過期的套組一樣可以選用；過期超過3個月的套組不會再出現在這裡。</div>
+  <div style="margin:10px 0">
+    <input id="bp-search" placeholder="輸入名稱或說明關鍵字搜尋…（例如：8週年慶、王者肽）" value="${_bundlePickerSearch}"
+      style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"
+      oninput="_bundlePickerSearch=this.value;updateBundlePickerResults()">
+  </div>
+  <div class="tab-bar" style="margin-bottom:10px">
+    <div class="tab${_bundlePickerTab==='active'?' on':''}" onclick="_bundlePickerTab='active';updateBundlePickerResults()">進行中（${active.length}）</div>
+    <div class="tab${_bundlePickerTab==='expired'?' on':''}" onclick="_bundlePickerTab='expired';updateBundlePickerResults()">已過期（${expired.length}）</div>
+  </div>
+  <div id="bp-results"></div>`, '');
+  updateBundlePickerResults();
+}
+window.renderBundlePickerBody = renderBundlePickerBody;
+
+function updateBundlePickerResults() {
+  const box = $('bp-results'); if(!box) return;
   const { mode, active, expired } = window._bundlePickerData||{};
   const tab = _bundlePickerTab;
   let list = tab==='active' ? active : expired;
@@ -545,6 +566,10 @@ function renderBundlePickerBody() {
     const kw = _bundlePickerSearch;
     list = list.filter(p=>(p.name||'').includes(kw)||(p.description||'').includes(kw));
   }
+  // 頁籤的選取樣式也要跟著更新（頁籤本身還在外殼裡，但點擊後 on 樣式要換）
+  document.querySelectorAll('.tab-bar .tab').forEach((el,i)=>{
+    el.classList.toggle('on', (i===0 && tab==='active') || (i===1 && tab==='expired'));
+  });
   const cardHtml = p => {
     const isExpired = tab==='expired';
     return `
@@ -568,21 +593,10 @@ function renderBundlePickerBody() {
       </div>
     </div>`;
   };
-  OM2('選用套組/活動', `
-  <div class="al al-w" style="font-size:12px">選擇套組後，子項目數量會依「組數」自動計算（買2組送的也自動×2）。已過期的套組一樣可以選用；過期超過3個月的套組不會再出現在這裡。</div>
-  <div style="margin:10px 0">
-    <input id="bp-search" placeholder="輸入名稱或說明關鍵字搜尋…（例如：8週年慶、王者肽）" value="${_bundlePickerSearch}"
-      style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"
-      oninput="_bundlePickerSearch=this.value;renderBundlePickerBody()">
-  </div>
-  <div class="tab-bar" style="margin-bottom:10px">
-    <div class="tab${tab==='active'?' on':''}" onclick="_bundlePickerTab='active';renderBundlePickerBody()">進行中（${active.length}）</div>
-    <div class="tab${tab==='expired'?' on':''}" onclick="_bundlePickerTab='expired';renderBundlePickerBody()">已過期（${expired.length}）</div>
-  </div>
-  ${list.length === 0 ? `<div style="color:var(--tx3);padding:20px;text-align:center">${_bundlePickerSearch?'找不到符合的套組':(tab==='active'?'目前無進行中的套組':'沒有已過期的套組（3個月內）')}</div>` :
-    list.map(cardHtml).join('')}`, '');
+  box.innerHTML = list.length === 0 ? `<div style="color:var(--tx3);padding:20px;text-align:center">${_bundlePickerSearch?'找不到符合的套組':(tab==='active'?'目前無進行中的套組':'沒有已過期的套組（3個月內）')}</div>` :
+    list.map(cardHtml).join('');
 }
-window.renderBundlePickerBody = renderBundlePickerBody;
+window.updateBundlePickerResults = updateBundlePickerResults;
 
 window.openBundlePicker = openBundlePicker;
 window.promotions = promotions;
