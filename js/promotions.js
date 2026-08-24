@@ -389,7 +389,10 @@ async function saveBatchBigSmall() {
     try {
       const code = await genPromoNo();
       const sameGift = row.sameGift || 0;
-      const name = (prefix ? prefix + '_' : '') + `${row.bigName} 買大送小${sameGift>0?'(含加碼贈品)':''}`;
+      const nameSuffix = sameGift>0
+        ? ` 買${row.bigQty}送${sameGift}+加贈旅行組`
+        : ' 買大送小';
+      const name = (prefix ? prefix + '_' : '') + row.bigName + nameSuffix;
       const { error: pErr } = await sb.from('promotions').insert({
         promo_code: code, name, type: buyGetTypeName,
         start_date, end_date, start_time, end_time, description,
