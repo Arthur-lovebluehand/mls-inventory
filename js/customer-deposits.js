@@ -216,7 +216,7 @@ function cdFilterManualProd(kw) {
   const drop = $('cd-pname-drop');
   clearTimeout(window._cdProdTimer);
   window._cdProdTimer = setTimeout(async ()=>{
-    let q = sb.from('products').select('product_no,name,service_unit,default_service_qty').eq('is_active',true).order('name').limit(30);
+    let q = sb.from('products').select('product_no,name,service_unit,default_service_qty').eq('is_active',true).order('product_no').limit(30);
     if(kw) q = q.ilike('name',`%${kw}%`);
     const { data } = await q;
     drop.innerHTML = (data||[]).map(p=>

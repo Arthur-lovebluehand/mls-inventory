@@ -157,7 +157,7 @@ async function showPO(no){
 }
 async function loadPOForm(poData,itsData){
   const[{data:pr},{data:vn}]=await Promise.all([
-    sb.from('products').select('product_no,name,spec,cost').eq('is_active',true).order('name'),
+    sb.from('products').select('product_no,name,spec,cost').eq('is_active',true).order('product_no'),
     sb.from('vendors').select('vendor_no,name').eq('is_active',true).order('sort_order').order('name'),
   ]);
   _poProds=pr||[]; _vends2=vn||[];

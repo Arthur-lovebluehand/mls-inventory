@@ -104,7 +104,7 @@ window.doConvertWallet = doConvertWallet;
 async function svcAddCredit(custNo, custName, walletType) {
   const [{ data:custs },{ data:allProds }] = await Promise.all([
     sb.from('customers').select('customer_no,name,phone,wallet_mode').order('name'),
-    sb.from('products').select('product_no,name,spec,stock').eq('is_active',true).order('name'),
+    sb.from('products').select('product_no,name,spec,stock').eq('is_active',true).order('product_no'),
   ]);
   window._crCusts = custs||[];
   window._crAllProds = allProds||[];

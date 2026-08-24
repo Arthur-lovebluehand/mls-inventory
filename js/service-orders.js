@@ -123,7 +123,7 @@ async function svcNewOrder(editNo) {
     sb.from('service_consumables').select('*').eq('is_active',true).gt('stock_qty',0).order('name'),
     sb.from('customers').select('customer_no,name,phone').order('name'),
     sb.from('technicians').select('*').eq('is_active',true).order('name'),
-    sb.from('products').select('product_no,name,spec,stock,cost').eq('is_active',true).order('name'),
+    sb.from('products').select('product_no,name,spec,stock,cost').eq('is_active',true).order('product_no'),
     window.getSvcKitsList?.() || Promise.resolve([]),
   ]);
   window._svcAllCusts = custs||[];

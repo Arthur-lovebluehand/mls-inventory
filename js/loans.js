@@ -80,7 +80,7 @@ async function loans(){
   }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
 }
 async function addLoan(){
-  const{data:pr}=await sb.from('products').select('product_no,name,spec,stock').eq('is_active',true).order('name');
+  const{data:pr}=await sb.from('products').select('product_no,name,spec,stock').eq('is_active',true).order('product_no');
   _loanProds=pr||[];
   _loanItems=[{id:1,pno:'',qty:1}];
   const td=today(), no=await genNo('LO','loan_orders','loan_no');

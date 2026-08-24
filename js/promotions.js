@@ -43,7 +43,7 @@ async function promotions() {
   const activeCount = withStatus.filter(p=>!p._expired).length;
   const expiredCount = withStatus.filter(p=>p._expired).length;
 
-  // 判斷「買X送Y（同商品自己買自己送）」跟「買大送小（買A送B兩個不同商品）」——
+  // 判斷「買X送Y（同商品買送）」跟「買大送小（買A送B兩個不同商品）」——
   // 這兩種在資料庫裡是同一個類型，要分開顯示，得去查每個套組的品項，看買的商品跟送的商品是不是同一個
   const buyGetCodes = filtered.filter(p=>promoTypeCalcMode(p.type)==='buy_get').map(p=>p.promo_code);
   let sameProductCodes = new Set();
@@ -148,7 +148,7 @@ async function promotions() {
 var _batchBGRows = [];
 var _batchBGAllProds = [];
 async function batchBuyGetModal() {
-  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('name');
+  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('product_no');
   _batchBGAllProds = prods || [];
   _batchBGRows = [{ id: Date.now(), pno: '', name: '', buy: 5, get: 1 }];
   const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
@@ -276,14 +276,14 @@ window.saveBatchBuyGet = saveBatchBuyGet;
 var _batchBSRows = [];
 var _batchBSAllProds = [];
 async function batchBigSmallModal() {
-  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('name');
+  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('product_no');
   _batchBSAllProds = prods || [];
   _batchBSRows = [{ id: Date.now(), bigPno: '', bigName: '', bigQty: 1, sameGift: 0, smallPno: '', smallName: '', smallQty: 1 }];
   const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
 
-  OM('批次新增贈品套組（買大送小 / 自己買自己送 / 兩者疊加）', `
+  OM('批次新增贈品套組（買大送小 / 同商品買送 / 兩者疊加）', `
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">
-    這個工具可以做三種情境：<b>①買A送B</b>（兩個不同商品，例如買正貨送別的商品）、<b>②自己買自己送</b>（同商品加贈那欄填數字、「送（不同商品）」留空即可）、<b>③兩者疊加</b>（買A、送A本身、再加贈B，例如買5送1本身＋加贈旅行組）。先填共用的活動資訊，下面每一行選好，送出後一次幫你建立好每一行各自獨立的套組。
+    這個工具可以做三種情境：<b>①買A送B</b>（兩個不同商品，例如買正貨送別的商品）、<b>②同商品買送</b>（買的跟送的是同一個商品，只是數量分開算，同商品加贈那欄填數字、「送（不同商品）」留空即可）、<b>③兩者疊加</b>（買A、送A本身、再加贈B，例如買5送1本身＋加贈旅行組）。先填共用的活動資訊，下面每一行選好，送出後一次幫你建立好每一行各自獨立的套組。
   </div>
   <div class="fg" style="margin-bottom:12px">
     <div class="fl fw"><label>活動名稱前綴（選填，例如「8週年慶」，會自動加在每個套組名稱前面）</label><input id="f-bbsprefix" placeholder="例如：8週年慶"></div>
@@ -429,7 +429,7 @@ async function genPromoNo(dateStr) {
 }
 
 async function addPromo() {
-  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('name');
+  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('product_no');
   _allProdsForPromo = prods || [];
   _promoItems = [];
   const td = today();
@@ -441,7 +441,7 @@ async function editPromo(code) {
   const [{ data: p }, { data: its }, { data: prods }] = await Promise.all([
     sb.from('promotions').select('*').eq('promo_code', code).single(),
     sb.from('promotion_items').select('*').eq('promo_code', code).order('id'),
-    sb.from('products').select('product_no,name,spec,stock,source').order('name'),
+    sb.from('products').select('product_no,name,spec,stock,source').order('product_no'),
   ]);
   _allProdsForPromo = prods || [];
   _promoItems = (its || []).map((i, idx) => ({ id: idx + 1, pno: i.product_no, name: i.product_name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override }));

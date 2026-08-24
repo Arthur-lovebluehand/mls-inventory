@@ -205,7 +205,7 @@ window.onOrderTypeChange = onOrderTypeChange;
 
 async function addOrder(){
   const[{data:pr},{data:cu}]=await Promise.all([
-    sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('name'),
+    sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('product_no'),
     sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address,wallet_mode').order('name'),
   ]);
   _allProds=pr||[]; _allCusts=cu||[];
@@ -425,7 +425,7 @@ async function editOrder(no){
   const[{data:o},{data:its},{data:pr},{data:cu}]=await Promise.all([
     sb.from('sales_orders').select('*').eq('order_no',no).single(),
     sb.from('sales_order_items').select('*').eq('order_no',no),
-    sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('name'),
+    sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('product_no'),
     sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address,wallet_mode').order('name'),
   ]);
   _allProds=pr||[]; _allCusts=cu||[];
