@@ -119,7 +119,7 @@ async function promotions() {
   <div class="ph"><div><div class="pt">活動/套組管理</div><div class="ps">${allCount} 個</div></div>
     <div class="ha">
       <button class="btn btn-s" onclick="batchBuyGetModal()">⚡ 批次新增買X送Y</button>
-      <button class="btn btn-s" onclick="batchBigSmallModal()">⚡ 批次新增買大送小</button>
+      <button class="btn btn-s" onclick="batchBigSmallModal()">⚡ 批次新增贈品套組（買大送小/加碼贈品）</button>
       <button class="btn btn-p btn-s" onclick="addPromo()">＋ 新增活動/套組</button>
     </div></div>
   <div class="pc">
@@ -281,9 +281,9 @@ async function batchBigSmallModal() {
   _batchBSRows = [{ id: Date.now(), bigPno: '', bigName: '', bigQty: 1, sameGift: 0, smallPno: '', smallName: '', smallQty: 1 }];
   const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
 
-  OM('批次新增「買大送小」套組', `
+  OM('批次新增贈品套組（買大送小 / 自己買自己送 / 兩者疊加）', `
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">
-    買的商品跟送的商品是兩個不同商品（例如買大瓶送小瓶）。如果同時還要「自己買自己送」（例如買1送1本身，再加碼送1個旅行組），可以填「同商品再加贈」那欄，不用另外分開建。先填共用的活動資訊，下面每一行選好，送出後一次幫你建立好每一行各自獨立的套組。
+    這個工具可以做三種情境：<b>①買A送B</b>（兩個不同商品，例如買正貨送別的商品）、<b>②自己買自己送</b>（同商品加贈那欄填數字、「送（不同商品）」留空即可）、<b>③兩者疊加</b>（買A、送A本身、再加贈B，例如買5送1本身＋加贈旅行組）。先填共用的活動資訊，下面每一行選好，送出後一次幫你建立好每一行各自獨立的套組。
   </div>
   <div class="fg" style="margin-bottom:12px">
     <div class="fl fw"><label>活動名稱前綴（選填，例如「8週年慶」，會自動加在每個套組名稱前面）</label><input id="f-bbsprefix" placeholder="例如：8週年慶"></div>
@@ -323,7 +323,7 @@ function renderBatchBSRows() {
     <input type="number" value="${row.sameGift||0}" min="0" title="同商品再加贈幾個（選填，例如買1送1本身，這裡填1）" onchange="setBatchBSVal(${row.id},'sameGift',this.value)"
       style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
     <div style="position:relative">
-      <input type="text" value="${row.smallPno ? (row.smallName || row.smallPno) : ''}" placeholder="搜尋要送的商品…"
+      <input type="text" value="${row.smallPno ? (row.smallName || row.smallPno) : ''}" placeholder="搜尋要送的商品…（選填）"
         style="font-size:12px;padding:5px 7px;border:1px solid var(--am);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
         oninput="filterBatchBSDrop(${row.id},'small',this.value)" onfocus="filterBatchBSDrop(${row.id},'small',this.value)"
         onblur="setTimeout(()=>{const d=$('bbsdrop-${row.id}-small');if(d)d.style.display='none';},350)">
@@ -374,8 +374,8 @@ window.addBatchBSRow = () => { _batchBSRows.push({ id: Date.now() + Math.random(
 window.rmBatchBSRow = id => { _batchBSRows = _batchBSRows.filter(x => x.id !== id); renderBatchBSRows(); };
 
 async function saveBatchBigSmall() {
-  const rows = _batchBSRows.filter(r => r.bigPno && r.smallPno);
-  if (!rows.length) { toast('請至少完整選好一行的「買」跟「送」商品', 'e'); return; }
+  const rows = _batchBSRows.filter(r => r.bigPno && (r.smallPno || (r.sameGift||0) > 0));
+  if (!rows.length) { toast('請至少完整選好一行：買的商品，再加上「送不同商品」或「同商品加贈」其中一項', 'e'); return; }
   const prefix = v('bbsprefix');
   const start_date = v('bbsstart') || null;
   const end_date = v('bbsend') || null;
@@ -389,20 +389,21 @@ async function saveBatchBigSmall() {
     try {
       const code = await genPromoNo();
       const sameGift = row.sameGift || 0;
-      const nameSuffix = sameGift>0
-        ? ` 買${row.bigQty}送${sameGift}+加贈旅行組`
-        : ' 買大送小';
+      let nameSuffix;
+      if (sameGift > 0 && row.smallPno) nameSuffix = ` 買${row.bigQty}送${sameGift}+加贈旅行組`;
+      else if (sameGift > 0) nameSuffix = ` 買${row.bigQty}送${sameGift}`;
+      else nameSuffix = ' 買大送小';
       const name = (prefix ? prefix + '_' : '') + row.bigName + nameSuffix;
       const { error: pErr } = await sb.from('promotions').insert({
         promo_code: code, name, type: buyGetTypeName,
         start_date, end_date, start_time, end_time, description,
-        buy_qty: row.bigQty, get_qty: row.smallQty, is_active: true,
+        buy_qty: row.bigQty, get_qty: row.smallPno ? row.smallQty : sameGift, is_active: true,
       });
       if (pErr) throw pErr;
       const items = [
         { promo_code: code, product_no: row.bigPno, product_name: row.bigName, qty: row.bigQty, is_gift: false },
-        { promo_code: code, product_no: row.smallPno, product_name: row.smallName, qty: row.smallQty, is_gift: true },
       ];
+      if (row.smallPno) items.push({ promo_code: code, product_no: row.smallPno, product_name: row.smallName, qty: row.smallQty, is_gift: true });
       if (sameGift > 0) items.push({ promo_code: code, product_no: row.bigPno, product_name: row.bigName, qty: sameGift, is_gift: true });
       const { error: iErr } = await sb.from('promotion_items').insert(items);
       if (iErr) throw iErr;
