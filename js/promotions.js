@@ -91,7 +91,7 @@ async function promotions() {
   </div>`;
 }
 async function addPromo() {
-  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock').eq('is_active',true).order('name');
+  const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('name');
   _allProdsForPromo = prods || [];
   _promoItems = [];
   const td = today();
@@ -103,7 +103,7 @@ async function editPromo(code) {
   const [{ data: p }, { data: its }, { data: prods }] = await Promise.all([
     sb.from('promotions').select('*').eq('promo_code', code).single(),
     sb.from('promotion_items').select('*').eq('promo_code', code).order('id'),
-    sb.from('products').select('product_no,name,spec,stock').order('name'),
+    sb.from('products').select('product_no,name,spec,stock,source').order('name'),
   ]);
   _allProdsForPromo = prods || [];
   _promoItems = (its || []).map((i, idx) => ({ id: idx + 1, pno: i.product_no, name: i.product_name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override }));
@@ -156,7 +156,7 @@ function renderPromoItems() {
         style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
         oninput="filterPromoDrop(${item.id},this.value)" onfocus="filterPromoDrop(${item.id},this.value)"
         onblur="setTimeout(()=>closePromoDrop(${item.id}),350)">
-      <div id="prodrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:140px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+      <div id="prodrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1);overflow:hidden"></div>
     </div>
     <input type="number" value="${item.qty || 1}" min="1" onchange="setPromoIQ(${item.id},this.value)"
       style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
@@ -273,65 +273,6 @@ window.pickPromoItem = (id, pno, name) => {
   renderPromoItems();
   closePromoDrop(id);
 };
-
-window.applyBundle = async (code) => {
-  const { data: promo } = await sb.from('promotions').select('*,promotions_items(*)').eq('promo_code', code).single();
-  if (!promo) { toast('找不到套組', 'e'); return; }
-  const items = promo.promotions_items || [];
-  items.forEach(item => {
-    _promoItems.push({
-      id: Date.now() + Math.random(),
-      pno: item.product_no,
-      name: item.product_name || item.product_no,
-      qty: item.qty || 1,
-      giftQty: item.gift_qty || 0,
-      isGift: item.is_gift || false,
-    });
-  });
-  renderPromoItems();
-};
-
-
-// 以下函數定義已移至下方
-
-
-// ══ 套組表單輔助函數（從 core.js 還原）══
-window.updatePromoFields = () => {
-  const t = $('f-ptype')?.value || '固定套組';
-  const ef = $('promo-extra-fields');
-  if (ef) ef.innerHTML = promoExtraFields({ type: t });
-};
-
-function renderPromoItems() {
-  const area = $('promoItemsArea'); if (!area) return;
-  area.innerHTML = _promoItems.map(item => `
-  <div style="display:grid;grid-template-columns:3fr 60px 80px 60px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
-    <div style="position:relative">
-      <input type="text" value="${item.pno ? (item.name || item.pno) : ''}" placeholder="輸入關鍵字搜尋商品…"
-        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
-        oninput="filterPromoDrop(${item.id},this.value)" onfocus="filterPromoDrop(${item.id},this.value)"
-        onblur="setTimeout(()=>closePromoDrop(${item.id}),350)">
-      <div id="prodrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:140px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
-    </div>
-    <input type="number" value="${item.qty || 1}" min="1" onchange="setPromoIQ(${item.id},this.value)"
-      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
-    <input type="number" value="${item.price_override || ''}" placeholder="套組價" onchange="setPromoIV(${item.id},this.value)"
-      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
-    <input type="checkbox" ${item.is_gift ? 'checked' : ''} onchange="setPromoIG(${item.id},this.checked)"
-      style="width:16px;height:16px;cursor:pointer" title="勾選=贈品（免費）">
-    <button onclick="rmPromoItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
-  </div>`).join('');
-};
-
-window.addPromoItem = () => { _promoItems.push({ id: Date.now(), pno: '', name: '', qty: 1, is_gift: false, price_override: null }); renderPromoItems(); };;
-
-window.rmPromoItem = id => { _promoItems = _promoItems.filter(x => x.id !== id); renderPromoItems(); };;
-
-window.setPromoIQ = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.qty = Math.max(1, +val || 1); };;
-
-window.setPromoIV = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.price_override = +val || null; };;
-
-window.setPromoIG = (id, checked) => { const it = _promoItems.find(x => x.id === id); if (it) it.is_gift = checked; };
 
 async function savePromo(editCode) {
   const code = v('pcode'), name = v('pname'), type = v('ptype');

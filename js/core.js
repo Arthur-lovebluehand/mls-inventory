@@ -428,15 +428,30 @@ var _promoItems = [], _allProdsForPromo = [];
 // updatePromoFields moved to promotions.js
 
 
+var _promoDropBrand = {}; // 記住每個品項目前選的品牌篩選（id -> 品牌名稱，'' 代表全部）
 window.filterPromoDrop = (id, q) => {
   const drop = $('prodrop-' + id); if (!drop) return;
-  const fil = q ? _allProdsForPromo.filter(p => p.name.includes(q) || (p.product_no || '').includes(q)) : _allProdsForPromo;
+  const brands = [...new Set(_allProdsForPromo.map(p => p.source).filter(Boolean))].sort();
+  const curBrand = _promoDropBrand[id] || '';
+  let fil = q ? _allProdsForPromo.filter(p => p.name.includes(q) || (p.product_no || '').includes(q)) : _allProdsForPromo;
+  if (curBrand) fil = fil.filter(p => p.source === curBrand);
   drop.style.display = 'block';
-  drop.innerHTML = fil.slice(0, 30).map(p =>
+  const tabsHtml = brands.length ? `
+    <div style="display:flex;gap:4px;overflow-x:auto;padding:5px 6px;border-bottom:1px solid var(--bd);background:var(--sf2)">
+      <span onmousedown="event.preventDefault();setPromoDropBrand(${id},'','${q ? q.replace(/'/g, "\\'") : ''}')"
+        style="flex-shrink:0;font-size:11px;padding:3px 8px;border-radius:10px;cursor:pointer;white-space:nowrap;${!curBrand ? 'background:var(--ac);color:#fff' : 'background:var(--sf);color:var(--tx2)'}">全部</span>
+      ${brands.map(b => `<span onmousedown="event.preventDefault();setPromoDropBrand(${id},'${b.replace(/'/g, "\\'")}','${q ? q.replace(/'/g, "\\'") : ''}')"
+        style="flex-shrink:0;font-size:11px;padding:3px 8px;border-radius:10px;cursor:pointer;white-space:nowrap;${curBrand === b ? 'background:var(--ac);color:#fff' : 'background:var(--sf);color:var(--tx2)'}">${b}</span>`).join('')}
+    </div>` : '';
+  drop.innerHTML = tabsHtml + `<div style="max-height:180px;overflow-y:auto">` + (fil.map(p =>
     `<div style="padding:6px 9px;font-size:12px;cursor:pointer" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''"
       onmousedown="pickPromoItem(${id},'${p.product_no.replace(/'/g,"\\'")}','${p.name.replace(/'/g,"\\'")}')">
       ${p.name}${p.spec ? ` (${p.spec})` : ''} <span style="color:var(--tx3)">庫存:${p.stock}</span>
-    </div>`).join('') || '<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>';
+    </div>`).join('') || '<div style="padding:6px 9px;font-size:12px;color:var(--tx3)">無結果</div>') + `</div>`;
+};
+window.setPromoDropBrand = (id, brand, q) => {
+  _promoDropBrand[id] = brand;
+  filterPromoDrop(id, q || '');
 };
 // removed (moved to module) if (d) d.style.display = 'none'; };
 // removed (moved to module)
