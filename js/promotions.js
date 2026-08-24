@@ -36,10 +36,10 @@ async function promotions() {
     filtered = filtered.filter(p=>(p.name||'').includes(kw)||(p.promo_code||'').includes(kw)||(p.description||'').includes(kw));
   }
 
-  // 全部頁籤：未過期排前面，已過期排後面；同組內依名稱排序
+  // 全部頁籤：未過期排前面，已過期排後面；同組內依代碼排序（代碼＝建立時間先後），最新建立的排最前面
   filtered = filtered.slice().sort((a,b)=>{
     if(_promoTab==='all' && a._expired!==b._expired) return a._expired?1:-1;
-    return (a.end_date||'9999').localeCompare(b.end_date||'9999');
+    return (b.promo_code||'').localeCompare(a.promo_code||'');
   });
 
   const count = filtered.length;
@@ -463,6 +463,7 @@ async function togglePromo(code, active) {
 var _bundlePickerTab = 'active';
 async function openBundlePicker(mode) {
   // mode: 'order' | 'po' | 'loan'
+  _bundlePickerSearch = '';
   const today_s = today();
   const cutoff_s = new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10); // 3個月前
 
@@ -480,10 +481,17 @@ async function openBundlePicker(mode) {
   _bundlePickerTab = 'active';
   renderBundlePickerBody();
 }
+var _bundlePickerSearch = '';
 function renderBundlePickerBody() {
   const { mode, active, expired } = window._bundlePickerData||{};
   const tab = _bundlePickerTab;
-  const list = tab==='active' ? active : expired;
+  let list = tab==='active' ? active : expired;
+  // 依代碼排序（最新建立的排最前面），跟活動管理列表一致
+  list = list.slice().sort((a,b)=>(b.promo_code||'').localeCompare(a.promo_code||''));
+  if(_bundlePickerSearch) {
+    const kw = _bundlePickerSearch;
+    list = list.filter(p=>(p.name||'').includes(kw)||(p.description||'').includes(kw));
+  }
   const cardHtml = p => {
     const isExpired = tab==='expired';
     return `
@@ -495,8 +503,8 @@ function renderBundlePickerBody() {
       <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">
         ${p.description || ''} ${p.bundle_price ? `・套組價 ${fM(p.bundle_price)}` : ''}
         ${p.end_date ? `・<span style="${isExpired?'color:var(--rd)':''}">有效至 ${p.end_date}${p.end_time?' '+p.end_time:''}</span>` : ''}
-        ${(p.start_time||p.end_time) ? `<div style="color:var(--am);font-weight:600;margin-top:2px">⚡ 限時 ${p.start_time||'00:00'}～${p.end_time||'23:59'}${isPromoNotStarted(p)?'（尚未開始）':''}</div>` : ''}
       </div>
+      ${(p.start_time||p.end_time) ? `<div style="color:var(--am);font-weight:600;margin-bottom:8px">⚡ 限時 ${p.start_time||'00:00'}～${p.end_time||'23:59'}${isPromoNotStarted(p)?'（尚未開始）':''}</div>` : ''}
       <div style="display:flex;align-items:center;gap:8px">
         <label style="font-size:12px;color:var(--tx2)">幾組：</label>
         <input type="number" id="bqty-${p.promo_code}" value="1" min="1" max="99"
@@ -509,11 +517,16 @@ function renderBundlePickerBody() {
   };
   OM2('選用套組/活動', `
   <div class="al al-w" style="font-size:12px">選擇套組後，子項目數量會依「組數」自動計算（買2組送的也自動×2）。已過期的套組一樣可以選用；過期超過3個月的套組不會再出現在這裡。</div>
+  <div style="margin:10px 0">
+    <input id="bp-search" placeholder="輸入名稱或說明關鍵字搜尋…（例如：8週年慶、王者肽）" value="${_bundlePickerSearch}"
+      style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"
+      oninput="_bundlePickerSearch=this.value;renderBundlePickerBody()">
+  </div>
   <div class="tab-bar" style="margin-bottom:10px">
     <div class="tab${tab==='active'?' on':''}" onclick="_bundlePickerTab='active';renderBundlePickerBody()">進行中（${active.length}）</div>
     <div class="tab${tab==='expired'?' on':''}" onclick="_bundlePickerTab='expired';renderBundlePickerBody()">已過期（${expired.length}）</div>
   </div>
-  ${list.length === 0 ? `<div style="color:var(--tx3);padding:20px;text-align:center">${tab==='active'?'目前無進行中的套組':'沒有已過期的套組（3個月內）'}</div>` :
+  ${list.length === 0 ? `<div style="color:var(--tx3);padding:20px;text-align:center">${_bundlePickerSearch?'找不到符合的套組':(tab==='active'?'目前無進行中的套組':'沒有已過期的套組（3個月內）')}</div>` :
     list.map(cardHtml).join('')}`, '');
 }
 window.renderBundlePickerBody = renderBundlePickerBody;
