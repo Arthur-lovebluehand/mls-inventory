@@ -278,12 +278,12 @@ var _batchBSAllProds = [];
 async function batchBigSmallModal() {
   const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('name');
   _batchBSAllProds = prods || [];
-  _batchBSRows = [{ id: Date.now(), bigPno: '', bigName: '', bigQty: 1, smallPno: '', smallName: '', smallQty: 1 }];
+  _batchBSRows = [{ id: Date.now(), bigPno: '', bigName: '', bigQty: 1, sameGift: 0, smallPno: '', smallName: '', smallQty: 1 }];
   const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
 
   OM('批次新增「買大送小」套組', `
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">
-    買的商品跟送的商品是兩個不同商品（例如買大瓶送小瓶）。先填共用的活動資訊，下面每一行選「買哪個、送哪個」，送出後一次幫你建立好每一行各自獨立的套組。
+    買的商品跟送的商品是兩個不同商品（例如買大瓶送小瓶）。如果同時還要「自己買自己送」（例如買1送1本身，再加碼送1個旅行組），可以填「同商品再加贈」那欄，不用另外分開建。先填共用的活動資訊，下面每一行選好，送出後一次幫你建立好每一行各自獨立的套組。
   </div>
   <div class="fg" style="margin-bottom:12px">
     <div class="fl fw"><label>活動名稱前綴（選填，例如「8週年慶」，會自動加在每個套組名稱前面）</label><input id="f-bbsprefix" placeholder="例如：8週年慶"></div>
@@ -294,8 +294,8 @@ async function batchBigSmallModal() {
     <div class="fl fw"><label>說明（選填，會存到每個套組的說明欄）</label><input id="f-bbsdesc" placeholder="例如：8週年慶"></div>
   </div>
   <div class="sh">商品配對清單（每一行＝一個獨立套組）<span id="batchBSCount" style="font-weight:400;color:var(--tx3);font-size:12px;margin-left:8px">共 ${_batchBSRows.length} 行</span></div>
-  <div style="display:grid;grid-template-columns:22px 2fr 55px 2fr 55px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase">
-    <span>#</span><span>買（收費）</span><span>買幾</span><span style="color:var(--am)">送（免費）</span><span>送幾</span><span></span>
+  <div style="display:grid;grid-template-columns:22px 2fr 55px 60px 2fr 55px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase">
+    <span>#</span><span>買（收費）</span><span>買幾</span><span>同商品<br>再加贈</span><span style="color:var(--am)">送（不同商品）</span><span>送幾</span><span></span>
   </div>
   <div id="batchBSArea"></div>
   <button class="btn btn-s" onclick="addBatchBSRow()" style="margin-top:6px">＋ 加一行</button>
@@ -309,7 +309,7 @@ window.batchBigSmallModal = batchBigSmallModal;
 function renderBatchBSRows() {
   const area = $('batchBSArea'); if (!area) return;
   area.innerHTML = _batchBSRows.map((row,idx) => `
-  <div style="display:grid;grid-template-columns:22px 2fr 55px 2fr 55px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+  <div style="display:grid;grid-template-columns:22px 2fr 55px 60px 2fr 55px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
     <span style="font-size:12px;color:var(--tx3);text-align:center">${idx+1}</span>
     <div style="position:relative">
       <input type="text" value="${row.bigPno ? (row.bigName || row.bigPno) : ''}" placeholder="搜尋要收費的商品…"
@@ -319,6 +319,8 @@ function renderBatchBSRows() {
       <div id="bbsdrop-${row.id}-big" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1);overflow:hidden"></div>
     </div>
     <input type="number" value="${row.bigQty}" min="1" onchange="setBatchBSVal(${row.id},'bigQty',this.value)"
+      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="number" value="${row.sameGift||0}" min="0" title="同商品再加贈幾個（選填，例如買1送1本身，這裡填1）" onchange="setBatchBSVal(${row.id},'sameGift',this.value)"
       style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
     <div style="position:relative">
       <input type="text" value="${row.smallPno ? (row.smallName || row.smallPno) : ''}" placeholder="搜尋要送的商品…"
@@ -367,8 +369,8 @@ window.pickBatchBSProd = (id, side, pno, name) => {
   renderBatchBSRows();
   const d = $('bbsdrop-' + id + '-' + side); if (d) d.style.display = 'none';
 };
-window.setBatchBSVal = (id, key, val) => { const row = _batchBSRows.find(x => x.id === id); if (row) row[key] = Math.max(1, parseInt(val) || 1); };
-window.addBatchBSRow = () => { _batchBSRows.push({ id: Date.now() + Math.random(), bigPno: '', bigName: '', bigQty: 1, smallPno: '', smallName: '', smallQty: 1 }); renderBatchBSRows(); };
+window.setBatchBSVal = (id, key, val) => { const row = _batchBSRows.find(x => x.id === id); if (row) row[key] = key==='sameGift' ? Math.max(0, parseInt(val)||0) : Math.max(1, parseInt(val) || 1); };
+window.addBatchBSRow = () => { _batchBSRows.push({ id: Date.now() + Math.random(), bigPno: '', bigName: '', bigQty: 1, sameGift: 0, smallPno: '', smallName: '', smallQty: 1 }); renderBatchBSRows(); };
 window.rmBatchBSRow = id => { _batchBSRows = _batchBSRows.filter(x => x.id !== id); renderBatchBSRows(); };
 
 async function saveBatchBigSmall() {
@@ -386,17 +388,20 @@ async function saveBatchBigSmall() {
   for (const [idx, row] of rows.entries()) {
     try {
       const code = await genPromoNo();
-      const name = (prefix ? prefix + '_' : '') + `${row.bigName} 買大送小`;
+      const sameGift = row.sameGift || 0;
+      const name = (prefix ? prefix + '_' : '') + `${row.bigName} 買大送小${sameGift>0?'(含加碼贈品)':''}`;
       const { error: pErr } = await sb.from('promotions').insert({
         promo_code: code, name, type: buyGetTypeName,
         start_date, end_date, start_time, end_time, description,
         buy_qty: row.bigQty, get_qty: row.smallQty, is_active: true,
       });
       if (pErr) throw pErr;
-      const { error: iErr } = await sb.from('promotion_items').insert([
+      const items = [
         { promo_code: code, product_no: row.bigPno, product_name: row.bigName, qty: row.bigQty, is_gift: false },
         { promo_code: code, product_no: row.smallPno, product_name: row.smallName, qty: row.smallQty, is_gift: true },
-      ]);
+      ];
+      if (sameGift > 0) items.push({ promo_code: code, product_no: row.bigPno, product_name: row.bigName, qty: sameGift, is_gift: true });
+      const { error: iErr } = await sb.from('promotion_items').insert(items);
       if (iErr) throw iErr;
       ok++;
     } catch (e) { fail++; }
