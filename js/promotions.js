@@ -354,19 +354,30 @@ async function showPromo(code) {
   </div>
   <div class="sh">套組包含商品</div>
   <table class="itb">
-    <tr><th>商品</th><th>數量</th><th>性質</th>${LEVELS.map(lv=>`<th style="font-size:11px">${lv}</th>`).join('')}</tr>
-    ${(its || []).map(i => {
-      const pr = prodPriceMap[i.product_no];
-      return `<tr>
-      <td>${i.product_name || '—'}</td>
-      <td class="num">${fN(i.qty)}</td>
-      <td><span class="badge ${i.is_gift ? 'ba' : 'bg'}">${i.is_gift ? '贈品' : '商品'}</span></td>
-      ${LEVELS.map(lv=>{
-        if(i.is_gift) return `<td class="num" style="color:var(--tx3);font-size:12px">贈</td>`;
-        const unitPrice = i.price_override!=null ? i.price_override : (pr?.[LEVEL_COLS[lv]]||0);
-        return `<td class="num" style="font-size:12px">${fM(unitPrice*(i.qty||1))}</td>`;
-      }).join('')}
-    </tr>`;}).join('')}
+    <tr><th>商品</th><th>銷售數</th><th style="color:var(--am)">贈品數</th>${LEVELS.map(lv=>`<th style="font-size:11px">${lv}</th>`).join('')}</tr>
+    ${(()=>{
+      // 同一個商品的銷售數跟贈品數合併成一列，不同商品才各自一列
+      const grouped = {};
+      (its||[]).forEach(i=>{
+        if(!grouped[i.product_no]) grouped[i.product_no] = { name:i.product_name, qty:0, giftQty:0, price_override:i.price_override };
+        if(i.is_gift) grouped[i.product_no].giftQty += (i.qty||1);
+        else grouped[i.product_no].qty += (i.qty||1);
+      });
+      return Object.keys(grouped).map(pno=>{
+        const g = grouped[pno];
+        const pr = prodPriceMap[pno];
+        return `<tr>
+          <td>${g.name || '—'}</td>
+          <td class="num">${g.qty||'—'}</td>
+          <td class="num" style="color:var(--am);font-weight:600">${g.giftQty||'—'}</td>
+          ${LEVELS.map(lv=>{
+            if(!g.qty) return `<td class="num" style="color:var(--tx3);font-size:12px">贈</td>`;
+            const unitPrice = g.price_override!=null ? g.price_override : (pr?.[LEVEL_COLS[lv]]||0);
+            return `<td class="num" style="font-size:12px">${fM(unitPrice*g.qty)}</td>`;
+          }).join('')}
+        </tr>`;
+      }).join('');
+    })()}
   </table>`);
 }
 
@@ -391,22 +402,32 @@ async function applyPromo(code, mode, sets) {
     const lv = $('f-oalv')?.value || '零售';
     const col = LEVEL_COLS[lv] || 'price_retail';
 
+    // 先依商品編號分組：同一個商品的「買」跟「送」合併成一列（qty＝銷售數、giftQty＝贈品數），
+    // 不同商品才各自一列，這樣「買5送1」看起來才是一列，不會拆成兩三列都同一個商品名
+    const grouped = {};
     for (const i of its) {
-      const { data: prod } = await sb.from('products').select('product_no,name,spec,stock,' + col).eq('product_no', i.product_no).single();
-      const unitPrice = i.is_gift ? 0 : (i.price_override || prod?.[col] || 0);
-      const itemQty = (i.qty || 1) * sets;       // 數量 × 組數
+      if (!grouped[i.product_no]) grouped[i.product_no] = { qty: 0, giftQty: 0, price_override: i.price_override };
+      const itemQty = (i.qty || 1) * sets;
+      if (i.is_gift) grouped[i.product_no].giftQty += itemQty;
+      else grouped[i.product_no].qty += itemQty;
+    }
+
+    for (const pno of Object.keys(grouped)) {
+      const g = grouped[pno];
+      const { data: prod } = await sb.from('products').select('product_no,name,spec,stock,' + col).eq('product_no', pno).single();
+      const unitPrice = g.price_override || prod?.[col] || 0;
       const newItem = {
         id: Date.now() + Math.random(),
-        pno: i.product_no,
-        qty: i.is_gift ? 0 : itemQty,
+        pno: pno,
+        qty: g.qty,
         price: unitPrice,
-        giftQty: i.is_gift ? itemQty : 0,
-        amt: i.is_gift ? 0 : (itemQty * unitPrice),
-        is_gift: i.is_gift,
+        giftQty: g.giftQty,
+        amt: g.qty * unitPrice,
+        is_gift: g.qty === 0,
         promo_code: code,
         bundle_name: p.name + (sets > 1 ? ' ×' + sets : ''),
         bundle_group: bundleGroup,
-        _pname: i.product_name || prod?.name || i.product_no,
+        _pname: prod?.name || pno,
       };
       _items.push(newItem);
     }
@@ -418,12 +439,18 @@ async function applyPromo(code, mode, sets) {
     renderItems();
     toast('套組已展開，請確認品項！');
   } else if (mode === 'po') {
+    const grouped = {};
     for (const i of its) {
+      if (!grouped[i.product_no]) grouped[i.product_no] = { qty: 0, giftQty: 0, price_override: i.price_override, product_name: i.product_name };
       const pQty = (i.qty || 1) * sets;
-      // 從已載入的商品清單取進貨成本，若套組有設定 price_override 則優先使用
-      const prodInfo = _poProds.find(x => x.product_no === i.product_no);
-      const price = i.is_gift ? 0 : (i.price_override || prodInfo?.cost || 0);
-      _poItems.push({ id: Date.now() + Math.random(), pno: i.product_no, qty: i.is_gift ? 0 : pQty, price, giftQty: i.is_gift ? pQty : 0, amt: i.is_gift ? 0 : pQty * price, _pname: i.product_name || prodInfo?.name || i.product_no, promo_code: code, bundle_name: p.name + (sets > 1 ? ' ×' + sets : ''), bundle_group: bundleGroup });
+      if (i.is_gift) grouped[i.product_no].giftQty += pQty;
+      else grouped[i.product_no].qty += pQty;
+    }
+    for (const pno of Object.keys(grouped)) {
+      const g = grouped[pno];
+      const prodInfo = _poProds.find(x => x.product_no === pno);
+      const price = g.price_override || prodInfo?.cost || 0;
+      _poItems.push({ id: Date.now() + Math.random(), pno, qty: g.qty, price, giftQty: g.giftQty, amt: g.qty * price, _pname: g.product_name || prodInfo?.name || pno, promo_code: code, bundle_name: p.name + (sets > 1 ? ' ×' + sets : ''), bundle_group: bundleGroup });
     }
     CM2();
     renderPOItems();
