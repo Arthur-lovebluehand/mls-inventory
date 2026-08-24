@@ -6,7 +6,7 @@ var _promoTab = 'all';
 var _promoPage = 1;
 async function promotions() {
   const today_s = today();
-  const typeColor = { '固定套組': 'bb', '買幾送幾': 'bg', '折扣金額': 'ba', '百分比折扣': 'bbr' };
+  const typeColor = name => promoTypeColor(name);
   const fmt_date = d => d ? d : '—';
 
   // 先把全部抓回來，在前端依頁籤篩選（活動/套組通常數量不多，這樣篩選跟排序邏輯比較單純）
@@ -56,7 +56,7 @@ async function promotions() {
           return `<tr>
             <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${p.promo_code}</td>
             <td style="font-weight:500">${p.name}</td>
-            <td><span class="badge ${typeColor[p.type] || 'bgr'}">${p.type}</span></td>
+            <td><span class="badge ${typeColor(p.type)}">${p.type}</span></td>
             <td style="font-size:12px">${fmt_date(p.start_date)} ～ ${fmt_date(p.end_date)}</td>
             <td style="font-size:12px;color:var(--tx2)">${p.description || '—'}</td>
             <td><span class="badge ${active ? 'bg' : 'br2'}">${expired ? '已過期' : p.is_active ? '使用中' : '停用'}</span></td>
@@ -107,7 +107,7 @@ function promoForm(p) {
     <div class="fl"><label>名稱 *</label><input id="f-pname" value="${p.name || ''}"></div>
     <div class="fl"><label>類型</label>
       <select id="f-ptype" onchange="updatePromoFields()">
-        ${['固定套組', '買幾送幾', '折扣金額', '百分比折扣'].map(t => `<option ${t === p.type ? 'selected' : ''}>${t}</option>`).join('')}
+        ${promoTypeNames().map(t => `<option ${t === p.type ? 'selected' : ''}>${t}</option>`).join('')}
       </select></div>
     <div class="fl"><label>生效日期</label><input id="f-pstart" type="date" value="${p.start_date || ''}"></div>
     <div class="fl"><label>到期日（空白=永久）</label><input id="f-pend" type="date" value="${p.end_date || ''}"></div>
@@ -125,11 +125,11 @@ function promoForm(p) {
   <button class="btn btn-s" onclick="addPromoItem()" style="margin-top:6px">＋ 加商品</button>`;
 }
 function promoExtraFields(p) {
-  const type = p.type || '固定套組';
-  if (type === '固定套組') return `<label>套組售價（空白=各商品加總）</label><input id="f-pbprice" type="number" value="${p.bundle_price || ''}">`;
-  if (type === '買幾送幾') return `<div style="display:flex;gap:8px;align-items:center"><div style="flex:1"><label>購買數量</label><input id="f-pbuy" type="number" value="${p.buy_qty || ''}"></div><div style="flex:1"><label>贈送數量</label><input id="f-pget" type="number" value="${p.get_qty || ''}"></div></div>`;
-  if (type === '折扣金額') return `<label>折扣金額（NT$）</label><input id="f-pdamt" type="number" value="${p.discount_amount || ''}">`;
-  if (type === '百分比折扣') return `<label>折扣百分比（0-100）</label><input id="f-pdpct" type="number" min="0" max="100" value="${p.discount_pct || ''}">`;
+  const calcMode = promoTypeCalcMode(p.type || promoTypeNames()[0]);
+  if (calcMode === 'fixed_price') return `<label>套組售價（空白=各商品加總）</label><input id="f-pbprice" type="number" value="${p.bundle_price || ''}">`;
+  if (calcMode === 'buy_get') return `<div style="display:flex;gap:8px;align-items:center"><div style="flex:1"><label>購買數量</label><input id="f-pbuy" type="number" value="${p.buy_qty || ''}"></div><div style="flex:1"><label>贈送數量</label><input id="f-pget" type="number" value="${p.get_qty || ''}"></div></div>`;
+  if (calcMode === 'discount_amount') return `<label>折扣金額（NT$）</label><input id="f-pdamt" type="number" value="${p.discount_amount || ''}">`;
+  if (calcMode === 'discount_pct') return `<label>折扣百分比（0-100）</label><input id="f-pdpct" type="number" min="0" max="100" value="${p.discount_pct || ''}">`;
   return '';
 }
 function renderPromoItems() {
@@ -151,34 +151,6 @@ function renderPromoItems() {
       style="width:16px;height:16px;cursor:pointer" title="勾選=贈品（免費）">
     <button onclick="rmPromoItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
   </div>`).join('');
-}
-async function savePromo(editCode) {
-  const code = v('pcode'), name = v('pname'), type = v('ptype');
-  if (!code || !name) { toast('請填寫代碼和名稱', 'e'); return; }
-  const payload = {
-    promo_code: code, name, type,
-    start_date: v('pstart') || null, end_date: v('pend') || null,
-    description: v('pdesc') || null, note: v('pnote') || null,
-    bundle_price: null, discount_amount: null, discount_pct: null, buy_qty: null, get_qty: null,
-  };
-  if (type === '固定套組') payload.bundle_price = parseFloat($('f-pbprice')?.value) || null;
-  if (type === '買幾送幾') { payload.buy_qty = parseFloat($('f-pbuy')?.value) || null; payload.get_qty = parseFloat($('f-pget')?.value) || null; }
-  if (type === '折扣金額') payload.discount_amount = parseFloat($('f-pdamt')?.value) || null;
-  if (type === '百分比折扣') payload.discount_pct = parseFloat($('f-pdpct')?.value) || null;
-
-  if (editCode) {
-    await sb.from('promotions').update(payload).eq('promo_code', editCode);
-    await sb.from('promotion_items').delete().eq('promo_code', editCode);
-  } else {
-    payload.is_active = true;
-    const { error } = await sb.from('promotions').insert(payload);
-    if (error) { toast('新增失敗：' + error.message, 'e'); return; }
-  }
-  const items = _promoItems.filter(i => i.pno).map(i => ({
-    promo_code: code, product_no: i.pno, product_name: i.name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override || null
-  }));
-  if (items.length) await sb.from('promotion_items').insert(items);
-  toast(editCode ? '套組已更新' : '套組新增成功！'); CM(); promotions();
 }
 async function togglePromo(code, active) {
   await sb.from('promotions').update({ is_active: !active }).eq('promo_code', code);
@@ -214,7 +186,7 @@ function renderBundlePickerBody() {
     <div style="border:1px solid ${isExpired?'var(--rd)':'var(--bd)'};border-radius:var(--r);padding:10px 12px;margin-bottom:8px;${isExpired?'opacity:.8':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-weight:500">${p.name}${isExpired?' <span class="badge br2" style="font-size:10px">已過期</span>':''}</span>
-        <span class="badge ${p.type === '固定套組' ? 'bb' : p.type === '買幾送幾' ? 'bg' : 'ba'}">${p.type}</span>
+        <span class="badge ${promoTypeColor(p?.type)}">${p?.type}</span>
       </div>
       <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">
         ${p.description || ''} ${p.bundle_price ? `・套組價 ${fM(p.bundle_price)}` : ''}
@@ -354,10 +326,11 @@ async function savePromo(editCode) {
     description: v('pdesc') || null, note: v('pnote') || null,
     bundle_price: null, discount_amount: null, discount_pct: null, buy_qty: null, get_qty: null,
   };
-  if (type === '固定套組') payload.bundle_price = parseFloat($('f-pbprice')?.value) || null;
-  if (type === '買幾送幾') { payload.buy_qty = parseFloat($('f-pbuy')?.value) || null; payload.get_qty = parseFloat($('f-pget')?.value) || null; }
-  if (type === '折扣金額') payload.discount_amount = parseFloat($('f-pdamt')?.value) || null;
-  if (type === '百分比折扣') payload.discount_pct = parseFloat($('f-pdpct')?.value) || null;
+  const calcMode = promoTypeCalcMode(type);
+  if (calcMode === 'fixed_price') payload.bundle_price = parseFloat($('f-pbprice')?.value) || null;
+  if (calcMode === 'buy_get') { payload.buy_qty = parseFloat($('f-pbuy')?.value) || null; payload.get_qty = parseFloat($('f-pget')?.value) || null; }
+  if (calcMode === 'discount_amount') payload.discount_amount = parseFloat($('f-pdamt')?.value) || null;
+  if (calcMode === 'discount_pct') payload.discount_pct = parseFloat($('f-pdpct')?.value) || null;
 
   if (editCode) {
     await sb.from('promotions').update(payload).eq('promo_code', editCode);

@@ -20,12 +20,14 @@ async function categories() {
     <div class="tab${tab==='shipping'?' on':''}" onclick="window._catTab='shipping';categories()">寄送方式</div>
     <div class="tab${tab==='ordertype'?' on':''}" onclick="window._catTab='ordertype';categories()">訂單類型</div>
     <div class="tab${tab==='opex'?' on':''}" onclick="window._catTab='opex';categories()">營運成本類別</div>
+    <div class="tab${tab==='promo'?' on':''}" onclick="window._catTab='promo';categories()">套組類型</div>
   </div>`;
   if(tab==='roles') { await categoriesRoles(); return; }
   if(tab==='payment') { await categoriesPayment(); return; }
   if(tab==='shipping') { await categoriesShipping(); return; }
   if(tab==='ordertype') { await categoriesOrderType(); return; }
   if(tab==='opex') { await categoriesOpex(); return; }
+  if(tab==='promo') { await categoriesPromoType(); return; }
   await categoriesProducts();
 }
 
@@ -477,6 +479,93 @@ window.editOpexCatModal = editOpexCatModal;
 window.saveOpexCat = saveOpexCat;
 window.toggleOpexCat = toggleOpexCat;
 window.deleteOpexCat = deleteOpexCat;
+
+// ══════════════════════════════
+// 套組類型管理
+// ══════════════════════════════
+const PROMO_CALC_MODES = [
+  {v:'fixed_price',label:'固定套組售價（一個總價，內含商品可以各自不同單價）'},
+  {v:'buy_get',label:'買幾送幾（買A數量，送B數量）'},
+  {v:'discount_amount',label:'折扣金額（整組扣固定金額）'},
+  {v:'discount_pct',label:'折扣百分比（整組打折）'},
+];
+async function categoriesPromoType() {
+  const { data } = await sb.from('promo_types').select('*').order('sort_order').order('name');
+  const modeLabel = m => (PROMO_CALC_MODES.find(x=>x.v===m)||{}).label || m;
+  $('main').innerHTML += `
+  <div class="pc">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <button class="btn btn-p btn-s" onclick="addPromoTypeModal()">＋ 新增套組類型</button>
+  </div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理「活動/套組」的類型選項、顏色、排序，可以自己新增。新增時要選一個「計算方式」，決定這個類型建套組時要填哪些欄位、怎麼算價格（例如你想開一個新類型「限時買一送一」，計算方式選「買幾送幾」就可以）。</div>
+  <div class="tc"><div class="tw"><table style="width:100%">
+    <tr><th>顏色預覽</th><th>名稱</th><th>計算方式</th><th style="text-align:center">排序</th><th>狀態</th><th>操作</th></tr>
+    ${(data||[]).map(t=>`<tr>
+      <td><span class="badge ${t.color}">${t.name}</span></td>
+      <td style="font-weight:500">${t.name}</td>
+      <td style="font-size:12px;color:var(--tx3)">${modeLabel(t.calc_mode)}</td>
+      <td style="text-align:center">${t.sort_order}</td>
+      <td><span class="badge ${t.is_active?'bg':'br2'}">${t.is_active?'啟用':'停用'}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn btn-s" onclick="editPromoTypeModal(${t.id},'${t.name.replace(/'/g,"\\'")}','${t.calc_mode}','${t.color}',${t.sort_order},${t.is_active})">編輯</button>
+        <button class="btn btn-s" onclick="togglePromoType(${t.id},${t.is_active})">${t.is_active?'停用':'啟用'}</button>
+        <button class="btn btn-s btn-r" onclick="deletePromoType(${t.id},'${t.name.replace(/'/g,"\\'")}')">刪除</button>
+      </div></td>
+    </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">尚無套組類型，請先新增</td></tr>'}
+  </table></div></div></div>`;
+}
+function addPromoTypeModal() {
+  OM('新增套組類型', `
+  ${fi('ptname','名稱 *')}
+  <div class="fl"><label>計算方式 *</label><select id="f-ptcalc">${PROMO_CALC_MODES.map(m=>`<option value="${m.v}">${m.label}</option>`).join('')}</select></div>
+  <div class="fl"><label>顏色</label><select id="f-ptcolor">${ORDER_TYPE_COLORS.map(c=>`<option value="${c.v}">${c.label}</option>`).join('')}</select></div>
+  ${fi('ptsort','排序','number','99')}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="savePromoType()">新增</button>`);
+}
+function editPromoTypeModal(id,name,calcMode,color,sort,active) {
+  OM('編輯套組類型', `
+  ${fi('ptname','名稱 *','text',name)}
+  <div class="fl"><label>計算方式 *</label><select id="f-ptcalc">${PROMO_CALC_MODES.map(m=>`<option value="${m.v}" ${m.v===calcMode?'selected':''}>${m.label}</option>`).join('')}</select></div>
+  <div class="fl"><label>顏色</label><select id="f-ptcolor">${ORDER_TYPE_COLORS.map(c=>`<option value="${c.v}" ${c.v===color?'selected':''}>${c.label}</option>`).join('')}</select></div>
+  ${fi('ptsort','排序','number',sort)}
+  <div class="al al-w" style="font-size:12px;margin-top:8px">如果改變「計算方式」，用這個類型建立的舊套組，已經存的欄位資料不會被清掉，但編輯畫面會照新的計算方式顯示欄位。</div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="savePromoType(${id})">儲存</button>`);
+}
+async function savePromoType(id) {
+  const name = v('ptname').trim();
+  if(!name) { toast('請輸入名稱','e'); return; }
+  const payload = { name, calc_mode:v('ptcalc'), color:v('ptcolor')||'bgr', sort_order:parseInt(v('ptsort'))||99 };
+  if(id) {
+    const { error } = await sb.from('promo_types').update(payload).eq('id',id);
+    if(error) { toast('更新失敗：'+error.message,'e'); return; }
+  } else {
+    const { error } = await sb.from('promo_types').insert({...payload, is_active:true});
+    if(error) { toast('新增失敗：'+error.message,'e'); return; }
+  }
+  toast('✅ 已儲存');
+  CM();
+  await loadPromoTypes();
+  categories();
+}
+async function togglePromoType(id, current) {
+  await sb.from('promo_types').update({is_active:!current}).eq('id',id);
+  await loadPromoTypes();
+  categories();
+}
+async function deletePromoType(id, name) {
+  if(!confirm(`確定刪除套組類型「${name}」？`)) return;
+  await sb.from('promo_types').delete().eq('id',id);
+  await loadPromoTypes();
+  categories();
+}
+window.categoriesPromoType = categoriesPromoType;
+window.addPromoTypeModal = addPromoTypeModal;
+window.editPromoTypeModal = editPromoTypeModal;
+window.savePromoType = savePromoType;
+window.togglePromoType = togglePromoType;
+window.deletePromoType = deletePromoType;
 window.addShipMethodModal = addShipMethodModal;
 window.editShipMethodModal = editShipMethodModal;
 window.saveShipMethod = saveShipMethod;

@@ -39,7 +39,7 @@ window.addEventListener('error',e=>{
       showLoginPage();
       return;
     }
-    Promise.all([loadPayMethods(),loadShipMethods(),loadBrandNames(),loadOrderTypes(),loadOpexCategories()]).then(() => go('dashboard'));
+    Promise.all([loadPayMethods(),loadShipMethods(),loadBrandNames(),loadOrderTypes(),loadOpexCategories(),loadPromoTypes()]).then(() => go('dashboard'));
   };
   s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
   document.head.appendChild(s);
@@ -169,6 +169,15 @@ async function loadOpexCategories(){
   const{data}=await sb.from('opex_categories').select('name').eq('is_active',true).order('sort_order').order('name');
   if(data&&data.length) _opexCategories=data.map(x=>x.name);
 }
+
+var _promoTypes = [{name:'固定套組',calc_mode:'fixed_price',color:'bb'}];
+async function loadPromoTypes(){
+  const{data}=await sb.from('promo_types').select('name,calc_mode,color').eq('is_active',true).order('sort_order').order('name');
+  if(data&&data.length) _promoTypes=data;
+}
+function promoTypeNames(){ return _promoTypes.map(t=>t.name); }
+function promoTypeColor(name){ return (_promoTypes.find(t=>t.name===name)||{}).color || 'bgr'; }
+function promoTypeCalcMode(name){ return (_promoTypes.find(t=>t.name===name)||{}).calc_mode || 'fixed_price'; }
 const LEVEL_COLS={創始:'price_founder',大區:'price_region',市代:'price_city',經銷:'price_dealer',VIP:'price_vip',零售:'price_retail'};
 function lvBadge(l){
   const cls={創始:'bbr',大區:'bbr',市代:'bb',經銷:'bg',VIP:'ba',零售:'bgr'};
