@@ -124,9 +124,9 @@ async function batchBuyGetModal() {
     <div class="fl"><label>限時結束（選填）</label><input id="f-bbgetime" type="time"></div>
     <div class="fl fw"><label>說明（選填，會存到每個套組的說明欄）</label><input id="f-bbgdesc" placeholder="例如：8週年慶"></div>
   </div>
-  <div class="sh">商品清單（每一行＝一個獨立套組）</div>
-  <div style="display:grid;grid-template-columns:2.5fr 70px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase">
-    <span>商品</span><span>買幾</span><span>送幾</span><span></span>
+  <div class="sh">商品清單（每一行＝一個獨立套組）<span id="batchBGCount" style="font-weight:400;color:var(--tx3);font-size:12px;margin-left:8px">共 ${_batchBGRows.length} 行</span></div>
+  <div style="display:grid;grid-template-columns:26px 2.5fr 70px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase">
+    <span>#</span><span>商品</span><span>買幾</span><span>送幾</span><span></span>
   </div>
   <div id="batchBGArea"></div>
   <button class="btn btn-s" onclick="addBatchBGRow()" style="margin-top:6px">＋ 加一行</button>
@@ -139,8 +139,9 @@ window.batchBuyGetModal = batchBuyGetModal;
 
 function renderBatchBGRows() {
   const area = $('batchBGArea'); if (!area) return;
-  area.innerHTML = _batchBGRows.map(row => `
-  <div style="display:grid;grid-template-columns:2.5fr 70px 70px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+  area.innerHTML = _batchBGRows.map((row,idx) => `
+  <div style="display:grid;grid-template-columns:26px 2.5fr 70px 70px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+    <span style="font-size:12px;color:var(--tx3);text-align:center">${idx+1}</span>
     <div style="position:relative">
       <input type="text" value="${row.pno ? (row.name || row.pno) : ''}" placeholder="輸入關鍵字搜尋商品…"
         style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
@@ -154,13 +155,15 @@ function renderBatchBGRows() {
       style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
     <button onclick="rmBatchBGRow(${row.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
   </div>`).join('');
+  const countEl = $('batchBGCount');
+  if (countEl) countEl.textContent = `共 ${_batchBGRows.length} 行`;
 }
 window.renderBatchBGRows = renderBatchBGRows;
 
 var _batchBGDropBrand = {};
 window.filterBatchBGDrop = (id, q) => {
   const drop = $('bbgdrop-' + id); if (!drop) return;
-  const brands = [...new Set(_batchBGAllProds.map(p => p.source).filter(Boolean))].sort();
+  const brands = _brandNames.filter(b => _batchBGAllProds.some(p => p.source === b));
   const curBrand = _batchBGDropBrand[id] || '';
   let fil = q ? _batchBGAllProds.filter(p => p.name.includes(q) || (p.product_no || '').includes(q)) : _batchBGAllProds;
   if (curBrand) fil = fil.filter(p => p.source === curBrand);

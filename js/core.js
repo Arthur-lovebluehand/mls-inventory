@@ -431,7 +431,7 @@ var _promoItems = [], _allProdsForPromo = [];
 var _promoDropBrand = {}; // 記住每個品項目前選的品牌篩選（id -> 品牌名稱，'' 代表全部）
 window.filterPromoDrop = (id, q) => {
   const drop = $('prodrop-' + id); if (!drop) return;
-  const brands = [...new Set(_allProdsForPromo.map(p => p.source).filter(Boolean))].sort();
+  const brands = _brandNames.filter(b => _allProdsForPromo.some(p => p.source === b));
   const curBrand = _promoDropBrand[id] || '';
   let fil = q ? _allProdsForPromo.filter(p => p.name.includes(q) || (p.product_no || '').includes(q)) : _allProdsForPromo;
   if (curBrand) fil = fil.filter(p => p.source === curBrand);
