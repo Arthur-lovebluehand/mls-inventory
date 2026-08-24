@@ -2,6 +2,19 @@
 // promotions.js
 // ═══════════════════════════════════════
 
+// 判斷套組是否已經過期：有填時段（快閃活動）就精確到分鐘，沒填就照原本只看日期（到當天結束都算有效）
+function isPromoExpired(p) {
+  if (!p?.end_date) return false; // 沒有到期日 = 永久有效
+  const endStr = p.end_date + 'T' + (p.end_time || '23:59:59');
+  return new Date(endStr).getTime() < Date.now();
+}
+// 判斷套組是否「還沒開始」（快閃活動設了開始時間，現在還沒到）
+function isPromoNotStarted(p) {
+  if (!p?.start_date) return false;
+  const startStr = p.start_date + 'T' + (p.start_time || '00:00:00');
+  return new Date(startStr).getTime() > Date.now();
+}
+
 var _promoTab = 'all';
 var _promoPage = 1;
 async function promotions() {
@@ -11,7 +24,7 @@ async function promotions() {
 
   // 先把全部抓回來，在前端依頁籤篩選（活動/套組通常數量不多，這樣篩選跟排序邏輯比較單純）
   const { data: allData } = await sb.from('promotions').select('*');
-  const withStatus = (allData||[]).map(p=>({...p, _expired: p.end_date && p.end_date < today_s}));
+  const withStatus = (allData||[]).map(p=>({...p, _expired: isPromoExpired(p)}));
 
   let filtered;
   if(_promoTab==='active') filtered = withStatus.filter(p=>!p._expired);
@@ -57,7 +70,7 @@ async function promotions() {
             <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${p.promo_code}</td>
             <td style="font-weight:500">${p.name}</td>
             <td><span class="badge ${typeColor(p.type)}">${p.type}</span></td>
-            <td style="font-size:12px">${fmt_date(p.start_date)} ～ ${fmt_date(p.end_date)}</td>
+            <td style="font-size:12px">${fmt_date(p.start_date)} ～ ${fmt_date(p.end_date)}${(p.start_time||p.end_time)?`<div style="color:var(--am);font-weight:600">⚡ ${p.start_time||'00:00'}～${p.end_time||'23:59'}</div>`:''}</td>
             <td style="font-size:12px;color:var(--tx2)">${p.description || '—'}</td>
             <td><span class="badge ${active ? 'bg' : 'br2'}">${expired ? '已過期' : p.is_active ? '使用中' : '停用'}</span></td>
             <td><div style="display:flex;gap:3px">
@@ -111,6 +124,8 @@ function promoForm(p) {
       </select></div>
     <div class="fl"><label>生效日期</label><input id="f-pstart" type="date" value="${p.start_date || ''}"></div>
     <div class="fl"><label>到期日（空白=永久）</label><input id="f-pend" type="date" value="${p.end_date || ''}"></div>
+    <div class="fl"><label>限時開始（選填，快閃活動用，例如10:00）</label><input id="f-pstime" type="time" value="${p.start_time || ''}"></div>
+    <div class="fl"><label>限時結束（選填，例如13:00）</label><input id="f-petime" type="time" value="${p.end_time || ''}"></div>
     <div class="fl fw" id="promo-extra-fields">
       ${promoExtraFields(p)}
     </div>
@@ -170,8 +185,8 @@ async function openBundlePicker(mode) {
 
   window._bundlePickerData = {
     mode,
-    active: (promos||[]).filter(p=>!p.end_date || p.end_date>=today_s),
-    expired: (promos||[]).filter(p=>p.end_date && p.end_date<today_s),
+    active: (promos||[]).filter(p=>!isPromoExpired(p)),
+    expired: (promos||[]).filter(p=>isPromoExpired(p)),
   };
   _bundlePickerTab = 'active';
   renderBundlePickerBody();
@@ -190,7 +205,8 @@ function renderBundlePickerBody() {
       </div>
       <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">
         ${p.description || ''} ${p.bundle_price ? `・套組價 ${fM(p.bundle_price)}` : ''}
-        ${p.end_date ? `・<span style="${isExpired?'color:var(--rd)':''}">有效至 ${p.end_date}</span>` : ''}
+        ${p.end_date ? `・<span style="${isExpired?'color:var(--rd)':''}">有效至 ${p.end_date}${p.end_time?' '+p.end_time:''}</span>` : ''}
+        ${(p.start_time||p.end_time) ? `<div style="color:var(--am);font-weight:600;margin-top:2px">⚡ 限時 ${p.start_time||'00:00'}～${p.end_time||'23:59'}${isPromoNotStarted(p)?'（尚未開始）':''}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <label style="font-size:12px;color:var(--tx2)">幾組：</label>
@@ -323,6 +339,7 @@ async function savePromo(editCode) {
   const payload = {
     promo_code: code, name, type,
     start_date: v('pstart') || null, end_date: v('pend') || null,
+    start_time: v('pstime') || null, end_time: v('petime') || null,
     description: v('pdesc') || null, note: v('pnote') || null,
     bundle_price: null, discount_amount: null, discount_pct: null, buy_qty: null, get_qty: null,
   };
@@ -371,12 +388,13 @@ async function showPromo(code) {
   });
 
   const today_s = today();
-  const expired = p?.end_date && p.end_date < today_s;
+  const expired = isPromoExpired(p);
   OM(`套組：${p?.name}`, `
   <div class="dg" style="margin-bottom:13px">
     <div class="dr"><span class="dlb">代碼</span><span class="dv" style="font-family:monospace">${p?.promo_code}</span></div>
     <div class="dr"><span class="dlb">類型</span><span class="dv">${p?.type}</span></div>
     <div class="dr"><span class="dlb">有效期間</span><span class="dv">${p?.start_date || '即日起'} ～ ${p?.end_date || '永久'}</span></div>
+    ${(p?.start_time||p?.end_time)?`<div class="dr"><span class="dlb">限時時段</span><span class="dv" style="color:var(--am);font-weight:600">⚡ ${p?.start_time||'00:00'} ～ ${p?.end_time||'23:59'}</span></div>`:''}
     <div class="dr"><span class="dlb">狀態</span><span class="dv"><span class="badge ${!expired && p?.is_active ? 'bg' : 'br2'}">${expired ? '已過期' : p?.is_active ? '使用中' : '停用'}</span></span></div>
     ${p?.bundle_price ? `<div class="dr"><span class="dlb">套組售價</span><span class="dv" style="font-weight:600;color:var(--ac)">${fM(p.bundle_price)}</span></div>` : ''}
     ${p?.buy_qty ? `<div class="dr"><span class="dlb">買幾送幾</span><span class="dv">買 ${p.buy_qty} 送 ${p.get_qty}</span></div>` : ''}
