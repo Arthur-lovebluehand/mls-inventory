@@ -184,9 +184,9 @@ function lvBadge(l){
   return `<span class="badge ${cls[l]||'bgr'}">${l||'—'}</span>`;
 }
 function skCls(n){return n<=0?'ze':n<=5?'lw':'ok';}
-function fi(id,lbl,type,val,ph){return `<div class="fl"><label>${lbl}</label><input id="f-${id}" type="${type||'text'}" value="${(val||'').toString().replace(/"/g,'&quot;')}" placeholder="${ph||''}"></div>`;}
-function fs(id,lbl,opts,val){return `<div class="fl"><label>${lbl}</label><select id="f-${id}">${opts.map(o=>`<option value="${o}" ${o==val?'selected':''}>${o}</option>`).join('')}</select></div>`;}
-function fa(id,lbl,val){return `<div class="fl"><label>${lbl}</label><textarea id="f-${id}" rows="2">${val||''}</textarea></div>`;}
+function fi(id,lbl,type,val,ph){return `<div class="fl"><label>${lbl}</label><input id="f-${id}" type="${type||'text'}" value="${(val||'').toString().replace(/"/g,'&quot;')}" placeholder="${ph||''}" autocomplete="off"></div>`;}
+function fs(id,lbl,opts,val){return `<div class="fl"><label>${lbl}</label><select id="f-${id}" autocomplete="off">${opts.map(o=>`<option value="${o}" ${o==val?'selected':''}>${o}</option>`).join('')}</select></div>`;}
+function fa(id,lbl,val){return `<div class="fl"><label>${lbl}</label><textarea id="f-${id}" rows="2" autocomplete="off">${val||''}</textarea></div>`;}
 
 // ── Searchable Select Component ──
 // Creates a searchable product picker
