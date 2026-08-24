@@ -231,8 +231,18 @@ async function savePayMethod(id) {
   const sort = parseInt(v('pmsort'))||99;
   const payload = { name, sort_order: sort };
   if(id) {
+    const { data:old } = await sb.from('payment_methods').select('name').eq('id',id).single();
     const { error } = await sb.from('payment_methods').update(payload).eq('id',id);
     if(error) { toast('更新失敗：'+error.message,'e'); return; }
+    // 名稱改了的話，過去已經用舊名稱記的訂單/廠商/客戶/獎金記錄都要跟著改，不然舊資料的付款方式文字會對不起來
+    if(old && old.name !== name) {
+      await Promise.all([
+        sb.from('sales_orders').update({payment_method:name}).eq('payment_method',old.name),
+        sb.from('vendors').update({payment_method:name}).eq('payment_method',old.name),
+        sb.from('customers').update({payment_method:name}).eq('payment_method',old.name),
+        sb.from('bonus_records').update({payment_method:name}).eq('payment_method',old.name),
+      ]);
+    }
   } else {
     const { error } = await sb.from('payment_methods').insert({...payload, is_active:true});
     if(error) { toast('新增失敗：'+error.message,'e'); return; }
@@ -301,8 +311,16 @@ async function saveShipMethod(id) {
   const sort = parseInt(v('smsort'))||99;
   const payload = { name, sort_order: sort };
   if(id) {
+    const { data:old } = await sb.from('shipping_methods').select('name').eq('id',id).single();
     const { error } = await sb.from('shipping_methods').update(payload).eq('id',id);
     if(error) { toast('更新失敗：'+error.message,'e'); return; }
+    // 名稱改了的話，過去已經用舊名稱記的訂單/客戶也要跟著改，不然舊資料的寄送方式文字會對不起來
+    if(old && old.name !== name) {
+      await Promise.all([
+        sb.from('sales_orders').update({shipping_method:name}).eq('shipping_method',old.name),
+        sb.from('customers').update({shipping_method:name}).eq('shipping_method',old.name),
+      ]);
+    }
   } else {
     const { error } = await sb.from('shipping_methods').insert({...payload, is_active:true});
     if(error) { toast('新增失敗：'+error.message,'e'); return; }
@@ -377,8 +395,13 @@ async function saveOrderType(id) {
   if(!name) { toast('請輸入名稱','e'); return; }
   const payload = { name, color:v('otcolor')||'bgr', sort_order:parseInt(v('otsort'))||99 };
   if(id) {
+    const { data:old } = await sb.from('order_types').select('name').eq('id',id).single();
     const { error } = await sb.from('order_types').update(payload).eq('id',id);
     if(error) { toast('更新失敗：'+error.message,'e'); return; }
+    // 名稱改了的話，過去已經用舊名稱建立的訂單也要跟著改，不然舊資料的類型文字會對不起來
+    if(old && old.name !== name) {
+      await sb.from('sales_orders').update({order_type:name}).eq('order_type',old.name);
+    }
   } else {
     const { error } = await sb.from('order_types').insert({...payload, is_active:true});
     if(error) { toast('新增失敗：'+error.message,'e'); return; }
@@ -451,8 +474,13 @@ async function saveOpexCat(id) {
   if(!name) { toast('請輸入名稱','e'); return; }
   const payload = { name, sort_order: parseInt(v('oxcsort'))||99 };
   if(id) {
+    const { data:old } = await sb.from('opex_categories').select('name').eq('id',id).single();
     const { error } = await sb.from('opex_categories').update(payload).eq('id',id);
     if(error) { toast('更新失敗：'+error.message,'e'); return; }
+    // 名稱改了的話，過去已經用舊名稱記的營運成本也要跟著改，不然舊資料的類別文字會對不起來
+    if(old && old.name !== name) {
+      await sb.from('operating_expenses').update({category:name}).eq('category',old.name);
+    }
   } else {
     const { error } = await sb.from('opex_categories').insert({...payload, is_active:true});
     if(error) { toast('新增失敗：'+error.message,'e'); return; }
@@ -538,8 +566,13 @@ async function savePromoType(id) {
   if(!name) { toast('請輸入名稱','e'); return; }
   const payload = { name, calc_mode:v('ptcalc'), color:v('ptcolor')||'bgr', sort_order:parseInt(v('ptsort'))||99 };
   if(id) {
+    const { data:old } = await sb.from('promo_types').select('name').eq('id',id).single();
     const { error } = await sb.from('promo_types').update(payload).eq('id',id);
     if(error) { toast('更新失敗：'+error.message,'e'); return; }
+    // 名稱改了的話，過去已經用舊名稱建立的套組也要跟著改，不然舊資料的類型文字會對不起來
+    if(old && old.name !== name) {
+      await sb.from('promotions').update({type:name}).eq('type',old.name);
+    }
   } else {
     const { error } = await sb.from('promo_types').insert({...payload, is_active:true});
     if(error) { toast('新增失敗：'+error.message,'e'); return; }
