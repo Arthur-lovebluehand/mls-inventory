@@ -36,20 +36,84 @@ async function promotions() {
     filtered = filtered.filter(p=>(p.name||'').includes(kw)||(p.promo_code||'').includes(kw)||(p.description||'').includes(kw));
   }
 
-  // 全部頁籤：未過期排前面，已過期排後面；同組內依代碼排序（代碼＝建立時間先後），最新建立的排最前面
-  filtered = filtered.slice().sort((a,b)=>{
-    if(_promoTab==='all' && a._expired!==b._expired) return a._expired?1:-1;
-    return (b.promo_code||'').localeCompare(a.promo_code||'');
-  });
-
-  const count = filtered.length;
-  const tp = Math.max(1, Math.ceil(count/20));
-  if(_promoPage>tp) _promoPage=tp;
-  const pageData = filtered.slice((_promoPage-1)*20, _promoPage*20);
+  // 依代碼排序（代碼＝建立時間先後），最新建立的排最前面
+  filtered = filtered.slice().sort((a,b)=>(b.promo_code||'').localeCompare(a.promo_code||''));
 
   const allCount = withStatus.length;
   const activeCount = withStatus.filter(p=>!p._expired).length;
   const expiredCount = withStatus.filter(p=>p._expired).length;
+
+  // 判斷「買X送Y（同商品自己買自己送）」跟「買大送小（買A送B兩個不同商品）」——
+  // 這兩種在資料庫裡是同一個類型，要分開顯示，得去查每個套組的品項，看買的商品跟送的商品是不是同一個
+  const buyGetCodes = filtered.filter(p=>promoTypeCalcMode(p.type)==='buy_get').map(p=>p.promo_code);
+  let sameProductCodes = new Set();
+  if(buyGetCodes.length) {
+    const { data:allItems } = await sb.from('promotion_items').select('promo_code,product_no,is_gift').in('promo_code',buyGetCodes);
+    const byPromo = {};
+    (allItems||[]).forEach(i=>{ (byPromo[i.promo_code]=byPromo[i.promo_code]||[]).push(i); });
+    Object.keys(byPromo).forEach(code=>{
+      const items = byPromo[code];
+      const buyNos = new Set(items.filter(i=>!i.is_gift).map(i=>i.product_no));
+      const giftNos = new Set(items.filter(i=>i.is_gift).map(i=>i.product_no));
+      const allGiftInBuy = [...giftNos].every(n=>buyNos.has(n));
+      if(allGiftInBuy) sameProductCodes.add(code);
+    });
+  }
+
+  // 分組：套裝組合／買X送Y／買大送小／其他各自的類型
+  const groups = {}; // key -> { label, color, items: [] }
+  filtered.forEach(p=>{
+    let key, label, color;
+    const calcMode = promoTypeCalcMode(p.type);
+    if(calcMode==='buy_get') {
+      if(sameProductCodes.has(p.promo_code)) { key='buyget_same'; label='買X送Y（同商品）'; color=typeColor(p.type); }
+      else { key='buyget_diff'; label='買大送小（不同商品）'; color=typeColor(p.type); }
+    } else {
+      key = 'type_'+p.type; label = p.type; color = typeColor(p.type);
+    }
+    if(!groups[key]) groups[key] = { label, color, items: [] };
+    groups[key].items.push(p);
+  });
+  // 分組顯示順序：套裝組合優先，然後買X送Y、買大送小，其他類型排後面
+  const groupOrder = ['type_'+ (promoTypeNames().find(n=>promoTypeCalcMode(n)==='fixed_price')||''), 'buyget_same', 'buyget_diff'];
+  const orderedKeys = [
+    ...groupOrder.filter(k=>groups[k]),
+    ...Object.keys(groups).filter(k=>!groupOrder.includes(k)).sort(),
+  ];
+
+  const rowHtml = p => {
+    const expired = p._expired;
+    const active = p.is_active && !expired;
+    return `<tr>
+      <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${p.promo_code}</td>
+      <td style="font-weight:500">${p.name}</td>
+      <td style="font-size:12px">${fmt_date(p.start_date)} ～ ${fmt_date(p.end_date)}${(p.start_time||p.end_time)?`<div style="color:var(--am);font-weight:600">⚡ ${p.start_time||'00:00'}～${p.end_time||'23:59'}</div>`:''}</td>
+      <td style="font-size:12px;color:var(--tx2)">${p.description || '—'}</td>
+      <td><span class="badge ${active ? 'bg' : 'br2'}">${expired ? '已過期' : p.is_active ? '使用中' : '停用'}</span></td>
+      <td><div style="display:flex;gap:3px">
+        <button class="btn btn-s" onclick="showPromo('${p.promo_code}')">查看</button>
+        <button class="btn btn-s" onclick="editPromo('${p.promo_code}')">編輯</button>
+        <button class="btn btn-s" onclick="togglePromo('${p.promo_code}',${p.is_active})">
+          ${p.is_active ? '停用' : '啟用'}
+        </button>
+      </div></td>
+    </tr>`;
+  };
+
+  const groupHtml = key => {
+    const g = groups[key];
+    return `
+    <details class="tc" style="margin-bottom:10px" ${g.items.length<=15?'open':''}>
+      <summary style="cursor:pointer;padding:12px 16px;font-weight:600;display:flex;align-items:center;gap:8px;list-style:none">
+        <span class="badge ${g.color}">${g.label}</span>
+        <span style="color:var(--tx3);font-size:12px;font-weight:400">共 ${g.items.length} 個</span>
+      </summary>
+      <div class="tw"><table style="width:100%">
+        <tr><th>代碼</th><th>名稱</th><th>有效期間</th><th>套組內容</th><th>狀態</th><th>操作</th></tr>
+        ${g.items.map(rowHtml).join('')}
+      </table></div>
+    </details>`;
+  };
 
   $('main').innerHTML = `
   <div class="ph"><div><div class="pt">活動/套組管理</div><div class="ps">${allCount} 個</div></div>
@@ -61,45 +125,21 @@ async function promotions() {
   <div class="pc">
     <div class="al al-w" style="font-size:12px">
       <b>設計說明：</b>建立套組後，在新增訂單/進貨/借貨時點「加入套組」，系統自動展開所有商品品項（含贈品），不需逐一手動輸入。
-      套組過期後仍然可以選用（畫面上會特別標示提醒），過期超過3個月才會從選單中消失。
+      套組過期後仍然可以選用（畫面上會特別標示提醒），過期超過3個月才會從選單中消失。以下依類型分組，點標題列可以收合/展開。
     </div>
     <div class="tab-bar" style="margin-bottom:12px">
-      <div class="tab${_promoTab==='all'?' on':''}" onclick="_promoTab='all';_promoPage=1;promotions()">全部（${allCount}）</div>
-      <div class="tab${_promoTab==='active'?' on':''}" onclick="_promoTab='active';_promoPage=1;promotions()">進行中（${activeCount}）</div>
-      <div class="tab${_promoTab==='expired'?' on':''}" onclick="_promoTab='expired';_promoPage=1;promotions()">已過期（${expiredCount}）</div>
+      <div class="tab${_promoTab==='all'?' on':''}" onclick="_promoTab='all';promotions()">全部（${allCount}）</div>
+      <div class="tab${_promoTab==='active'?' on':''}" onclick="_promoTab='active';promotions()">進行中（${activeCount}）</div>
+      <div class="tab${_promoTab==='expired'?' on':''}" onclick="_promoTab='expired';promotions()">已過期（${expiredCount}）</div>
     </div>
-    <div class="tc">
-      <div class="tb"><span class="tt">活動/套組列表</span>
+    <div class="tc" style="margin-bottom:12px">
+      <div class="tb"><span class="tt">搜尋</span>
         <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input placeholder="名稱/代碼/說明…（輸入後按 Enter 搜尋）" value="${_promoSearch}" onkeydown="if(event.key==='Enter'){_promoSearch=this.value;_promoPage=1;promotions();}"></div>
-      </div>
-      <div class="tw"><table style="width:100%">
-        <tr><th>代碼</th><th>名稱</th><th>類型</th><th>有效期間</th><th>套組內容</th><th>狀態</th><th>操作</th></tr>
-        ${pageData.map(p => {
-          const expired = p._expired;
-          const active = p.is_active && !expired;
-          return `<tr>
-            <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${p.promo_code}</td>
-            <td style="font-weight:500">${p.name}</td>
-            <td><span class="badge ${typeColor(p.type)}">${p.type}</span></td>
-            <td style="font-size:12px">${fmt_date(p.start_date)} ～ ${fmt_date(p.end_date)}${(p.start_time||p.end_time)?`<div style="color:var(--am);font-weight:600">⚡ ${p.start_time||'00:00'}～${p.end_time||'23:59'}</div>`:''}</td>
-            <td style="font-size:12px;color:var(--tx2)">${p.description || '—'}</td>
-            <td><span class="badge ${active ? 'bg' : 'br2'}">${expired ? '已過期' : p.is_active ? '使用中' : '停用'}</span></td>
-            <td><div style="display:flex;gap:3px">
-              <button class="btn btn-s" onclick="showPromo('${p.promo_code}')">查看</button>
-              <button class="btn btn-s" onclick="editPromo('${p.promo_code}')">編輯</button>
-              <button class="btn btn-s" onclick="togglePromo('${p.promo_code}',${p.is_active})">
-                ${p.is_active ? '停用' : '啟用'}
-              </button>
-            </div></td>
-          </tr>`;
-        }).join('')||`<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3)">尚無資料</td></tr>`}
-      </table></div>
-      <div class="pg"><span class="pi">第 ${_promoPage}/${tp} 頁，共 ${count} 筆</span>
-        ${_promoPage>1?`<button class="btn btn-s" onclick="_promoPage--;promotions()">上一頁</button>`:''}
-        ${_promoPage<tp?`<button class="btn btn-s" onclick="_promoPage++;promotions()">下一頁</button>`:''}${pageJump('_promoPage',tp,'promotions')}
+        <input placeholder="名稱/代碼/說明…（輸入後按 Enter 搜尋）" value="${_promoSearch}" onkeydown="if(event.key==='Enter'){_promoSearch=this.value;promotions();}"></div>
       </div>
     </div>
+    ${orderedKeys.length===0 ? `<div class="tc"><div style="padding:20px;text-align:center;color:var(--tx3)">尚無資料</div></div>` :
+      orderedKeys.map(groupHtml).join('')}
   </div>`;
 }
 // ══════════════════════════════
