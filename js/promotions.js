@@ -208,7 +208,7 @@ async function saveBatchBuyGet() {
   let ok = 0, fail = 0;
   for (const [idx, row] of rows.entries()) {
     try {
-      const code = 'PRO-' + today().replace(/-/g, '').slice(2) + '-' + String(Date.now() + idx).slice(-4);
+      const code = await genPromoNo();
       const name = (prefix ? prefix + '_' : '') + row.name + ` 買${row.buy}送${row.get}`;
       const { error: pErr } = await sb.from('promotions').insert({
         promo_code: code, name, type: buyGetTypeName,
@@ -345,7 +345,7 @@ async function saveBatchBigSmall() {
   let ok = 0, fail = 0;
   for (const [idx, row] of rows.entries()) {
     try {
-      const code = 'PRO-' + today().replace(/-/g, '').slice(2) + '-' + String(Date.now() + idx).slice(-4);
+      const code = await genPromoNo();
       const name = (prefix ? prefix + '_' : '') + `${row.bigName} 買大送小`;
       const { error: pErr } = await sb.from('promotions').insert({
         promo_code: code, name, type: buyGetTypeName,
@@ -367,12 +367,24 @@ async function saveBatchBigSmall() {
 }
 window.saveBatchBigSmall = saveBatchBigSmall;
 
+// 套組代碼流水號：格式跟現有一致（PRO-年月日6碼-序號3碼），序號照當天已有幾筆真正遞增，不再用時間戳尾數（會亂跳）
+async function genPromoNo(dateStr) {
+  const td = (dateStr || today()).replace(/-/g, '').slice(2);
+  const prefixFull = 'PRO-' + td + '-';
+  const { data } = await sb.from('promotions').select('promo_code').like('promo_code', prefixFull + '%');
+  const max = (data || []).reduce((m, r) => {
+    const n = parseInt((r.promo_code || '').replace(prefixFull, ''));
+    return isNaN(n) ? m : Math.max(m, n);
+  }, 0);
+  return prefixFull + String(max + 1).padStart(3, '0');
+}
+
 async function addPromo() {
   const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('name');
   _allProdsForPromo = prods || [];
   _promoItems = [];
   const td = today();
-  const code = 'PRO-' + td.replace(/-/g, '').slice(2) + '-' + String(Date.now()).slice(-3);
+  const code = await genPromoNo(td);
   OM('新增活動/套組', promoForm({ promo_code: code }), promoFoot(false), true);
   renderPromoItems();
 }
