@@ -205,7 +205,7 @@ async function saveBatchBuyGet() {
   for (const [idx, row] of rows.entries()) {
     try {
       const code = 'PRO-' + today().replace(/-/g, '').slice(2) + '-' + String(Date.now() + idx).slice(-4);
-      const name = (prefix ? prefix + ' ' : '') + row.name + ` 買${row.buy}送${row.get}`;
+      const name = (prefix ? prefix + '_' : '') + row.name + ` 買${row.buy}送${row.get}`;
       const { error: pErr } = await sb.from('promotions').insert({
         promo_code: code, name, type: buyGetTypeName,
         start_date, end_date, start_time, end_time, description,
