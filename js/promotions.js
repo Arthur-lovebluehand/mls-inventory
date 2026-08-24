@@ -346,7 +346,7 @@ async function saveBatchBigSmall() {
   for (const [idx, row] of rows.entries()) {
     try {
       const code = 'PRO-' + today().replace(/-/g, '').slice(2) + '-' + String(Date.now() + idx).slice(-4);
-      const name = (prefix ? prefix + '_' : '') + `買${row.bigName}送${row.smallName}`;
+      const name = (prefix ? prefix + '_' : '') + `${row.bigName} 買大送小`;
       const { error: pErr } = await sb.from('promotions').insert({
         promo_code: code, name, type: buyGetTypeName,
         start_date, end_date, start_time, end_time, description,
