@@ -117,7 +117,7 @@ function promoForm(p) {
   p = p || {};
   return `<div class="fg" style="margin-bottom:12px">
     <div class="fl"><label>代碼</label><input id="f-pcode" value="${p.promo_code || ''}" ${p.promo_code && !p.promo_code.startsWith('PRO-') ? 'disabled style="opacity:.6"' : ''}></div>
-    <div class="fl"><label>名稱 *</label><input id="f-pname" autocomplete="off" value="${p.name || ''}"></div>
+    <div class="fl"><label>名稱 *</label><input id="f-pname" name="promo-activity-name" autocomplete="on" value="${p.name || ''}"></div>
     <div class="fl"><label>類型</label>
       <select id="f-ptype" onchange="updatePromoFields()">
         ${promoTypeNames().map(t => `<option ${t === p.type ? 'selected' : ''}>${t}</option>`).join('')}
