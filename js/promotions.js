@@ -119,7 +119,7 @@ async function promotions() {
   <div class="ph"><div><div class="pt">活動/套組管理</div><div class="ps">${allCount} 個</div></div>
     <div class="ha">
       <button class="btn btn-s" onclick="batchBuyGetModal()">⚡ 批次新增買X送Y</button>
-      <button class="btn btn-s" onclick="batchBigSmallModal()">⚡ 批次新增贈品套組（買大送小/加碼贈品）</button>
+      <button class="btn btn-s" onclick="batchBigSmallModal()">⚡ 批次新增買大送小</button>
       <button class="btn btn-p btn-s" onclick="addPromo()">＋ 新增活動/套組</button>
     </div></div>
   <div class="pc">
@@ -281,9 +281,10 @@ async function batchBigSmallModal() {
   _batchBSRows = [{ id: Date.now(), bigPno: '', bigName: '', bigQty: 1, sameGift: 0, smallPno: '', smallName: '', smallQty: 1 }];
   const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
 
-  OM('批次新增贈品套組（買大送小 / 同商品買送 / 兩者疊加）', `
+  OM('批次新增「買大送小」套組（可疊加同商品加贈）', `
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">
-    這個工具可以做三種情境：<b>①買A送B</b>（兩個不同商品，例如買正貨送別的商品）、<b>②同商品買送</b>（買的跟送的是同一個商品，只是數量分開算，同商品加贈那欄填數字、「送（不同商品）」留空即可）、<b>③兩者疊加</b>（買A、送A本身、再加贈B，例如買5送1本身＋加贈旅行組）。先填共用的活動資訊，下面每一行選好，送出後一次幫你建立好每一行各自獨立的套組。
+    這個工具是給「有牽涉到不同商品」的情境用的：<b>買A送B</b>（例如買正貨送別的商品），或是<b>買A、送A本身、再加贈B</b>（例如買5送1本身＋加贈旅行組）。
+    如果只是單純「同一個商品買幾送幾」、沒有牽涉到別的商品，請改用「⚡批次新增買X送Y」那個工具，比較單純好填。
   </div>
   <div class="fg" style="margin-bottom:12px">
     <div class="fl fw"><label>活動名稱前綴（選填，例如「8週年慶」，會自動加在每個套組名稱前面）</label><input id="f-bbsprefix" placeholder="例如：8週年慶"></div>
