@@ -616,14 +616,6 @@ function saveOpName() {
 
 window.saveOpName = saveOpName;
 
-async function logout() {
-  if (!confirm('確定要登出嗎？')) return;
-  localStorage.removeItem('mls_token');
-  localStorage.removeItem('mls_token_exp');
-  location.reload();
-}
-window.logout = logout;
-
 
 // ═══════════════════════════════
 //  獎金查看 / 編輯

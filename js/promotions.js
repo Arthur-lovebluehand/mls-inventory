@@ -509,10 +509,6 @@ function renderPromoItems() {
   const cntEl = $('promoItemCount');
   if (cntEl) cntEl.textContent = `共 ${_promoItems.length} 項`;
 }
-async function togglePromo(code, active) {
-  await sb.from('promotions').update({ is_active: !active }).eq('promo_code', code);
-  toast(!active ? '已啟用' : '已停用'); promotions();
-}
 var _bundlePickerTab = 'active';
 async function openBundlePicker(mode) {
   // mode: 'order' | 'po' | 'loan'
@@ -834,21 +830,4 @@ async function applyPromo(code, mode, sets) {
     renderLoanItems();
     toast('套組已展開至借貨品項！');
   }
-};
-
-window.closePromoDrop = id => { const d = $('prodrop-' + id); if (d) d.style.display = 'none'; };;
-
-window.pickPromoItem = (id, pno, name) => {
-  const it = _promoItems.find(x => x.id === id); if (!it) return;
-  it.pno = pno; it.name = name;
-  renderPromoItems();
-  closePromoDrop(id);
-};;
-
-window.applyBundle = function applyBundle(code) {
-  const promo = (window._allPromos || []).find(p => p.promo_code === code);
-  if (!promo) return;
-  const items = promo.items || [];
-  _promoItems = items.map(i => ({id: Date.now()+Math.random(), pno:i.product_no, name:i.product_name||'', qty:i.qty||1, price:i.unit_price||0, giftQty:i.gift_qty||0, is_gift:!!i.is_gift}));
-  renderPromoItems();
 };
