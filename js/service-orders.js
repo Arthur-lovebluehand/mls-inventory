@@ -129,7 +129,7 @@ async function svcNewOrder(editNo) {
   window._svcAllCusts = custs||[];
   window._svcAllProds = allProds||[];
   window._svcKitsList = kitsList||[];
-  const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-name="${t.name}">${t.name}（${t.role||'技師'}，抽成 ${Math.round(t.commission_rate*100)}%）</option>`).join('');
+  const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-mode="${t.commission_mode||'percentage'}" data-fixed="${t.commission_fixed_amount||0}" data-name="${t.name}">${t.name}（${t.role||'技師'}，${t.commission_mode==='fixed'?`固定${fM(t.commission_fixed_amount||0)}/次`:`抽成 ${Math.round(t.commission_rate*100)}%`}）</option>`).join('');
 
   const today2 = new Date().toISOString().split('T')[0];
   const orderNo = editNo || await genNo('SV','service_orders','order_no');
@@ -377,8 +377,12 @@ function svcAddServiceItem() {
   const techOpt = techSel?.options[techSel.selectedIndex];
   const techId = techOpt?.value ? parseInt(techOpt.value) : null;
   const techName = techOpt?.dataset?.name || null;
+  const techMode = techOpt?.dataset?.mode || 'percentage';
   const techRate = parseFloat(techOpt?.dataset?.rate)||0.5;
-  const techPay = techId ? Math.round(qty * price * techRate * 100)/100 : 0;
+  const techFixed = parseFloat(techOpt?.dataset?.fixed)||0;
+  const techPay = !techId ? 0
+    : techMode==='fixed' ? Math.round(qty * techFixed * 100)/100
+    : Math.round(qty * price * techRate * 100)/100;
   window._svcItems.push({
     id: Date.now(), item_type:'service', item_name:opt.text.split('（')[0],
     qty, unit:opt.dataset.unit||'次', unit_price:price, cost:0, subtotal:isGift?0:qty*price,

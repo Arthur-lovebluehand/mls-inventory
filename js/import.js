@@ -932,6 +932,7 @@ async function impRunTechnicians(rows){
     try{
       const{error}=await sb.from('technicians').insert({
         name:r.name, role:r.role||null, phone:r.phone||null,
+        commission_mode:'percentage',
         commission_rate:r.commission_rate!=null&&r.commission_rate!==''?parseFloat(r.commission_rate):0.5,
         is_active:true
       });
@@ -1124,7 +1125,7 @@ async function impRunServiceOrders(rows){
   // 先把現有客戶、技師抓進記憶體做比對快取
   const [{data:allCust},{data:allTech}] = await Promise.all([
     sb.from('customers').select('customer_no,name,phone'),
-    sb.from('technicians').select('id,name,commission_rate').eq('is_active',true),
+    sb.from('technicians').select('id,name,commission_rate,commission_mode,commission_fixed_amount').eq('is_active',true),
   ]);
   const custByPhone={}, custByName={};
   (allCust||[]).forEach(c=>{ if(c.phone) custByPhone[c.phone]=c; if(c.name) custByName[c.name]=c; });
@@ -1174,7 +1175,9 @@ async function impRunServiceOrders(rows){
             techByName[tech.name]=tech;
           }
         }
-        const commissionAmt = tech ? Math.round(subtotalAmt*(tech.commission_rate||0.5)) : 0;
+        const commissionAmt = !tech ? 0
+          : tech.commission_mode==='fixed' ? Math.round(qty*(tech.commission_fixed_amount||0))
+          : Math.round(subtotalAmt*(tech.commission_rate||0.5));
         subtotal+=subtotalAmt;
         totalCommission+=commissionAmt;
         svcItems.push({

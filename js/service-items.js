@@ -211,12 +211,12 @@ async function svcTechnicians() {
   </div>
   <div class="tc"><div class="tb"><span class="tt">技師列表</span></div>
   <div class="tw"><table style="width:100%">
-    <tr><th>姓名</th><th>職位</th><th>電話</th><th style="text-align:center">抽成比例</th><th>狀態</th><th>操作</th></tr>
+    <tr><th>姓名</th><th>職位</th><th>電話</th><th style="text-align:center">抽成方式</th><th>狀態</th><th>操作</th></tr>
     ${(techs||[]).map(t=>`<tr style="${t.is_active===false?'opacity:.5':''}">
       <td style="font-weight:500">${t.name}</td>
       <td><span class="badge bg" style="font-size:11px">${t.role||'技師'}</span></td>
       <td>${t.phone||'—'}</td>
-      <td style="text-align:center">${Math.round((t.commission_rate||0)*100)}%</td>
+      <td style="text-align:center">${t.commission_mode==='fixed'?`固定 ${fM(t.commission_fixed_amount||0)}/次`:`${Math.round((t.commission_rate||0)*100)}%`}</td>
       <td><span class="badge ${t.is_active!==false?'bg':'br2'}">${t.is_active!==false?'啟用':'停用'}</span></td>
       <td style="white-space:nowrap">
         <button class="btn btn-s" onclick="svcEditTechModal(${t.id})">編輯</button>
@@ -240,6 +240,22 @@ function svcTechRoleSelect(currentVal) {
     </select></div>`;
 }
 
+function svcTechCommissionFields(mode, rate, fixedAmt) {
+  return `
+    <div class="fl"><label>抽成方式</label><select id="f-tech-mode" onchange="svcTechModeChange(this.value)">
+      <option value="percentage" ${mode!=='fixed'?'selected':''}>比例（%）</option>
+      <option value="fixed" ${mode==='fixed'?'selected':''}>固定金額（每次服務）</option>
+    </select></div>
+    <div id="tech-rate-field" style="${mode==='fixed'?'display:none':''}">${fi('tech-rate','抽成比例（%）','number',Math.round((rate||0)*100))}</div>
+    <div id="tech-fixed-field" style="${mode==='fixed'?'':'display:none'}">${fi('tech-fixed','固定金額（元/次）','number',fixedAmt||0)}</div>
+  `;
+}
+window.svcTechModeChange = mode => {
+  const rf = $('tech-rate-field'), ff = $('tech-fixed-field');
+  if(rf) rf.style.display = mode==='fixed' ? 'none' : '';
+  if(ff) ff.style.display = mode==='fixed' ? '' : 'none';
+};
+
 function svcNewTechModal() {
   OM('新增技師', `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
@@ -248,7 +264,7 @@ function svcNewTechModal() {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       ${fi('tech-phone','電話（選填）')}
-      ${fi('tech-rate','抽成比例（%）','number','50')}
+      ${svcTechCommissionFields('percentage', 50, 0)}
     </div>`,
     `<button class="btn" onclick="CM()">取消</button>
      <button class="btn btn-p" onclick="saveTechnician()">新增</button>`);
@@ -269,7 +285,7 @@ async function svcEditTechModal(id) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       ${fi('tech-phone','電話（選填）','text',t.phone)}
-      ${fi('tech-rate','抽成比例（%）','number',Math.round((t.commission_rate||0)*100))}
+      ${svcTechCommissionFields(t.commission_mode, t.commission_rate, t.commission_fixed_amount)}
     </div>`,
     `<button class="btn" onclick="CM()">取消</button>
      <button class="btn btn-p" onclick="saveTechnician(${id})">儲存</button>`);
@@ -279,11 +295,14 @@ window.svcEditTechModal = svcEditTechModal;
 async function saveTechnician(id) {
   const name = v('tech-name')?.trim();
   if(!name){ toast('請輸入姓名','e'); return; }
+  const mode = v('tech-mode') || 'percentage';
   const payload = {
     name,
     role: document.getElementById('f-tech-role')?.value || '技師',
     phone: v('tech-phone')||null,
-    commission_rate: (parseFloat(v('tech-rate'))||0)/100
+    commission_mode: mode,
+    commission_rate: mode==='fixed' ? 0 : (parseFloat(v('tech-rate'))||0)/100,
+    commission_fixed_amount: mode==='fixed' ? (parseFloat(v('tech-fixed'))||0) : 0
   };
   if(id) {
     const { error } = await sb.from('technicians').update(payload).eq('id',id);
