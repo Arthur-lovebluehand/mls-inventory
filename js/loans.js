@@ -227,6 +227,7 @@ async function returnLoan(no){
     sb.from('loan_order_items').select('*').eq('loan_no',no),
   ]);
   const td=today();
+  window._returnItems = its||[];
   OM(`記錄歸還：${no}`,`
   <div style="margin-bottom:12px">
     <div class="fl"><label>歸還日期</label><input id="f-rdt" type="date" value="${td}" style="width:200px;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
@@ -239,9 +240,10 @@ async function returnLoan(no){
     <td><input type="number" id="f-ret-${i.id}" value="${i.qty-(i.returned_qty||0)}" min="0" max="${i.qty-(i.returned_qty||0)}" style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></td>
   </tr>`).join('')}
   </table>`,
-  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="doReturn('${no}',${JSON.stringify(its)})">確認歸還</button>`);
+  `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="doReturn('${no}')">確認歸還</button>`);
 }
-async function doReturn(no,its){
+async function doReturn(no){
+  const its=window._returnItems||[];
   const rdt=v('rdt')||today();
   let allReturned=true, anyReturned=false;
   for(const i of its){
