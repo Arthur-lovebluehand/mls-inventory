@@ -83,13 +83,13 @@ function pcRenderProdList() {
   const box = $('pc-prod-list'); if (!box) return;
   let list = _pcAllProds;
   if (_pcBrandFilter) list = list.filter(p => p.source === _pcBrandFilter);
-  if (_pcSearch) list = list.filter(p => p.name.includes(_pcSearch) || (p.product_no||'').includes(_pcSearch));
+  if (_pcSearch) list = list.filter(p => p.name.includes(_pcSearch) || (p.product_no||'').includes(_pcSearch) || (p.spec||'').includes(_pcSearch));
   box.innerHTML = list.map(p => {
     const price = pcUnitPrice(p, _pcLevel);
     return `<div onclick="pcAddToCart('${p.product_no}')" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bd)"
       onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
       <div>
-        <div style="font-size:13px;font-weight:500">${p.name}${p.spec?` <span style="color:var(--tx3);font-weight:400">(${p.spec})</span>`:''}</div>
+        <div style="font-size:13px;font-weight:500">${p.name}${p.spec?` <span class="badge bb" style="font-size:11px;margin-left:4px">${p.spec}</span>`:''}</div>
         <div style="font-size:11px;color:var(--tx3)">${p.product_no}${p.source?' · '+p.source:''}</div>
       </div>
       <div style="font-weight:700;color:var(--ac);white-space:nowrap;margin-left:10px">${fM(price)}</div>
@@ -152,7 +152,7 @@ function pcRenderCart() {
     total += subtotal;
     html += `<tr${c.bundle_group?' style="border-left:3px solid var(--bl)"':''}>
       <td style="color:var(--tx3);font-size:12px">${idx}</td>
-      <td>${c.name}${c.spec?` <span style="color:var(--tx3);font-size:12px">(${c.spec})</span>`:''}</td>
+      <td>${c.name}${c.spec?` <span class="badge bb" style="font-size:11px">${c.spec}</span>`:''}</td>
       <td class="num">${fM(price)}</td>
       <td>${c.bundle_group
         ? `${c.qty}${c.giftQty?`<span style="color:var(--am);font-size:11px;display:block">＋贈${c.giftQty}</span>`:''}`

@@ -840,8 +840,9 @@ async function applyPromo(code, mode, sets) {
     }
     Object.keys(grouped).forEach(pno => {
       const g = grouped[pno];
+      const prodSpec = window._pcAllProds?.find(p => p.product_no === pno)?.spec || null;
       window._pcCart.push({
-        product_no: pno, name: g.name, spec: null,
+        product_no: pno, name: g.name, spec: prodSpec,
         qty: g.qty, giftQty: g.giftQty, price_override: g.price_override,
         bundle_name: p.name + (sets > 1 ? ' ×' + sets : ''), bundle_group: bundleGroup,
       });
