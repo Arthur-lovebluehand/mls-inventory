@@ -829,5 +829,25 @@ async function applyPromo(code, mode, sets) {
     CM2();
     renderLoanItems();
     toast('套組已展開至借貨品項！');
+  } else if (mode === 'pricecheck') {
+    // 同商品的銷售數跟贈品數合併成一項，不同商品才各自一項（跟訂單/進貨/借貨同一套邏輯）
+    const grouped = {};
+    for (const i of its) {
+      if (!grouped[i.product_no]) grouped[i.product_no] = { qty: 0, giftQty: 0, price_override: i.price_override, name: i.product_name };
+      const itemQty = (i.qty || 1) * sets;
+      if (i.is_gift) grouped[i.product_no].giftQty += itemQty;
+      else grouped[i.product_no].qty += itemQty;
+    }
+    Object.keys(grouped).forEach(pno => {
+      const g = grouped[pno];
+      window._pcCart.push({
+        product_no: pno, name: g.name, spec: null,
+        qty: g.qty, giftQty: g.giftQty, price_override: g.price_override,
+        bundle_name: p.name + (sets > 1 ? ' ×' + sets : ''), bundle_group: bundleGroup,
+      });
+    });
+    CM2();
+    window.pcRenderCart?.();
+    toast('套組已加入試算清單！');
   }
 };

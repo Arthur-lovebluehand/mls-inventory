@@ -37,7 +37,9 @@ function renderPriceCheck() {
     </div>
 
     <div class="tc" style="margin-bottom:16px">
-      <div class="tb"><span class="tt">選商品</span></div>
+      <div class="tb"><span class="tt">選商品</span>
+        <button class="btn btn-s" style="background:var(--bll);color:var(--bl);border-color:var(--bl)" onclick="openBundlePicker('pricecheck')">＋ 加入套組</button>
+      </div>
       <div style="padding:14px">
         <div class="ss-wrap" style="margin-bottom:10px">
           <input class="ss-input" id="pc-search-input" placeholder="輸入商品名稱搜尋…" autocomplete="off" value="${_pcSearch}"
@@ -97,12 +99,12 @@ function pcRenderProdList() {
 window.pcRenderProdList = pcRenderProdList;
 
 function pcAddToCart(pno) {
-  const existing = _pcCart.find(c => c.product_no === pno);
+  const existing = _pcCart.find(c => c.product_no === pno && !c.bundle_group);
   if (existing) { existing.qty += 1; }
   else {
     const prod = _pcAllProds.find(p => p.product_no === pno);
     if (!prod) return;
-    _pcCart.push({ product_no: pno, name: prod.name, spec: prod.spec, qty: 1 });
+    _pcCart.push({ product_no: pno, name: prod.name, spec: prod.spec, qty: 1, giftQty: 0, price_override: null, bundle_name: null, bundle_group: null });
   }
   pcRenderCart();
 }
@@ -118,8 +120,13 @@ function pcSetQty(pno, val) {
 }
 window.pcSetQty = pcSetQty;
 
-function pcRemove(pno) {
-  _pcCart = _pcCart.filter(c => c.product_no !== pno);
+function pcRemove(pno, bundleGroup) {
+  if (bundleGroup) {
+    if (!confirm('這是套組裡的一項，要把整個套組一起移除嗎？')) return;
+    _pcCart = _pcCart.filter(c => c.bundle_group !== bundleGroup);
+  } else {
+    _pcCart = _pcCart.filter(c => c.product_no !== pno || c.bundle_group);
+  }
   pcRenderCart();
 }
 window.pcRemove = pcRemove;
@@ -132,25 +139,33 @@ window.pcClearCart = pcClearCart;
 
 function pcRenderCart() {
   const body = $('pc-cart-body'); if (!body) return;
-  let total = 0;
-  body.innerHTML = _pcCart.map((c, idx) => {
+  let total = 0, prevBG = '', html = '', idx = 0;
+  _pcCart.forEach(c => {
+    idx++;
+    if (c.bundle_group && c.bundle_group !== prevBG) {
+      prevBG = c.bundle_group;
+      html += `<tr><td colspan="6" style="background:var(--bll);padding:6px 10px;font-weight:600;color:var(--bl);font-size:12px">📦 ${c.bundle_name || '套組'}</td></tr>`;
+    } else if (!c.bundle_group) { prevBG = ''; }
     const prod = _pcAllProds.find(p => p.product_no === c.product_no);
-    const price = pcUnitPrice(prod, _pcLevel);
+    const price = c.price_override != null ? c.price_override : pcUnitPrice(prod, _pcLevel);
     const subtotal = price * c.qty;
     total += subtotal;
-    return `<tr>
-      <td style="color:var(--tx3);font-size:12px">${idx+1}</td>
+    html += `<tr${c.bundle_group?' style="border-left:3px solid var(--bl)"':''}>
+      <td style="color:var(--tx3);font-size:12px">${idx}</td>
       <td>${c.name}${c.spec?` <span style="color:var(--tx3);font-size:12px">(${c.spec})</span>`:''}</td>
       <td class="num">${fM(price)}</td>
-      <td><input type="number" value="${c.qty}" min="0" onchange="pcSetQty('${c.product_no}',this.value)"
-        style="width:60px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;text-align:center;outline:none"></td>
+      <td>${c.bundle_group
+        ? `${c.qty}${c.giftQty?`<span style="color:var(--am);font-size:11px;display:block">＋贈${c.giftQty}</span>`:''}`
+        : `<input type="number" value="${c.qty}" min="0" onchange="pcSetQty('${c.product_no}',this.value)"
+            style="width:60px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;text-align:center;outline:none">`}</td>
       <td class="num" style="font-weight:600">${fM(subtotal)}</td>
-      <td><button onclick="pcRemove('${c.product_no}')" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button></td>
+      <td><button onclick="pcRemove('${c.product_no}',${c.bundle_group?`'${c.bundle_group}'`:'null'})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">還沒選任何商品，點上面的商品清單加入</td></tr>';
+  });
+  body.innerHTML = html || '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">還沒選任何商品，點上面的商品清單加入，或加入套組</td></tr>';
 
   const totalEl = $('pc-cart-total');
-  if (totalEl) totalEl.innerHTML = `共 ${_pcCart.reduce((s,c)=>s+c.qty,0)} 件商品　總計：<span style="color:var(--ac)">${fM(total)}</span>`;
+  if (totalEl) totalEl.innerHTML = `共 ${_pcCart.reduce((s,c)=>s+c.qty+(c.giftQty||0),0)} 件商品　總計：<span style="color:var(--ac)">${fM(total)}</span>`;
 
   const tbTitle = document.querySelector('.tc:last-child .tt');
   if (tbTitle) tbTitle.textContent = `已選商品（${_pcLevel} 位階）`;
