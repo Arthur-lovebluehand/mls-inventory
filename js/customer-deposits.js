@@ -92,6 +92,7 @@ function addDepositModal() {
     </div>
     <div id="cd-order-results" style="max-height:320px;overflow-y:auto;margin-bottom:10px"></div>
     <div id="cd-order-items"></div>
+    <div class="fl" style="margin-bottom:10px;max-width:200px">${fi('cd-order-date','寄放日期','date',today())}</div>
   </div>
   <div id="cd-mode-manual" style="display:none">
     <div class="fl" style="margin-bottom:10px"><label>客戶</label>
@@ -246,7 +247,7 @@ window.cdPickCust = cdPickCust;
 
 async function saveDeposit() {
   const mode = window._cdMode || 'order';
-  const depositDate = mode==='order' ? today() : (v('cd-date')||today());
+  const depositDate = mode==='order' ? (v('cd-order-date')||today()) : (v('cd-date')||today());
   const depositNo = 'CD-'+depositDate.replace(/-/g,'')+'-'+Date.now().toString().slice(-4)+Math.floor(Math.random()*10);
   let headerPayload, itemRows = [], shipmentUpdates = [];
 
