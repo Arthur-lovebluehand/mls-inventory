@@ -137,7 +137,7 @@ window.cdSwitchMode = cdSwitchMode;
 let cdSearchTimer;
 function cdSearchOrders(kw) {
   clearTimeout(cdSearchTimer);
-  if(!kw || kw.trim().length<2) { $('cd-order-results').innerHTML=''; return; }
+  if(!kw || !kw.trim()) { $('cd-order-results').innerHTML=''; return; } // 中文姓氏常常一個字就有意義（吳/楊/廖…），不能要求至少打2個字才開始搜尋
   $('cd-order-results').innerHTML = '<div style="font-size:12px;color:var(--tx3)">搜尋中…</div>';
   cdSearchTimer = setTimeout(async ()=>{
     const { data } = await sb.from('sales_orders').select('order_no,order_date,customer_no,customer_name')
