@@ -24,7 +24,7 @@ async function customerDeposits() {
   // 狀態篩選
   const statusOf = d => {
     const its = itemsByDeposit[d.deposit_no]||[];
-    const remain = its.reduce((s,i)=>s+((i.total_qty||0)-(i.used_qty||0)),0);
+    const remain = its.reduce((s,i)=>s+((i.total_qty||0)-(i.used_qty||0))+Math.max(0,(i.opened_qty||0)-(i.opened_used_qty||0)),0);
     return d.is_active===false ? 'closed' : remain<=0 ? 'used' : 'active';
   };
   if(cdStatusFilter!=='all') list = list.filter(d=>statusOf(d)===cdStatusFilter);
@@ -54,7 +54,7 @@ async function customerDeposits() {
         <tr><th>客戶</th><th>單號</th><th>商品摘要</th><th>寄放日</th><th>來源訂單</th><th>狀態</th><th>操作</th></tr>
         ${list.map(d=>{
           const its = itemsByDeposit[d.deposit_no]||[];
-          const totalRemain = its.reduce((s,i)=>s+((i.total_qty||0)-(i.used_qty||0)),0);
+          const totalRemain = its.reduce((s,i)=>s+((i.total_qty||0)-(i.used_qty||0))+Math.max(0,(i.opened_qty||0)-(i.opened_used_qty||0)),0);
           const summary = its.map(i=>i.product_name).join('、')||'—';
           const status = d.is_active===false ? '已關閉' : totalRemain<=0 ? '已用完' : '寄放中';
           return `<tr style="${d.is_active===false?'opacity:.5':''}">
@@ -182,15 +182,16 @@ async function cdPickOrder(orderNo) {
     ${(its||[]).map((i,idx)=>{
       const prod = prodMap[i.product_no];
       const perStock = parseFloat(prod?.service_units_per_stock)||1;
-      const svcUnit = prod?.service_unit||'組';
+      const svcUnit = prod?.service_unit||'';
       const saleQtyTotal = (i.qty||0)+(i.gift_qty||0);
-      const defQty = Math.round(saleQtyTotal*perStock*100)/100;
+      // 寄放數量預設用「跟訂單一樣的實體單位」（幾瓶/幾條），不要自動換算成 ml——
+      // ml 是「服務時用掉多少」才該出現的單位，不該混進「她放了幾瓶在店裡」這個數字。
       window._cdOrderMeta[idx] = { product_no:i.product_no, item_id:i.id, perStock, saleQtyTotal, alreadyShipped:i.shipped_qty||0 };
       return `<tr>
-      <td style="font-size:12px">${i.product_name}${i.gift_qty?`<div style="font-size:10px;color:var(--am)">含贈品${i.gift_qty}${i.unit||'個'}</div>`:''}${perStock>1?`<div style="font-size:10px;color:var(--tx3)">1${i.unit||'個'}=${perStock}${svcUnit}</div>`:''}</td>
+      <td style="font-size:12px">${i.product_name}${i.gift_qty?`<div style="font-size:10px;color:var(--am)">含贈品${i.gift_qty}${i.unit||'個'}</div>`:''}${perStock>1?`<div style="font-size:10px;color:var(--tx3)">開封後每${i.unit||'個'}可服務用掉${perStock}${svcUnit}（服務單登記時才會用到這個換算）</div>`:''}</td>
       <td class="num">${saleQtyTotal}${i.unit||'個'}</td>
-      <td><input type="number" id="cd-itqty-${idx}" value="${defQty}" min="0" step="0.5" style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
-      <td><input type="text" id="cd-itunit-${idx}" value="${svcUnit}" style="width:50px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
+      <td><input type="number" id="cd-itqty-${idx}" value="${saleQtyTotal}" min="0" step="1" style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
+      <td><input type="text" id="cd-itunit-${idx}" value="${i.unit||'個'}" style="width:50px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px"></td>
     </tr>`;
     }).join('')}
   </table>`;
@@ -217,20 +218,21 @@ function cdFilterManualProd(kw) {
   const drop = $('cd-pname-drop');
   clearTimeout(window._cdProdTimer);
   window._cdProdTimer = setTimeout(async ()=>{
-    let q = sb.from('products').select('product_no,name,service_unit,default_service_qty').eq('is_active',true).order('product_no').limit(30);
+    let q = sb.from('products').select('product_no,name,unit').eq('is_active',true).order('product_no').limit(30);
     if(kw) q = q.ilike('name',`%${kw}%`);
     const { data } = await q;
     drop.innerHTML = (data||[]).map(p=>
-      `<div style="padding:7px 8px;cursor:pointer;font-size:13px" onmousedown="cdPickManualProd('${p.product_no}','${p.name.replace(/'/g,"\\'")}','${p.service_unit||'組'}',${p.default_service_qty||1})">${p.name}${p.service_unit?`（服務單位：${p.service_unit}）`:''}</div>`
+      `<div style="padding:7px 8px;cursor:pointer;font-size:13px" onmousedown="cdPickManualProd('${p.product_no}','${p.name.replace(/'/g,"\\'")}','${(p.unit||'個').replace(/'/g,"\\'")}')">${p.name}${p.unit?`（單位：${p.unit}）`:''}</div>`
     ).join('') || '<div style="padding:7px 8px;font-size:12px;color:var(--tx3)">查無商品，可直接手動輸入名稱</div>';
     drop.classList.add('open');
   }, 250);
 }
 window.cdFilterManualProd = cdFilterManualProd;
-function cdPickManualProd(pno,name,unit,defQty) {
+function cdPickManualProd(pno,name,unit) {
+  // 寄放數量用商品本身的實體單位（瓶/條/罐…），不要用服務用的 ml 換算單位——那個是服務時才用到的
   $('cd-pname').value = name;
-  $('f-cd-unit').value = unit;
-  if($('f-cd-qty')) $('f-cd-qty').value = defQty;
+  $('f-cd-unit').value = unit||'個';
+  if($('f-cd-qty')) $('f-cd-qty').value = 1;
   window._cdManualProdNo = pno;
   $('cd-pname-drop')?.classList.remove('open');
 }
@@ -258,9 +260,8 @@ async function saveDeposit() {
         deposit_no: depositNo, product_no: i.product_no, product_name: i.product_name,
         unit: $('cd-itunit-'+idx)?.value||'組', total_qty: qty, used_qty: 0
       });
-      const perStock = meta.perStock||1;
-      const saleQtyFromDeposit = Math.round((qty/perStock)*100)/100;
-      const newShipped = Math.min(meta.saleQtyTotal||0, (meta.alreadyShipped||0)+saleQtyFromDeposit);
+      // 寄放數量現在直接就是訂單的實體單位（瓶/條），跟訂購數量是同一個單位，不用再除換算比例
+      const newShipped = Math.min(meta.saleQtyTotal||0, (meta.alreadyShipped||0)+qty);
       if(meta.item_id) shipmentUpdates.push({ item_id: meta.item_id, newShipped, alreadyShipped: meta.alreadyShipped||0 });
     });
     if(!itemRows.length) { toast('請至少填一項寄放數量','e'); return; }
@@ -318,54 +319,58 @@ async function saveDeposit() {
 window.saveDeposit = saveDeposit;
 
 // ── 登記使用/取回（一張寄放單裡的所有品項一次登記，跟出貨記錄同邏輯）──
-// 每個品項各自選「服務使用」還是「客戶取回」，不強迫綁同一種——同一次來店裡，
-// 可能有的東西當場用掉、有的整份直接被拿走，這兩種要能同時登記。
+// 總量/剩餘永遠是「整瓶」（跟她寄放時的實體單位一致），這樣清單看起來才直覺。
+// ml 只有在「服務使用」而且這個商品有設定換算比例時才會出現——那是店內開瓶後，
+// 這次服務實際用掉多少的概念，比照「商品撥轉到服務庫存」的邏輯：
+//   ・已開封但還沒用完的量（opened_qty − opened_used_qty）不夠這次用量時，
+//     系統會自動幫你「開一瓶新的」（整瓶數 −1，開封額度 +這瓶的ml），不用你自己先手動開瓶。
+// 「客戶取回」「其他」這兩種類型，填的都是整瓶數，不會動到開封額度。
 async function useDepositModal(depositNo) {
   const [{ data:d },{ data:its }] = await Promise.all([
     sb.from('customer_deposits').select('*').eq('deposit_no',depositNo).single(),
     sb.from('customer_deposit_items').select('*').eq('deposit_no',depositNo),
   ]);
   if(!d) return;
-  // 品項如果有連到真正的商品、且商品有設定「幾瓶=幾ml」的換算比例，就多給一個「填整瓶數」的欄位，
-  // 不用每次都自己心算瓶數轉ml（例如客戶整條帶回家，不用手動算800）。
   const productNos = [...new Set((its||[]).map(i=>i.product_no).filter(Boolean))];
   let prodMap = {};
   if(productNos.length) {
-    const { data:prods } = await sb.from('products').select('product_no,service_unit,service_units_per_stock,unit').in('product_no',productNos);
+    const { data:prods } = await sb.from('products').select('product_no,service_unit,service_units_per_stock').in('product_no',productNos);
     (prods||[]).forEach(p=>prodMap[p.product_no]=p);
   }
+  window._udMeta = {};
   const rows = its.map(i=>{
-    const remain = (i.total_qty||0)-(i.used_qty||0);
+    const bottleRemain = (i.total_qty||0)-(i.used_qty||0);
+    const openedRemain = Math.round((((i.opened_qty||0)-(i.opened_used_qty||0)))*100)/100;
     const prod = prodMap[i.product_no];
     const perStock = parseFloat(prod?.service_units_per_stock)||0;
-    const hasRatio = perStock>1 && prod?.unit && prod?.service_unit===i.unit;
+    const hasRatio = perStock>1 && !!prod?.service_unit;
+    const svcUnit = prod?.service_unit||'';
+    window._udMeta[i.id] = { hasRatio, perStock, svcUnit, itemUnit:i.unit };
+    const canUse = bottleRemain>0 || openedRemain>0;
     return `<tr>
-      <td style="font-size:12px">${i.product_name}${hasRatio?`<div style="font-size:10px;color:var(--tx3)">1${prod.unit}＝${perStock}${i.unit}</div>`:''}</td>
+      <td style="font-size:12px">${i.product_name}${hasRatio?`<div style="font-size:10px;color:var(--tx3)">已開封剩 ${openedRemain} ${svcUnit} 可服務用${bottleRemain>0?'（不夠會自動開新瓶）':''}</div>`:''}</td>
       <td class="num">${i.total_qty} ${i.unit}</td>
       <td class="num ok">${i.used_qty||0} ${i.unit}</td>
-      <td class="num" style="font-weight:700">${remain} ${i.unit}</td>
+      <td class="num" style="font-weight:700">${bottleRemain} ${i.unit}</td>
       <td>
-        <input type="number" id="cd-use-${i.id}" value="0" min="0" max="${remain}" step="0.5" ${remain<=0?'disabled':''}
-          style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px${remain<=0?';opacity:.4':''}">
-        ${hasRatio?`<div style="margin-top:3px">
-          <input type="number" placeholder="或填整${prod.unit}數" min="0" step="1" ${remain<=0?'disabled':''}
-            oninput="cdUseFromWhole(${i.id},this.value,${perStock},${remain})"
-            style="width:100px;padding:3px 5px;border:1px solid var(--bd);border-radius:var(--r);font-size:11px;color:var(--tx3)">
-        </div>`:''}
+        <input type="number" id="cd-use-${i.id}" value="0" min="0" step="${hasRatio?'0.5':'1'}" ${canUse?'':'disabled'}
+          style="width:80px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px${canUse?'':';opacity:.4'}"
+          oninput="cdUseQtyHint(${i.id})">
+        <div style="font-size:10px;color:var(--tx3);margin-top:2px" id="cd-usehint-${i.id}">${hasRatio?`目前類型：填 ${svcUnit} 數`:`填${i.unit}數`}</div>
       </td>
       <td>
-        <select id="cd-usetype-${i.id}" ${remain<=0?'disabled':''} style="width:100%;padding:5px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+        <select id="cd-usetype-${i.id}" ${canUse?'':'disabled'} onchange="cdUseQtyHint(${i.id})" style="width:100%;padding:5px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
           <option value="服務使用">服務使用（店內用掉）</option>
-          <option value="客戶取回">客戶取回（整份拿走）</option>
-          <option value="其他">其他</option>
+          <option value="客戶取回">客戶取回（整${i.unit}拿走）</option>
+          <option value="其他">其他（整${i.unit}）</option>
         </select>
       </td>
     </tr>`;
   }).join('');
   OM(`登記使用／取回：${d.customer_name}（${depositNo}）`, `
-  <div class="al al-w" style="font-size:11px;margin-bottom:10px">同一次可以登記好幾個商品，每個商品自己選「服務使用」還是「客戶取回」，不用分兩次登記。</div>
+  <div class="al al-w" style="font-size:11px;margin-bottom:10px">同一次可以登記好幾個商品，每個商品自己選「服務使用」還是「客戶取回」，不用分兩次登記。「服務使用」填的是這次用掉多少（有換算比例的商品填 ml 這類服務單位）；「客戶取回／其他」填的是整瓶數。</div>
   <div style="max-width:220px;margin-bottom:10px">${fi('ud-date','日期','date',today())}</div>
-  <div style="overflow-x:auto"><table class="itb"><tr><th>商品</th><th>總量</th><th>已用/取回</th><th>剩餘</th><th>本次數量</th><th>類型</th></tr>${rows}</table></div>
+  <div style="overflow-x:auto"><table class="itb"><tr><th>商品</th><th>總量</th><th>已用/取回</th><th>剩餘瓶數</th><th>本次數量</th><th>類型</th></tr>${rows}</table></div>
   <div style="margin-top:10px">${fi('ud-note','備註（選填，會套用在這次登記的所有品項）')}</div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveDepositUsage('${depositNo}')">確認</button>`,true);
@@ -373,31 +378,61 @@ async function useDepositModal(depositNo) {
 }
 window.useDepositModal = useDepositModal;
 
-function cdUseFromWhole(itemId, wholeVal, perStock, remain) {
-  const whole = parseFloat(wholeVal)||0;
-  let qty = Math.round(whole*perStock*100)/100;
-  if(qty>remain) qty = remain;
-  const el = $('cd-use-'+itemId);
-  if(el) el.value = qty;
+// 類型切換時，更新旁邊那行小提示字，告訴使用者現在填的數字單位是什麼
+function cdUseQtyHint(itemId) {
+  const meta = (window._udMeta||{})[itemId]||{};
+  const type = $('cd-usetype-'+itemId)?.value||'服務使用';
+  const hint = $('cd-usehint-'+itemId);
+  const qtyEl = $('cd-use-'+itemId);
+  if(!hint) return;
+  if(type==='服務使用' && meta.hasRatio) {
+    hint.textContent = `目前類型：填 ${meta.svcUnit} 數`;
+    if(qtyEl) qtyEl.step = '0.5';
+  } else {
+    hint.textContent = `填整${meta.itemUnit||'個'}數`;
+    if(qtyEl) qtyEl.step = '1';
+  }
 }
-window.cdUseFromWhole = cdUseFromWhole;
+window.cdUseQtyHint = cdUseQtyHint;
 
 async function saveDepositUsage(depositNo) {
   const date = v('ud-date')||today();
   const note = v('ud-note')||null;
   const items = window._udItems||[];
+  const meta = window._udMeta||{};
   let any=false;
   for(const i of items) {
     const qty = parseFloat($('cd-use-'+i.id)?.value)||0;
     if(qty<=0) continue;
-    const remain = (i.total_qty||0)-(i.used_qty||0);
-    if(qty>remain) { toast(`「${i.product_name}」超過剩餘數量`,'e'); return; }
     const type = $('cd-usetype-'+i.id)?.value||'服務使用';
+    const m = meta[i.id]||{};
     any=true;
-    await sb.from('customer_deposit_usages').insert({
-      deposit_item_id:i.id, use_date:date, qty_used:qty, use_type:type, note
-    });
-    await sb.from('customer_deposit_items').update({used_qty:(i.used_qty||0)+qty}).eq('id',i.id);
+    if(type==='服務使用' && m.hasRatio) {
+      // ml（服務單位）為主的用量：先扣已開封剩餘的，不夠再自動開新瓶
+      const openedRemain = (i.opened_qty||0)-(i.opened_used_qty||0);
+      const shortfall = qty-openedRemain;
+      let bottlesToOpen = 0;
+      if(shortfall>0) bottlesToOpen = Math.ceil(shortfall/m.perStock);
+      const bottleAvail = (i.total_qty||0)-(i.used_qty||0);
+      if(bottlesToOpen>0 && bottlesToOpen>bottleAvail) { toast(`「${i.product_name}」剩餘瓶數不夠開瓶（只剩${bottleAvail}${i.unit}，這次還需要再開${bottlesToOpen}${i.unit}）`,'e'); return; }
+      const newOpenedQty = (i.opened_qty||0)+bottlesToOpen*m.perStock;
+      const newUsedQty = (i.used_qty||0)+bottlesToOpen;
+      const finalNote = [note, bottlesToOpen>0?`（自動開了${bottlesToOpen}${i.unit}）`:''].filter(Boolean).join(' ')||null;
+      await sb.from('customer_deposit_items').update({
+        used_qty:newUsedQty, opened_qty:newOpenedQty, opened_used_qty:(i.opened_used_qty||0)+qty
+      }).eq('id',i.id);
+      await sb.from('customer_deposit_usages').insert({
+        deposit_item_id:i.id, use_date:date, qty_used:qty, use_type:type, note:finalNote, unit:m.svcUnit
+      });
+    } else {
+      // 整瓶為主的登記（客戶取回／其他／沒有換算比例的商品）
+      const bottleRemain = (i.total_qty||0)-(i.used_qty||0);
+      if(qty>bottleRemain) { toast(`「${i.product_name}」超過剩餘${i.unit}數`,'e'); return; }
+      await sb.from('customer_deposit_items').update({used_qty:(i.used_qty||0)+qty}).eq('id',i.id);
+      await sb.from('customer_deposit_usages').insert({
+        deposit_item_id:i.id, use_date:date, qty_used:qty, use_type:type, note, unit:i.unit
+      });
+    }
   }
   if(!any){ toast('請至少填一項數量','e'); return; }
   toast('✅ 已登記');
@@ -423,8 +458,10 @@ async function viewDepositDetail(depositNo) {
   </div>
   ${d.note?`<div class="al al-w" style="font-size:12px;margin-bottom:12px">備註：${d.note}</div>`:''}
   <table class="itb"><tr><th>商品</th><th>總量</th><th>已用/取回</th><th>剩餘</th><th></th></tr>
-    ${its.map(i=>`<tr>
-      <td style="font-size:12px">${i.product_name}</td>
+    ${its.map(i=>{
+      const openedRemain = Math.round((((i.opened_qty||0)-(i.opened_used_qty||0)))*100)/100;
+      return `<tr>
+      <td style="font-size:12px">${i.product_name}${openedRemain>0?`<div style="font-size:10px;color:var(--tx3)">已開封剩 ${openedRemain}（服務用）</div>`:''}</td>
       <td class="num">${i.total_qty} ${i.unit}</td>
       <td class="num">${i.used_qty||0} ${i.unit}</td>
       <td class="num" style="font-weight:700">${(i.total_qty||0)-(i.used_qty||0)} ${i.unit}</td>
@@ -432,7 +469,7 @@ async function viewDepositDetail(depositNo) {
         <button class="btn btn-s" onclick="editDepositItemModal(${i.id},'${depositNo}')">編輯</button>
         <button class="btn btn-s btn-r" onclick="dDepositItem(${i.id},'${depositNo}')">刪除</button>
       </td>
-    </tr>`).join('')}
+    </tr>`;}).join('')}
   </table>
   <div style="margin-top:14px;font-size:13px;font-weight:600">使用/取回記錄</div>
   <table class="itb"><tr><th>日期</th><th>商品</th><th>類型</th><th>數量</th><th>備註</th></tr>
@@ -440,7 +477,7 @@ async function viewDepositDetail(depositNo) {
       <td style="font-size:12px">${fD(u.use_date)}</td>
       <td style="font-size:12px">${it?.product_name||'—'}</td>
       <td><span class="badge ${u.use_type==='服務使用'?'bg':'ba'}" style="font-size:10px">${u.use_type}</span></td>
-      <td class="num">${u.qty_used} ${it?.unit||''}</td>
+      <td class="num">${u.qty_used} ${u.unit||it?.unit||''}</td>
       <td style="font-size:12px;color:var(--tx3)">${u.note||u.service_order_no||'—'}</td>
     </tr>`;}).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">尚無使用記錄</td></tr>'}
   </table>`,
@@ -496,60 +533,31 @@ async function editDepositItemModal(itemId, depositNo) {
   const { data:i } = await sb.from('customer_deposit_items').select('*').eq('id',itemId).single();
   if(!i) return;
 
-  // 如果這個品項有連到真正的商品，改成「幾瓶/幾盒」直接自動換算，不用手動算ml/組數
+  // 總量/單位一律是實體單位（瓶/條/罐…），不管有沒有連到真正的商品都一樣直接編輯，
+  // 不用再換算 ml——ml 只在「服務使用」記錄時才會出現。
   let prod = null;
   if(i.product_no) {
     const { data:p } = await sb.from('products').select('service_unit,service_units_per_stock,unit').eq('product_no',i.product_no).maybeSingle();
     prod = p;
   }
+  const hasRatio = prod && prod.service_unit && parseFloat(prod.service_units_per_stock)>1;
 
-  if(prod && prod.service_unit && prod.service_units_per_stock) {
-    const perStock = parseFloat(prod.service_units_per_stock)||1;
-    const stockQtyGuess = Math.round((i.total_qty/perStock)*100)/100;
-    OM(`編輯品項：${i.product_name}`, `
-    <div class="al al-w" style="font-size:12px;margin-bottom:10px">
-      已使用/取回 ${i.used_qty||0} ${i.unit}。這個商品有設定換算比例（1${prod.unit||'瓶'}＝${perStock}${prod.service_unit}），填「幾${prod.unit||'瓶'}」，系統會自動換算成正確的寄放總量。
-    </div>
-    ${fi('edi-name','商品名稱','text',i.product_name)}
-    <div class="fl" style="margin-top:10px">
-      <label>寄放幾${prod.unit||'瓶'}（1${prod.unit||'瓶'}＝${perStock}${prod.service_unit}）</label>
-      <input type="number" id="f-edi-stockqty" value="${stockQtyGuess}" min="0.1" step="0.5" oninput="ediCalcFromStock(${perStock},'${prod.service_unit}')"
-        style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
-    </div>
-    <div id="edi-calc-result" style="font-size:13px;color:var(--ac);margin-top:8px;font-weight:600">＝ ${i.total_qty} ${i.unit}</div>
-    <input type="hidden" id="f-edi-qty" value="${i.total_qty}">
-    <input type="hidden" id="f-edi-unit" value="${prod.service_unit}">`,
-    `<button class="btn" onclick="CM()">取消</button>
-     <button class="btn btn-p" onclick="saveDepositItemEdit(${itemId},'${depositNo}')">儲存</button>`);
-    return;
-  }
-
-  // 沒有連結商品（純手動輸入的自訂項目）：維持手動輸入數量+單位
   OM(`編輯品項：${i.product_name}`, `
-  <div class="al al-w" style="font-size:12px;margin-bottom:10px">已使用/取回 ${i.used_qty||0} ${i.unit}，總量不能改到比已使用的還少。</div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">已使用/取回 ${i.used_qty||0} ${i.unit}，總量不能改到比已使用的還少。${hasRatio?`<br>這個商品開封後可服務用掉：1${i.unit}＝${prod.service_units_per_stock}${prod.service_unit}（登記「服務使用」時才會用到）。`:''}</div>
   ${fi('edi-name','商品名稱','text',i.product_name)}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
     ${fi('edi-qty','寄放總量','number',i.total_qty)}
     <div class="fl"><label>單位</label>
       <select id="f-edi-unit" data-orig="${i.unit}" onchange="ediUnitWarn(this)" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
-        ${['組','ml','片','次','顆','瓶','盒'].map(u=>`<option value="${u}" ${u===i.unit?'selected':''}>${u}</option>`).join('')}
+        ${['個','瓶','條','罐','盒','組','片','次','顆'].map(u=>`<option value="${u}" ${u===i.unit?'selected':''}>${u}</option>`).join('')}
       </select>
     </div>
   </div>
-  <div id="edi-unit-warn" style="font-size:11px;color:var(--rd);margin-top:6px;display:none">⚠️ 改單位不會自動換算上面的數量，記得手動把「寄放總量」也一起改成正確的（例如1瓶=30ml，改成ml就要把總量改成30）。</div>`,
+  <div id="edi-unit-warn" style="font-size:11px;color:var(--rd);margin-top:6px;display:none">⚠️ 改單位不會自動換算上面的數量，記得手動確認「寄放總量」還是正確的。</div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveDepositItemEdit(${itemId},'${depositNo}')">儲存</button>`);
 }
 window.editDepositItemModal = editDepositItemModal;
-
-function ediCalcFromStock(perStock, unit) {
-  const stockQty = parseFloat($('f-edi-stockqty')?.value)||0;
-  const total = Math.round(stockQty*perStock*100)/100;
-  $('f-edi-qty').value = total;
-  $('f-edi-unit').value = unit;
-  const r = $('edi-calc-result'); if(r) r.textContent = `＝ ${total} ${unit}`;
-}
-window.ediCalcFromStock = ediCalcFromStock;
 
 function ediUnitWarn(sel) {
   const warn = $('edi-unit-warn');
@@ -558,9 +566,9 @@ function ediUnitWarn(sel) {
 window.ediUnitWarn = ediUnitWarn;
 
 async function saveDepositItemEdit(itemId, depositNo) {
-  const { data:i } = await sb.from('customer_deposit_items').select('used_qty').eq('id',itemId).single();
+  const { data:i } = await sb.from('customer_deposit_items').select('used_qty,unit').eq('id',itemId).single();
   const qty = parseFloat(v('edi-qty'))||0;
-  if(qty < (i?.used_qty||0)) { toast(`總量不能小於已使用的 ${i.used_qty} ${''}`,'e'); return; }
+  if(qty < (i?.used_qty||0)) { toast(`總量不能小於已使用的 ${i.used_qty} ${i.unit||''}`,'e'); return; }
   await sb.from('customer_deposit_items').update({
     product_name: v('edi-name'), total_qty: qty, unit: v('edi-unit')||'組'
   }).eq('id',itemId);
@@ -571,20 +579,28 @@ async function saveDepositItemEdit(itemId, depositNo) {
 window.saveDepositItemEdit = saveDepositItemEdit;
 
 // 供 service-orders.js 呼叫：抓某客戶目前有剩餘的寄放品項（回傳的是「品項」，id 是 customer_deposit_items.id）
+// total_qty/used_qty 是整瓶數；opened_qty/opened_used_qty 是這瓶開封後、可供服務用掉的量（ml等）——
+// 只要還有整瓶或還有開封剩餘，都算「有剩」，服務單那邊會自動處理開新瓶的邏輯。
 async function getCustomerDeposits(customerNo) {
   if(!customerNo) return [];
   const { data:deposits } = await sb.from('customer_deposits').select('deposit_no').eq('customer_no',customerNo).eq('is_active',true);
   const depositNos = (deposits||[]).map(d=>d.deposit_no);
   if(!depositNos.length) return [];
   const { data:items } = await sb.from('customer_deposit_items').select('*').in('deposit_no',depositNos);
-  const avail = (items||[]).filter(i=>(i.total_qty||0)-(i.used_qty||0)>0);
-  // 帶出關聯商品的「每次預設用量」，讓服務單選了之後能自動帶入正確用量
+  const avail = (items||[]).filter(i=>((i.total_qty||0)-(i.used_qty||0))>0 || ((i.opened_qty||0)-(i.opened_used_qty||0))>0);
+  // 帶出關聯商品的「服務單位換算」跟「每次預設用量」，讓服務單知道這瓶開封後要用哪個單位計算、預設用量帶多少
   const prodNos = [...new Set(avail.map(i=>i.product_no).filter(Boolean))];
+  let prodMap = {};
   if(prodNos.length) {
-    const { data:prods } = await sb.from('products').select('product_no,default_service_qty').in('product_no',prodNos);
-    const defQtyMap = {}; (prods||[]).forEach(p=>defQtyMap[p.product_no]=p.default_service_qty);
-    avail.forEach(i=>{ i.default_service_qty = i.product_no ? (defQtyMap[i.product_no]||1) : 1; });
+    const { data:prods } = await sb.from('products').select('product_no,default_service_qty,service_unit,service_units_per_stock').in('product_no',prodNos);
+    (prods||[]).forEach(p=>prodMap[p.product_no]=p);
   }
+  avail.forEach(i=>{
+    const p = i.product_no ? prodMap[i.product_no] : null;
+    i.default_service_qty = p?.default_service_qty||1;
+    i.perStock = parseFloat(p?.service_units_per_stock)||1;
+    i.service_unit = p?.service_unit||null;
+  });
   return avail;
 }
 window.getCustomerDeposits = getCustomerDeposits;

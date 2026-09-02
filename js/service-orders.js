@@ -356,11 +356,17 @@ async function svcPickCust(custNo, custName) {
     // 先移除舊的寄放選項（換客戶時），再加入這位客戶目前的
     window._svcConsumOptions = (window._svcConsumOptions||[]).filter(o=>o.type!=='deposit');
     deposits.forEach(d=>{
-      const remain = (d.total_qty||0)-(d.used_qty||0);
+      // total_qty/used_qty 是她寄放的整瓶數；有換算比例的商品，服務時扣的是「開封後的 ml」，
+      // 不夠會自動開新瓶——邏輯比照「商品撥轉到服務庫存」，只是這瓶是她自己的。
+      const hasRatio = (d.perStock||1)>1 && d.service_unit;
+      const bottleRemain = (d.total_qty||0)-(d.used_qty||0);
+      const openedRemain = Math.round((((d.opened_qty||0)-(d.opened_used_qty||0)))*100)/100;
+      const sub = hasRatio
+        ? `客戶寄放商品・已開封剩 ${openedRemain} ${d.service_unit}${bottleRemain>0?`（還有${bottleRemain}${d.unit}未開封，用量不夠會自動開新的）`:''}`
+        : `客戶寄放商品・她寄放剩 ${bottleRemain} ${d.unit}`;
       window._svcConsumOptions.push({
         type:'deposit', value:'DEP:'+d.id, id:d.id, label:d.product_name,
-        sub:`客戶寄放商品・她寄放剩 ${remain} ${d.unit}`,
-        unit:d.unit, defqty:d.default_service_qty||1, cost:0
+        sub, unit:hasRatio?d.service_unit:d.unit, perstock:d.perStock||1, defqty:d.default_service_qty||1, cost:0
       });
     });
   }
@@ -620,12 +626,35 @@ async function saveSvcOrder() {
     }
   }));
   await Promise.all(window._svcItems.filter(i=>i.item_type==='consumable'&&i.deposit_id).map(async item=>{
-    const { data:dep } = await sb.from('customer_deposit_items').select('used_qty').eq('id',item.deposit_id).single();
-    if(dep) {
+    const { data:dep } = await sb.from('customer_deposit_items').select('total_qty,used_qty,opened_qty,opened_used_qty,product_no,unit').eq('id',item.deposit_id).single();
+    if(!dep) return;
+    // total_qty/used_qty 是客戶寄放的整瓶數，跟她自己的實體庫存一致；如果這個商品有「幾瓶=幾ml」的
+    // 換算比例，這裡扣的 item.qty 是開封後的服務單位（ml），不是瓶數——邏輯比照「商品撥轉到服務庫存」：
+    // 已開封剩餘（opened_qty-opened_used_qty）不夠這次用量時，自動開新瓶（整瓶數-1，開封額度+這瓶的ml）。
+    let perStock = 1;
+    if(dep.product_no) {
+      const { data:p } = await sb.from('products').select('service_units_per_stock').eq('product_no',dep.product_no).maybeSingle();
+      perStock = parseFloat(p?.service_units_per_stock)||1;
+    }
+    if(perStock>1) {
+      const openedRemain = (dep.opened_qty||0)-(dep.opened_used_qty||0);
+      const shortfall = item.qty-openedRemain;
+      const bottlesToOpen = shortfall>0 ? Math.ceil(shortfall/perStock) : 0;
+      await Promise.all([
+        sb.from('customer_deposit_items').update({
+          used_qty:(dep.used_qty||0)+bottlesToOpen,
+          opened_qty:(dep.opened_qty||0)+bottlesToOpen*perStock,
+          opened_used_qty:(dep.opened_used_qty||0)+item.qty
+        }).eq('id',item.deposit_id),
+        sb.from('customer_deposit_usages').insert({
+          deposit_item_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no, unit:item.unit
+        })
+      ]);
+    } else {
       await Promise.all([
         sb.from('customer_deposit_items').update({used_qty:(dep.used_qty||0)+item.qty}).eq('id',item.deposit_id),
         sb.from('customer_deposit_usages').insert({
-          deposit_item_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no
+          deposit_item_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no, unit:item.unit||dep.unit
         })
       ]);
     }
@@ -678,8 +707,20 @@ async function reverseSvcOrderEffects(no) {
     if(sc) await sb.from('service_consumables').update({stock_qty:(sc.stock_qty||0)+item.qty,updated_at:new Date().toISOString()}).eq('id',item.consumable_id);
   }
   for(const item of (its||[]).filter(i=>i.item_type==='consumable'&&i.deposit_id)) {
-    const { data:dep } = await sb.from('customer_deposit_items').select('used_qty').eq('id',item.deposit_id).single();
-    if(dep) await sb.from('customer_deposit_items').update({used_qty:Math.max(0,(dep.used_qty||0)-item.qty)}).eq('id',item.deposit_id);
+    const { data:dep } = await sb.from('customer_deposit_items').select('used_qty,opened_used_qty,product_no').eq('id',item.deposit_id).single();
+    if(!dep) continue;
+    let perStock = 1;
+    if(dep.product_no) {
+      const { data:p } = await sb.from('products').select('service_units_per_stock').eq('product_no',dep.product_no).maybeSingle();
+      perStock = parseFloat(p?.service_units_per_stock)||1;
+    }
+    // 有換算比例的商品，當初扣的是「開封額度」，還原也還回開封額度就好——不用把已經開的瓶子「合起來」，
+    // 那瓶已經開了，開封的 ml 額度還她就是了。沒有比例的商品維持原本邏輯，直接還原整瓶數。
+    if(perStock>1) {
+      await sb.from('customer_deposit_items').update({opened_used_qty:Math.max(0,(dep.opened_used_qty||0)-item.qty)}).eq('id',item.deposit_id);
+    } else {
+      await sb.from('customer_deposit_items').update({used_qty:Math.max(0,(dep.used_qty||0)-item.qty)}).eq('id',item.deposit_id);
+    }
   }
   await sb.from('customer_deposit_usages').delete().eq('service_order_no',no);
   for(const item of (its||[]).filter(i=>i.item_type==='gift_product'&&i.product_no)) {
