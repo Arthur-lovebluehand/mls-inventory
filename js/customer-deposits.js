@@ -67,6 +67,7 @@ async function customerDeposits() {
             <td style="white-space:nowrap">
               ${totalRemain>0?`<button class="btn btn-s" onclick="useDepositModal('${d.deposit_no}')">登記使用/取回</button>`:''}
               <button class="btn btn-s" onclick="viewDepositDetail('${d.deposit_no}')">明細</button>
+              <button class="btn btn-s btn-r" onclick="dDeposit('${d.deposit_no}')">刪除</button>
             </td>
           </tr>`;
         }).join('')||'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--tx3)">尚無寄放記錄</td></tr>'}
@@ -317,45 +318,72 @@ async function saveDeposit() {
 window.saveDeposit = saveDeposit;
 
 // ── 登記使用/取回（一張寄放單裡的所有品項一次登記，跟出貨記錄同邏輯）──
+// 每個品項各自選「服務使用」還是「客戶取回」，不強迫綁同一種——同一次來店裡，
+// 可能有的東西當場用掉、有的整份直接被拿走，這兩種要能同時登記。
 async function useDepositModal(depositNo) {
   const [{ data:d },{ data:its }] = await Promise.all([
     sb.from('customer_deposits').select('*').eq('deposit_no',depositNo).single(),
     sb.from('customer_deposit_items').select('*').eq('deposit_no',depositNo),
   ]);
   if(!d) return;
+  // 品項如果有連到真正的商品、且商品有設定「幾瓶=幾ml」的換算比例，就多給一個「填整瓶數」的欄位，
+  // 不用每次都自己心算瓶數轉ml（例如客戶整條帶回家，不用手動算800）。
+  const productNos = [...new Set((its||[]).map(i=>i.product_no).filter(Boolean))];
+  let prodMap = {};
+  if(productNos.length) {
+    const { data:prods } = await sb.from('products').select('product_no,service_unit,service_units_per_stock,unit').in('product_no',productNos);
+    (prods||[]).forEach(p=>prodMap[p.product_no]=p);
+  }
   const rows = its.map(i=>{
     const remain = (i.total_qty||0)-(i.used_qty||0);
+    const prod = prodMap[i.product_no];
+    const perStock = parseFloat(prod?.service_units_per_stock)||0;
+    const hasRatio = perStock>1 && prod?.unit && prod?.service_unit===i.unit;
     return `<tr>
-      <td style="font-size:12px">${i.product_name}</td>
+      <td style="font-size:12px">${i.product_name}${hasRatio?`<div style="font-size:10px;color:var(--tx3)">1${prod.unit}＝${perStock}${i.unit}</div>`:''}</td>
       <td class="num">${i.total_qty} ${i.unit}</td>
       <td class="num ok">${i.used_qty||0} ${i.unit}</td>
       <td class="num" style="font-weight:700">${remain} ${i.unit}</td>
-      <td><input type="number" id="cd-use-${i.id}" value="0" min="0" max="${remain}" step="0.5" ${remain<=0?'disabled':''}
-        style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px${remain<=0?';opacity:.4':''}"></td>
+      <td>
+        <input type="number" id="cd-use-${i.id}" value="0" min="0" max="${remain}" step="0.5" ${remain<=0?'disabled':''}
+          style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px${remain<=0?';opacity:.4':''}">
+        ${hasRatio?`<div style="margin-top:3px">
+          <input type="number" placeholder="或填整${prod.unit}數" min="0" step="1" ${remain<=0?'disabled':''}
+            oninput="cdUseFromWhole(${i.id},this.value,${perStock},${remain})"
+            style="width:100px;padding:3px 5px;border:1px solid var(--bd);border-radius:var(--r);font-size:11px;color:var(--tx3)">
+        </div>`:''}
+      </td>
+      <td>
+        <select id="cd-usetype-${i.id}" ${remain<=0?'disabled':''} style="width:100%;padding:5px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px">
+          <option value="服務使用">服務使用（店內用掉）</option>
+          <option value="客戶取回">客戶取回（整份拿走）</option>
+          <option value="其他">其他</option>
+        </select>
+      </td>
     </tr>`;
   }).join('');
   OM(`登記使用／取回：${d.customer_name}（${depositNo}）`, `
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fi('ud-date','日期','date',today())}
-    <div class="fl"><label>類型</label>
-      <select id="f-ud-type" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px">
-        <option value="服務使用">服務使用（店內幫她用掉）</option>
-        <option value="客戶取回">客戶取回（自己拿回家）</option>
-        <option value="其他">其他</option>
-      </select>
-    </div>
-  </div>
-  <table class="itb"><tr><th>商品</th><th>總量</th><th>已用/取回</th><th>剩餘</th><th>本次數量</th></tr>${rows}</table>
-  <div style="margin-top:10px">${fi('ud-note','備註（選填）')}</div>`,
+  <div class="al al-w" style="font-size:11px;margin-bottom:10px">同一次可以登記好幾個商品，每個商品自己選「服務使用」還是「客戶取回」，不用分兩次登記。</div>
+  <div style="max-width:220px;margin-bottom:10px">${fi('ud-date','日期','date',today())}</div>
+  <div style="overflow-x:auto"><table class="itb"><tr><th>商品</th><th>總量</th><th>已用/取回</th><th>剩餘</th><th>本次數量</th><th>類型</th></tr>${rows}</table></div>
+  <div style="margin-top:10px">${fi('ud-note','備註（選填，會套用在這次登記的所有品項）')}</div>`,
   `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveDepositUsage('${depositNo}')">確認</button>`);
+   <button class="btn btn-p" onclick="saveDepositUsage('${depositNo}')">確認</button>`,true);
   window._udItems = its;
 }
 window.useDepositModal = useDepositModal;
 
+function cdUseFromWhole(itemId, wholeVal, perStock, remain) {
+  const whole = parseFloat(wholeVal)||0;
+  let qty = Math.round(whole*perStock*100)/100;
+  if(qty>remain) qty = remain;
+  const el = $('cd-use-'+itemId);
+  if(el) el.value = qty;
+}
+window.cdUseFromWhole = cdUseFromWhole;
+
 async function saveDepositUsage(depositNo) {
   const date = v('ud-date')||today();
-  const type = v('ud-type')||'服務使用';
   const note = v('ud-note')||null;
   const items = window._udItems||[];
   let any=false;
@@ -364,6 +392,7 @@ async function saveDepositUsage(depositNo) {
     if(qty<=0) continue;
     const remain = (i.total_qty||0)-(i.used_qty||0);
     if(qty>remain) { toast(`「${i.product_name}」超過剩餘數量`,'e'); return; }
+    const type = $('cd-usetype-'+i.id)?.value||'服務使用';
     any=true;
     await sb.from('customer_deposit_usages').insert({
       deposit_item_id:i.id, use_date:date, qty_used:qty, use_type:type, note
@@ -399,7 +428,10 @@ async function viewDepositDetail(depositNo) {
       <td class="num">${i.total_qty} ${i.unit}</td>
       <td class="num">${i.used_qty||0} ${i.unit}</td>
       <td class="num" style="font-weight:700">${(i.total_qty||0)-(i.used_qty||0)} ${i.unit}</td>
-      <td><button class="btn btn-s" onclick="editDepositItemModal(${i.id},'${depositNo}')">編輯</button></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-s" onclick="editDepositItemModal(${i.id},'${depositNo}')">編輯</button>
+        <button class="btn btn-s btn-r" onclick="dDepositItem(${i.id},'${depositNo}')">刪除</button>
+      </td>
     </tr>`).join('')}
   </table>
   <div style="margin-top:14px;font-size:13px;font-weight:600">使用/取回記錄</div>
@@ -412,9 +444,53 @@ async function viewDepositDetail(depositNo) {
       <td style="font-size:12px;color:var(--tx3)">${u.note||u.service_order_no||'—'}</td>
     </tr>`;}).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--tx3)">尚無使用記錄</td></tr>'}
   </table>`,
-  `<button class="btn" onclick="CM()">關閉</button>`);
+  `<button class="btn" onclick="CM()">關閉</button>
+   <button class="btn btn-r" onclick="dDeposit('${depositNo}')">刪除整張寄放單</button>`);
 }
 window.viewDepositDetail = viewDepositDetail;
+
+// ── 刪除（整張寄放單 / 單一品項）──
+// 使用者確認過：就算這筆已經登記過使用/取回記錄，只要按刪除就一併刪掉，不擋。
+async function dDeposit(depositNo) {
+  const [{ data:dep },{ data:its }] = await Promise.all([
+    sb.from('customer_deposits').select('*').eq('deposit_no',depositNo).single(),
+    sb.from('customer_deposit_items').select('*').eq('deposit_no',depositNo),
+  ]);
+  if(!dep) { toast('找不到這張寄放單','e'); return; }
+  const hasUsage = (its||[]).some(i=>(i.used_qty||0)>0);
+  if(!confirm(`確定刪除整張寄放單 ${depositNo}（${dep.customer_name}）？\n\n此操作會：\n・刪除這張寄放單及底下所有品項${hasUsage?'\n・一併刪除已登記過的使用/取回記錄（如果裡面有些是從服務單自動產生的，對應的服務單本身不會被刪，只是這裡的關聯記錄會一起消失）':''}\n・不會影響店裡自己的商品庫存\n\n此動作無法復原。`)) return;
+  const itemIds = (its||[]).map(i=>i.id);
+  if(itemIds.length) await sb.from('customer_deposit_usages').delete().in('deposit_item_id',itemIds);
+  await sb.from('customer_deposit_items').delete().eq('deposit_no',depositNo);
+  await sb.from('customer_deposits').delete().eq('deposit_no',depositNo);
+  await logAction('delete','customer_deposits',depositNo,'刪除客戶寄放單 '+depositNo,{deposit:dep,items:its});
+  toast('寄放單已刪除，操作已記錄');
+  CM();
+  customerDeposits();
+}
+window.dDeposit = dDeposit;
+
+async function dDepositItem(itemId, depositNo) {
+  const { data:i } = await sb.from('customer_deposit_items').select('*').eq('id',itemId).single();
+  if(!i) { toast('找不到這個品項','e'); return; }
+  const hasUsage = (i.used_qty||0)>0;
+  if(!confirm(`確定刪除品項「${i.product_name}」？${hasUsage?'\n\n這個品項已經有使用/取回記錄，會一併刪除。':''}\n\n此動作無法復原。`)) return;
+  await sb.from('customer_deposit_usages').delete().eq('deposit_item_id',itemId);
+  await sb.from('customer_deposit_items').delete().eq('id',itemId);
+  await logAction('delete','customer_deposit_items',String(itemId),`刪除客戶寄放品項「${i.product_name}」（${depositNo}）`,i);
+  toast('✅ 品項已刪除');
+  const { count } = await sb.from('customer_deposit_items').select('id',{count:'exact',head:true}).eq('deposit_no',depositNo);
+  if(!count && confirm('這張寄放單已經沒有任何品項了，要一併刪除整張寄放單嗎？')) {
+    const { data:dep } = await sb.from('customer_deposits').select('*').eq('deposit_no',depositNo).single();
+    await sb.from('customer_deposits').delete().eq('deposit_no',depositNo);
+    await logAction('delete','customer_deposits',depositNo,'刪除客戶寄放單 '+depositNo+'（品項刪光後一併清除）',dep);
+    CM();
+    customerDeposits();
+    return;
+  }
+  viewDepositDetail(depositNo);
+}
+window.dDepositItem = dDepositItem;
 
 async function editDepositItemModal(itemId, depositNo) {
   const { data:i } = await sb.from('customer_deposit_items').select('*').eq('id',itemId).single();
