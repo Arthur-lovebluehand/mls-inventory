@@ -86,7 +86,7 @@ function addDepositModal() {
   </div>
   <div id="cd-mode-order">
     <div class="fl" style="margin-bottom:10px"><label>輸入銷售單號或客戶姓名搜尋</label>
-      <input id="f-cd-ordersearch" type="text" placeholder="例如 SO-20260813-001 或 王小姐" oninput="cdSearchOrders(this.value)"
+      <input id="f-cd-ordersearch" type="text" placeholder="例如 SO-20260813-001 或 王小姐" autocomplete="off" oninput="cdSearchOrders(this.value)"
         style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
     </div>
     <div id="cd-order-results" style="max-height:320px;overflow-y:auto;margin-bottom:10px"></div>
