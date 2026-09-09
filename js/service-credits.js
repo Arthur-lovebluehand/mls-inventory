@@ -381,6 +381,9 @@ async function saveAdjustCredit(custNo, custName, walletType, curBal) {
   await recomputeCreditChain(custNo, walletType);
   toast('✅ 已校正');
   CM();
+  // 背後的「客戶儲值」列表在打開這個視窗之前就已經渲染好、餘額是舊的，
+  // 這裡先在背景重新整理一次列表資料，畫面關掉彈窗後才不會看到沒更新的舊餘額（不用手動按 F5）
+  svcCredits();
   svcCreditHistory(custNo, walletType);
 }
 window.saveAdjustCredit = saveAdjustCredit;
@@ -414,6 +417,7 @@ async function saveEditCreditRecord(id, custNo, walletType, lockAmount) {
   await recomputeCreditChain(custNo, walletType);
   toast('✅ 已更新');
   CM();
+  svcCredits();
   svcCreditHistory(custNo, walletType);
 }
 window.saveEditCreditRecord = saveEditCreditRecord;
@@ -436,6 +440,7 @@ async function deleteCreditRecord(id, custNo, walletType) {
   await sb.from('store_credit_records').delete().eq('id',id);
   await recomputeCreditChain(custNo, walletType);
   toast('✅ 已刪除');
+  svcCredits();
   svcCreditHistory(custNo, walletType);
 }
 window.deleteCreditRecord = deleteCreditRecord;
