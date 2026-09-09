@@ -982,6 +982,8 @@ async function techMonthDetail(key) {
   const { data:ords } = await sb.from('service_orders').select('order_no,order_date,customer_name').in('order_no',orderNos);
   const ordMap = {}; (ords||[]).forEach(o=>ordMap[o.order_no]=o);
   const totalPay = rows.reduce((s,r)=>s+(r.technician_pay||0),0);
+  // 照服務單當初登記的日期排序（不是資料庫查詢回來的隨機順序）
+  rows.sort((a,b)=> (ordMap[a.order_no]?.order_date||'').localeCompare(ordMap[b.order_no]?.order_date||'') || (a.order_no||'').localeCompare(b.order_no||''));
 
   OM(`${ym} ${name} 薪資明細`, `
   <div style="font-size:16px;font-weight:700;margin-bottom:14px;color:var(--bl)">應付薪資合計：${fM(totalPay)}</div>
