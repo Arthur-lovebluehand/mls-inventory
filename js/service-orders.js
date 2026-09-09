@@ -386,12 +386,17 @@ function svcAddServiceItem() {
   const techMode = techOpt?.dataset?.mode || 'percentage';
   const techRate = parseFloat(techOpt?.dataset?.rate)||0.5;
   const techFixed = parseFloat(techOpt?.dataset?.fixed)||0;
+  const itemUnit = opt.dataset.unit||'次';
+  // 「小時」計價的服務項目，數量欄位填的是實際小時數（可以填0.5的倍數）；
+  // 固定金額抽成是「每半小時」算一次，所以要先把小時數換算成半小時的份數（×2）才乘上固定金額，
+  // 不能直接拿小時數當次數用，不然2小時只會算到「乘2」，漏掉一半（應該是乘4）。
+  const isHourUnit = itemUnit==='小時' || itemUnit==='hr' || itemUnit==='h';
   const techPay = !techId ? 0
-    : techMode==='fixed' ? Math.round(qty * techFixed * 100)/100
+    : techMode==='fixed' ? Math.round(qty * (isHourUnit?2:1) * techFixed * 100)/100
     : Math.round(qty * price * techRate * 100)/100;
   window._svcItems.push({
     id: Date.now(), item_type:'service', item_name:opt.text.split('（')[0],
-    qty, unit:opt.dataset.unit||'次', unit_price:price, cost:0, subtotal:isGift?0:qty*price,
+    qty, unit:itemUnit, unit_price:price, cost:0, subtotal:isGift?0:qty*price,
     is_gift:isGift, technician_id:techId, technician_name:techName, technician_pay:techPay
   });
   const giftCb = document.getElementById('sv-sigift'); if(giftCb) giftCb.checked=false;

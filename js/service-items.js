@@ -247,7 +247,10 @@ function svcTechCommissionFields(mode, rate, fixedAmt) {
       <option value="fixed" ${mode==='fixed'?'selected':''}>固定金額（每次服務）</option>
     </select></div>
     <div id="tech-rate-field" style="${mode==='fixed'?'display:none':''}">${fi('tech-rate','抽成比例（%）','number',Math.round((rate||0)*100))}</div>
-    <div id="tech-fixed-field" style="${mode==='fixed'?'':'display:none'}">${fi('tech-fixed','固定金額（元/次）','number',fixedAmt||0)}</div>
+    <div id="tech-fixed-field" style="${mode==='fixed'?'':'display:none'}">
+      ${fi('tech-fixed','固定金額（元/次）','number',fixedAmt||0)}
+      <div style="font-size:11px;color:var(--tx3);margin-top:3px">「次」的定義：計次的服務項目＝1次；「小時」計價的服務項目是每半小時算1次（例如2小時＝4次），服務單登記時會自動換算，不用自己心算。</div>
+    </div>
   `;
 }
 window.svcTechModeChange = mode => {
