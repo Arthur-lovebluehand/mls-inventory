@@ -39,7 +39,9 @@ window.addEventListener('error',e=>{
       showLoginPage();
       return;
     }
-    Promise.all([loadPayMethods(),loadShipMethods(),loadBrandNames(),loadOrderTypes(),loadOpexCategories(),loadPromoTypes()]).then(() => go('dashboard'));
+    Promise.all([loadPayMethods(),loadShipMethods(),loadBrandNames(),loadOrderTypes(),loadOpexCategories(),loadPromoTypes(),
+      typeof autoCarryForwardOpex==='function'?autoCarryForwardOpex().catch(()=>{}):Promise.resolve()
+    ]).then(() => go('dashboard'));
   };
   s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
   document.head.appendChild(s);

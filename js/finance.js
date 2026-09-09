@@ -7,7 +7,48 @@
 // ══════════════════════════════
 var _opexYear = null; // 目前展開的年份，null=顯示年度總覽
 var _opexMonth = null; // 目前展開的月份(YYYY-MM)，null=顯示該年月份彙整
+
+// 自動延續「每月固定支出」：勾了「每月固定會有的支出」的項目，不用每個月自己手動再登記一次，
+// 系統會自己補上這個月的一筆（金額照上次的，日期照上次的幾號，備註會標明是自動補的方便檢查金額）。
+// 用「類別+備註」當作同一筆固定支出的識別（同類別底下可能同時有好幾筆不同的固定支出，例如「雜項」
+// 裡有掃地機器人月租、除蟲月費兩筆，備註不同就要分開各自延續，不能用類別直接合併成一筆）。
+// 只有「最新一筆」還是勾著「每月固定」才會繼續延續——如果最新一筆已經取消勾選，代表這筆固定支出已經停了，不再自動生。
+// 這個函式是「補上這個月缺的」，不會補過去漏掉好幾個月的（如果好幾個月沒開系統，只會補回「現在」這個月）。
+async function autoCarryForwardOpex(){
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const { data:all } = await sb.from('operating_expenses').select('id,expense_date,category,amount,is_recurring,note');
+  if(!all || !all.length) return;
+  const keyOf = r => `${r.category}::${r.note||''}`;
+  const latestByKey = {};
+  all.forEach(r=>{
+    const k = keyOf(r);
+    if(!latestByKey[k] || (r.expense_date||'') > (latestByKey[k].expense_date||'')) latestByKey[k] = r;
+  });
+  const thisMonthKeys = new Set(all.filter(r=>(r.expense_date||'').startsWith(thisMonth)).map(keyOf));
+  const [yy,mm] = thisMonth.split('-').map(Number);
+  const daysInThisMonth = new Date(yy, mm, 0).getDate();
+  const toInsert = [];
+  Object.values(latestByKey).forEach((src,idx)=>{
+    if(!src.is_recurring) return;
+    const srcYm = (src.expense_date||'').slice(0,7);
+    if(!srcYm || srcYm >= thisMonth) return; // 範本本身就是這個月或更新的，不用延續
+    if(thisMonthKeys.has(keyOf(src))) return; // 這個月已經有這筆了（自動補過或自己手動登記過）
+    const day = Math.min(parseInt((src.expense_date||'').slice(8,10))||1, daysInThisMonth);
+    const newDate = `${thisMonth}-${String(day).padStart(2,'0')}`;
+    toInsert.push({
+      expense_no: 'OX-'+thisMonth.replace('-','')+'-A'+idx+Date.now().toString().slice(-4),
+      expense_date:newDate, category:src.category, amount:src.amount, is_recurring:true,
+      note: (src.note?src.note+'　':'')+'（系統自動延續上月固定支出，請確認金額是否有變動）'
+    });
+  });
+  if(!toInsert.length) return;
+  const { error } = await sb.from('operating_expenses').insert(toInsert);
+  if(!error) toast(`✅ 已自動補上本月 ${toInsert.length} 筆固定支出，記得檢查金額是否需要調整`);
+}
+window.autoCarryForwardOpex = autoCarryForwardOpex;
+
 async function opex(){
+  await autoCarryForwardOpex();
   const { data:allRecs, count } = await sb.from('operating_expenses').select('*',{count:'exact'}).order('expense_date',{ascending:false});
 
   const thisMonth = new Date().toISOString().slice(0,7);
@@ -312,7 +353,7 @@ async function accounts(){
 
   const accTab = window._accTab || 'sales';
   $('main').innerHTML=`
-  <div class="ph"><div><div class="pt">對帳記錄</div><div class="ps">依訂單自動彙整</div></div></div>
+  <div class="ph"><div><div class="pt">財務報表</div><div class="ps">依訂單自動彙整</div></div></div>
   <div class="tab-bar" style="padding:0 16px 10px;overflow-x:auto">
     <div class="tab${accTab==='sales'?' on':''}" onclick="window._accTab='sales';accounts()">銷售財報</div>
     <div class="tab${accTab==='service'?' on':''}" onclick="window._accTab='service';accounts()">服務財報</div>
