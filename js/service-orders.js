@@ -117,7 +117,7 @@ async function svcNewOrder(editNo) {
     // 這樣光是打開編輯畫面、或中途取消，都不會動到任何實際資料。
   }
   // 抓服務項目、服務庫存商品、客戶、完整商品清單（供贈品用）
-  const [{ data:sitems },{ data:sinv },{ data:sconsum },{ data:custs },{ data:techs },{ data:allProds },kitsList] = await Promise.all([
+  const [{ data:sitems },{ data:sinv },{ data:sconsum },{ data:custs },{ data:techs },{ data:allProds },kitsList,{ data:svcCatOrdRow }] = await Promise.all([
     sb.from('service_items').select('*').eq('is_active',true).order('sort_order'),
     sb.from('service_inventory').select('*, products(name,service_unit,default_service_qty,service_units_per_stock,cost)').gt('stock_qty',0).order('product_no'),
     sb.from('service_consumables').select('*').eq('is_active',true).gt('stock_qty',0).order('name'),
@@ -125,7 +125,12 @@ async function svcNewOrder(editNo) {
     sb.from('technicians').select('*').eq('is_active',true).order('name'),
     sb.from('products').select('product_no,name,spec,stock,cost').eq('is_active',true).order('product_no'),
     window.getSvcKitsList?.() || Promise.resolve([]),
+    sb.from('settings').select('value').eq('key','svc_item_cat_order').single(),
   ]);
+  // 服務項目「分類排序」設定跟服務項目管理頁共用同一份設定（settings.svc_item_cat_order），
+  // 這裡選服務項目的下拉選單也要照這個順序分組，不然管理頁調過的分類順序，在真正開單選項目時卻沒生效。
+  let _svcCatOrdForOrder = {};
+  try{ if(svcCatOrdRow?.value) _svcCatOrdForOrder = JSON.parse(svcCatOrdRow.value); }catch(e){}
   window._svcAllCusts = custs||[];
   window._svcAllProds = allProds||[];
   window._svcKitsList = kitsList||[];
@@ -145,7 +150,9 @@ async function svcNewOrder(editNo) {
 
   const catGroups = {};
   (sitems||[]).forEach(s=>{ const c=s.category||'其他項目'; if(!catGroups[c]) catGroups[c]=[]; catGroups[c].push(s); });
-  const svcOpts = Object.entries(catGroups).map(([cat,items])=>
+  const svcOpts = Object.entries(catGroups)
+    .sort(([a],[b])=>(_svcCatOrdForOrder[a]||99)-(_svcCatOrdForOrder[b]||99) || a.localeCompare(b))
+    .map(([cat,items])=>
     `<optgroup label="${cat}">${items.map(s=>`<option value="${s.id}" data-price="${s.default_price}" data-unit="${s.unit||'次'}">${s.name}（${fM(s.default_price)}/${s.unit||'次'}）</option>`).join('')}</optgroup>`
   ).join('');
   window._svcConsumOptions = [
