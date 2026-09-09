@@ -243,7 +243,7 @@ async function svcNewOrder(editNo) {
   </div>
   <div id="sv-items-area" style="margin-bottom:14px"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fs('sv-pay','付款方式',['現金','銀行轉帳','LINE Pay','儲值扣款','現金+儲值'],existingOrder?.payment_method||'現金')}
+    ${fs('sv-pay','付款方式',['現金','銀行轉帳','LINE Pay','儲值扣款','現金+儲值'],existingOrder?.payment_method||'儲值扣款')}
     ${fi('sv-person','實際服務對象（選填）','text', existingOrder?.note?.match(/服務對象：([^）]*)/)?.[1]||'')}
   </div>
   <div class="fl" style="margin-bottom:10px">
