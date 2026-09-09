@@ -32,6 +32,7 @@ async function svcCredits() {
           <td>
             <button class="btn btn-s" onclick="svcCreditHistory('${c.customer_no}','${c.wallet_type}')">記錄</button>
             <button class="btn btn-s" onclick="svcAddCredit('${c.customer_no}','${(c.customer_name||'').replace(/'/g,"\\'")}','${c.wallet_type}')">儲值</button>
+            <button class="btn btn-s" onclick="adjustCreditModal('${c.customer_no}','${(c.customer_name||'').replace(/'/g,"\\'")}','${c.wallet_type}')">餘額校正</button>
             ${mismatch?`<button class="btn btn-s" style="color:var(--am);border-color:var(--am)" onclick="convertWalletModal('${c.customer_no}','${(c.customer_name||'').replace(/'/g,"\\'")}','${c.wallet_type}')">轉換帳戶</button>`:''}
           </td>
         </tr>`;}).join('')||`<tr><td colspan="3" style="text-align:center;padding:16px;color:var(--tx3)">尚無記錄</td></tr>`}
@@ -295,7 +296,7 @@ async function svcCreditHistory(custNo, walletType) {
     sb.from('store_credit_records').select('*').eq('customer_no',custNo).eq('wallet_type',walletType)
       .order('record_date',{ascending:false}).order('created_at',{ascending:false}).limit(50),
   ]);
-  const typeLabel = {deposit:'儲值',bonus:'贈送',deduct:'扣款',gift:'贈品'};
+  const typeLabel = {deposit:'儲值',bonus:'贈送',deduct:'扣款',gift:'贈品',adjust:'校正'};
   OM(`儲值記錄：${cr?.customer_name||custNo}（${walletType}帳戶）`,`
   <div style="font-size:16px;font-weight:700;margin-bottom:14px;color:${(cr?.balance||0)>0?'var(--ac)':'var(--rd)'}">
     目前餘額：${fM(cr?.balance||0)}
@@ -304,7 +305,7 @@ async function svcCreditHistory(custNo, walletType) {
     <tr><th>日期</th><th>類型</th><th>金額</th><th>餘額</th><th>備註</th><th>操作</th></tr>
     ${(recs||[]).map(r=>`<tr>
       <td style="font-size:12px">${r.record_date}</td>
-      <td><span class="badge ${r.type==='deduct'?'br2':r.type==='gift'?'ba':'bg'}">${typeLabel[r.type]||r.type}</span></td>
+      <td><span class="badge ${r.type==='deduct'?'br2':r.type==='gift'?'ba':r.type==='adjust'?'bb':'bg'}">${typeLabel[r.type]||r.type}</span></td>
       <td class="num" style="color:${r.amount<0?'var(--rd)':'var(--ac)'}">${fM(r.amount)}</td>
       <td class="num">${fM(r.balance_after)}</td>
       <td style="font-size:12px;color:var(--tx3)">${r.note||''}</td>
@@ -315,10 +316,69 @@ async function svcCreditHistory(custNo, walletType) {
     </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
   </table></div></div>`,
   `<button class="btn" onclick="CM()">關閉</button>
+   <button class="btn" onclick="CM();adjustCreditModal('${custNo}','${(cr?.customer_name||'').replace(/'/g,"\\'")}','${walletType}')">餘額校正</button>
    <button class="btn btn-p" onclick="CM();svcAddCredit('${custNo}','','${walletType}')">新增儲值</button>`);
 }
 
 window.svcCreditHistory= svcCreditHistory;
+
+// ── 餘額校正：用在闆娘手寫記錄算錯、系統餘額跟紙本對不上的時候。
+// 直接填「正確的餘額」，系統自己算出差額並補一筆校正記錄，不用手動心算加減──
+// 這樣以後回頭查也看得出原本多少、改成多少、為什麼改，比直接改舊記錄更看得出軌跡。
+async function adjustCreditModal(custNo, custName, walletType) {
+  const { data:cr } = await sb.from('store_credits').select('*').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle();
+  const curBal = cr?.balance||0;
+  OM(`餘額校正：${custName||cr?.customer_name||custNo}（${walletType}帳戶）`, `
+  <div class="al al-w" style="font-size:12px;margin-bottom:12px">
+    用在核對紙本發現系統餘額算錯的時候。直接填「正確的餘額」，系統會自動算出差額、補一筆校正記錄，不用自己心算加減。
+  </div>
+  <div style="font-size:14px;margin-bottom:12px">目前系統餘額：<b style="color:${curBal>0?'var(--ac)':curBal<0?'var(--rd)':'var(--tx3)'}">${fM(curBal)}</b></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    ${fi('adj-date','校正日期','date',today())}
+    ${fi('adj-correct','正確餘額（紙本上實際應該是多少） *','number',curBal)}
+  </div>
+  ${fi('adj-note','原因備註（建議填，例如：核對紙本發現8/12那筆算錯）')}
+  <div id="adj-preview" style="font-size:12px;color:var(--tx3);margin-top:6px"></div>`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveAdjustCredit('${custNo}','${(custName||cr?.customer_name||'').replace(/'/g,"\\'")}','${walletType}',${curBal})">確認校正</button>`);
+
+  const updatePreview = ()=>{
+    const el = $('adj-preview'); if(!el) return;
+    const target = parseFloat(v('adj-correct'));
+    if(isNaN(target)) { el.textContent=''; return; }
+    const diff = Math.round((target-curBal)*100)/100;
+    el.textContent = diff===0 ? '跟目前餘額一樣，不需要校正' : `將會補一筆 ${diff>0?'+':''}${fM(diff)} 的校正記錄`;
+  };
+  $('adj-correct')?.addEventListener?.('input', updatePreview);
+  setTimeout(updatePreview, 50);
+}
+window.adjustCreditModal = adjustCreditModal;
+
+async function saveAdjustCredit(custNo, custName, walletType, curBal) {
+  const date = v('adj-date')||today();
+  const target = parseFloat(v('adj-correct'));
+  const note = v('adj-note');
+  if(isNaN(target)) { toast('請填寫正確餘額','e'); return; }
+  const diff = Math.round((target-curBal)*100)/100;
+  if(diff===0) { toast('跟目前餘額一樣，不需要校正'); CM(); return; }
+
+  const { data:cr } = await sb.from('store_credits').select('*').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle();
+  await sb.from('store_credit_records').insert({
+    customer_no:custNo, wallet_type:walletType, record_date:date, type:'adjust',
+    amount:diff, balance_after:target,
+    note:`餘額校正${note?`：${note}`:''}（校正前 ${fM(curBal)} → 校正後 ${fM(target)}）`
+  });
+  if(cr) {
+    await sb.from('store_credits').update({balance:target, customer_name:custName||cr.customer_name, updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',walletType);
+  } else {
+    await sb.from('store_credits').insert({customer_no:custNo, customer_name:custName||'', wallet_type:walletType, balance:target});
+  }
+  await recomputeCreditChain(custNo, walletType);
+  toast('✅ 已校正');
+  CM();
+  svcCreditHistory(custNo, walletType);
+}
+window.saveAdjustCredit = saveAdjustCredit;
 
 async function editCreditRecord(id, custNo, walletType) {
   const { data:r } = await sb.from('store_credit_records').select('*').eq('id',id).single();
