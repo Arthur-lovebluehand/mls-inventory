@@ -349,7 +349,7 @@ async function adjustCreditModal(custNo, custName, walletType) {
     const diff = Math.round((target-curBal)*100)/100;
     el.textContent = diff===0 ? '跟目前餘額一樣，不需要校正' : `將會補一筆 ${diff>0?'+':''}${fM(diff)} 的校正記錄`;
   };
-  $('adj-correct')?.addEventListener?.('input', updatePreview);
+  $('f-adj-correct')?.addEventListener?.('input', updatePreview);
   setTimeout(updatePreview, 50);
 }
 window.adjustCreditModal = adjustCreditModal;
@@ -363,16 +363,21 @@ async function saveAdjustCredit(custNo, custName, walletType, curBal) {
   if(diff===0) { toast('跟目前餘額一樣，不需要校正'); CM(); return; }
 
   const { data:cr } = await sb.from('store_credits').select('*').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle();
-  await sb.from('store_credit_records').insert({
+  const { error:insErr } = await sb.from('store_credit_records').insert({
     customer_no:custNo, wallet_type:walletType, record_date:date, type:'adjust',
     amount:diff, balance_after:target,
     note:`餘額校正${note?`：${note}`:''}（校正前 ${fM(curBal)} → 校正後 ${fM(target)}）`
   });
+  if(insErr) { toast('校正失敗：'+insErr.message,'e'); return; }
+
+  let saveErr;
   if(cr) {
-    await sb.from('store_credits').update({balance:target, customer_name:custName||cr.customer_name, updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',walletType);
+    ({ error:saveErr } = await sb.from('store_credits').update({balance:target, customer_name:custName||cr.customer_name, updated_at:new Date().toISOString()}).eq('customer_no',custNo).eq('wallet_type',walletType));
   } else {
-    await sb.from('store_credits').insert({customer_no:custNo, customer_name:custName||'', wallet_type:walletType, balance:target});
+    ({ error:saveErr } = await sb.from('store_credits').insert({customer_no:custNo, customer_name:custName||'', wallet_type:walletType, balance:target}));
   }
+  if(saveErr) { toast('校正記錄已寫入，但更新餘額失敗：'+saveErr.message,'e'); return; }
+
   await recomputeCreditChain(custNo, walletType);
   toast('✅ 已校正');
   CM();
