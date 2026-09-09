@@ -14,11 +14,21 @@ var _opexMonth = null; // 目前展開的月份(YYYY-MM)，null=顯示該年月�
 // 裡有掃地機器人月租、除蟲月費兩筆，備註不同就要分開各自延續，不能用類別直接合併成一筆）。
 // 只有「最新一筆」還是勾著「每月固定」才會繼續延續——如果最新一筆已經取消勾選，代表這筆固定支出已經停了，不再自動生。
 // 這個函式是「補上這個月缺的」，不會補過去漏掉好幾個月的（如果好幾個月沒開系統，只會補回「現在」這個月）。
+//
+// 血淚教訓（2026-09）：識別「同一筆」用的 key 一定要用「原始備註」去比對，不能直接用資料庫裡存的
+// note 欄位——因為自動補上的那一筆，note 會被加上「（系統自動延續...）」的提示文字，如果比對時沒有先
+// 把這段提示文字拿掉，下次比對就會把「加了提示文字的新記錄」跟「原本乾淨的舊記錄」當成不同的兩筆，
+// 於是每次一檢查就又補一筆新的，越補越多（曾經在幾分鐘內生出十幾筆重複記錄）。
+const OPEX_AUTO_MARK = '（系統自動延續上月固定支出，請確認金額是否有變動）';
+const stripOpexAutoMark = note => (note||'').replace('　'+OPEX_AUTO_MARK,'').replace(OPEX_AUTO_MARK,'').trim();
+let _opexCarryChecked = false; // 同一個分頁只需要檢查一次，不用每次切換頁面都重跑一次
 async function autoCarryForwardOpex(){
+  if(_opexCarryChecked) return;
+  _opexCarryChecked = true;
   const thisMonth = new Date().toISOString().slice(0,7);
   const { data:all } = await sb.from('operating_expenses').select('id,expense_date,category,amount,is_recurring,note');
   if(!all || !all.length) return;
-  const keyOf = r => `${r.category}::${r.note||''}`;
+  const keyOf = r => `${r.category}::${stripOpexAutoMark(r.note)}`;
   const latestByKey = {};
   all.forEach(r=>{
     const k = keyOf(r);
@@ -35,10 +45,11 @@ async function autoCarryForwardOpex(){
     if(thisMonthKeys.has(keyOf(src))) return; // 這個月已經有這筆了（自動補過或自己手動登記過）
     const day = Math.min(parseInt((src.expense_date||'').slice(8,10))||1, daysInThisMonth);
     const newDate = `${thisMonth}-${String(day).padStart(2,'0')}`;
+    const baseNote = stripOpexAutoMark(src.note);
     toInsert.push({
       expense_no: 'OX-'+thisMonth.replace('-','')+'-A'+idx+Date.now().toString().slice(-4),
       expense_date:newDate, category:src.category, amount:src.amount, is_recurring:true,
-      note: (src.note?src.note+'　':'')+'（系統自動延續上月固定支出，請確認金額是否有變動）'
+      note: (baseNote?baseNote+'　':'')+OPEX_AUTO_MARK
     });
   });
   if(!toInsert.length) return;
