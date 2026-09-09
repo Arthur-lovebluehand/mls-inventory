@@ -384,21 +384,27 @@ async function editCreditRecord(id, custNo, walletType) {
   const { data:r } = await sb.from('store_credit_records').select('*').eq('id',id).single();
   if(!r) return;
   const isProduct = r.type==='gift' && r.product_no;
+  // 訂單/服務單自動產生的扣款記錄：訂單本身有自己獨立存的「這張單扣了多少儲值金」欄位
+  // （sales_orders.total、service_orders.paid_by_credit），這裡改金額只會動到儲值帳本，
+  // 不會回頭同步改到那張訂單，兩邊就會對不上——所以鎖定金額，只能改日期/備註。
+  const isOrderLinked = r.type==='deduct' && r.order_no;
+  const lockAmount = isProduct || isOrderLinked;
   OM('編輯儲值記錄', `
   ${isProduct?`<div class="al al-w" style="font-size:12px;margin-bottom:10px">這是贈品記錄（${r.product_name} × ${r.product_qty}），這裡只能改日期/備註；商品數量不會重新調整庫存，如果數量填錯建議直接刪除這筆重新登記。</div>`:''}
+  ${isOrderLinked?`<div class="al al-w" style="font-size:12px;margin-bottom:10px">這是訂單 <b>${r.order_no}</b> 自動產生的扣款記錄，這裡只能改日期/備註。金額是跟著那張訂單的金額連動的，如果金額算錯，要去那張訂單本身修改（改訂單金額，或取消收款再重新標記收款），這裡直接改金額只會動到儲值帳本，訂單那邊不會跟著變，兩邊會對不上。</div>`:''}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('ecr-date','日期','date',r.record_date)}
-    ${isProduct?'':fi('ecr-amount','金額','number',r.amount)}
+    ${lockAmount?'':fi('ecr-amount','金額','number',r.amount)}
   </div>
   ${fi('ecr-note','備註','text',r.note)}`,
   `<button class="btn" onclick="CM()">取消</button>
-   <button class="btn btn-p" onclick="saveEditCreditRecord(${id},'${custNo}','${walletType}',${isProduct})">儲存</button>`);
+   <button class="btn btn-p" onclick="saveEditCreditRecord(${id},'${custNo}','${walletType}',${lockAmount})">儲存</button>`);
 }
 window.editCreditRecord = editCreditRecord;
 
-async function saveEditCreditRecord(id, custNo, walletType, isProduct) {
+async function saveEditCreditRecord(id, custNo, walletType, lockAmount) {
   const payload = { record_date:v('ecr-date'), note:v('ecr-note')||null };
-  if(!isProduct) payload.amount = parseFloat(v('ecr-amount'))||0;
+  if(!lockAmount) payload.amount = parseFloat(v('ecr-amount'))||0;
   await sb.from('store_credit_records').update(payload).eq('id',id);
   await recomputeCreditChain(custNo, walletType);
   toast('✅ 已更新');
@@ -413,6 +419,8 @@ async function deleteCreditRecord(id, custNo, walletType) {
   let restoreStock = false;
   if(r.type==='gift' && r.product_no) {
     restoreStock = confirm(`這筆是贈品記錄（${r.product_name} × ${r.product_qty}）。刪除的同時要把庫存加回來嗎？\n\n確定＝刪除記錄並補回庫存\n取消＝只刪除記錄，不動庫存`);
+  } else if(r.type==='deduct' && r.order_no) {
+    if(!confirm(`這筆是訂單 ${r.order_no} 自動產生的扣款記錄。直接刪除只會動到儲值帳本，不會改到那張訂單本身的付款狀態，之後如果那張訂單被取消收款或刪除，自動退款會找不到這筆記錄可能出錯。\n\n建議去那張訂單本身操作（例如取消收款會自動退款）。真的要在這裡直接刪除嗎？`)) return;
   } else {
     if(!confirm('確定刪除這筆儲值記錄？')) return;
   }
