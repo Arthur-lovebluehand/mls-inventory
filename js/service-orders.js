@@ -365,7 +365,10 @@ async function svcPickCust(custNo, custName) {
     deposits.forEach(d=>{
       // total_qty/used_qty 是她寄放的整瓶數；有換算比例的商品，服務時扣的是「開封後的 ml」，
       // 不夠會自動開新瓶——邏輯比照「商品撥轉到服務庫存」，只是這瓶是她自己的。
-      const hasRatio = (d.perStock||1)>1 && d.service_unit;
+      // 血淚教訓（2026-09）：一定要確認「寄放單位」跟「服務單位」不一樣，才是真的需要「開瓶換算」的商品。
+      // 像精華液這種店內直接拆封使用的，寄放單位本來就已經是 ml（跟服務單位一樣），總量本身就是可以直接扣的
+      // 服務用量，不是「幾瓶」——如果不排除這種情況，會把總量誤當成瓶數，乘上換算比例，數字整個算錯。
+      const hasRatio = (d.perStock||1)>1 && d.service_unit && d.unit!==d.service_unit;
       const bottleRemain = (d.total_qty||0)-(d.used_qty||0);
       const openedRemain = Math.round((((d.opened_qty||0)-(d.opened_used_qty||0)))*100)/100;
       const sub = hasRatio
@@ -643,12 +646,16 @@ async function saveSvcOrder() {
     // total_qty/used_qty 是客戶寄放的整瓶數，跟她自己的實體庫存一致；如果這個商品有「幾瓶=幾ml」的
     // 換算比例，這裡扣的 item.qty 是開封後的服務單位（ml），不是瓶數——邏輯比照「商品撥轉到服務庫存」：
     // 已開封剩餘（opened_qty-opened_used_qty）不夠這次用量時，自動開新瓶（整瓶數-1，開封額度+這瓶的ml）。
-    let perStock = 1;
+    // 血淚教訓（2026-09）：一定要確認「寄放單位」跟「服務單位」不一樣，才是真的需要「開瓶換算」的商品——
+    // 像精華液這種店內直接拆封使用的，寄放單位本來就已經是 ml（跟服務單位一樣），總量本身就是可以直接扣
+    // 的服務用量，不是「幾瓶」，不能套用開瓶換算，不然總量會被誤當成瓶數，乘上換算比例，數字整個算錯。
+    let perStock = 1, hasRatio = false;
     if(dep.product_no) {
-      const { data:p } = await sb.from('products').select('service_units_per_stock').eq('product_no',dep.product_no).maybeSingle();
+      const { data:p } = await sb.from('products').select('service_units_per_stock,service_unit').eq('product_no',dep.product_no).maybeSingle();
       perStock = parseFloat(p?.service_units_per_stock)||1;
+      hasRatio = perStock>1 && !!p?.service_unit && dep.unit!==p.service_unit;
     }
-    if(perStock>1) {
+    if(hasRatio) {
       const openedRemain = (dep.opened_qty||0)-(dep.opened_used_qty||0);
       const shortfall = item.qty-openedRemain;
       const bottlesToOpen = shortfall>0 ? Math.ceil(shortfall/perStock) : 0;
@@ -658,8 +665,10 @@ async function saveSvcOrder() {
           opened_qty:(dep.opened_qty||0)+bottlesToOpen*perStock,
           opened_used_qty:(dep.opened_used_qty||0)+item.qty
         }).eq('id',item.deposit_id),
+        // 記下這次開了幾瓶（bottles_opened），將來這張服務單被刪除/修改時，才能精準把
+        // used_qty/opened_qty 也還原回去，不會只還 opened_used_qty，留下對不起來的數字。
         sb.from('customer_deposit_usages').insert({
-          deposit_item_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no, unit:item.unit
+          deposit_item_id:item.deposit_id, use_date:date, qty_used:item.qty, use_type:'服務使用', service_order_no:no, unit:item.unit, bottles_opened:bottlesToOpen
         })
       ]);
     } else {
@@ -719,17 +728,28 @@ async function reverseSvcOrderEffects(no) {
     if(sc) await sb.from('service_consumables').update({stock_qty:(sc.stock_qty||0)+item.qty,updated_at:new Date().toISOString()}).eq('id',item.consumable_id);
   }
   for(const item of (its||[]).filter(i=>i.item_type==='consumable'&&i.deposit_id)) {
-    const { data:dep } = await sb.from('customer_deposit_items').select('used_qty,opened_used_qty,product_no').eq('id',item.deposit_id).single();
+    const { data:dep } = await sb.from('customer_deposit_items').select('used_qty,opened_qty,opened_used_qty,product_no').eq('id',item.deposit_id).single();
     if(!dep) continue;
-    let perStock = 1;
-    if(dep.product_no) {
-      const { data:p } = await sb.from('products').select('service_units_per_stock').eq('product_no',dep.product_no).maybeSingle();
-      perStock = parseFloat(p?.service_units_per_stock)||1;
-    }
-    // 有換算比例的商品，當初扣的是「開封額度」，還原也還回開封額度就好——不用把已經開的瓶子「合起來」，
-    // 那瓶已經開了，開封的 ml 額度還她就是了。沒有比例的商品維持原本邏輯，直接還原整瓶數。
-    if(perStock>1) {
-      await sb.from('customer_deposit_items').update({opened_used_qty:Math.max(0,(dep.opened_used_qty||0)-item.qty)}).eq('id',item.deposit_id);
+    // 血淚教訓（2026-09）：之前這裡「有換算比例的商品」只還原 opened_used_qty，沒有把當初這筆
+    // 交易有沒有「開新瓶」（用掉 used_qty/opened_qty 的那部分）一起還原——導致只要曾經刪過一張
+    // 有觸發「自動開新瓶」的服務單，used_qty/opened_qty 就會永遠卡在多算的狀態，回不去，越修越怪。
+    // 現在改成去查當初這筆使用記錄實際存的 bottles_opened（開瓶當下就存好了），照那個數字精準還原，
+    // 而不是每次都重新猜一次「這次是不是有開新瓶」。
+    const { data:usageRows } = await sb.from('customer_deposit_usages')
+      .select('id,qty_used,bottles_opened').eq('service_order_no',no).eq('deposit_item_id',item.deposit_id);
+    const bottlesOpenedTotal = (usageRows||[]).reduce((s,u)=>s+(u.bottles_opened||0),0);
+    const hadRatio = (usageRows||[]).some(u=>u.bottles_opened!=null);
+    if(hadRatio) {
+      let perStock = 1;
+      if(dep.product_no) {
+        const { data:p } = await sb.from('products').select('service_units_per_stock').eq('product_no',dep.product_no).maybeSingle();
+        perStock = parseFloat(p?.service_units_per_stock)||1;
+      }
+      await sb.from('customer_deposit_items').update({
+        used_qty:Math.max(0,(dep.used_qty||0)-bottlesOpenedTotal),
+        opened_qty:Math.max(0,(dep.opened_qty||0)-bottlesOpenedTotal*perStock),
+        opened_used_qty:Math.max(0,(dep.opened_used_qty||0)-item.qty)
+      }).eq('id',item.deposit_id);
     } else {
       await sb.from('customer_deposit_items').update({used_qty:Math.max(0,(dep.used_qty||0)-item.qty)}).eq('id',item.deposit_id);
     }

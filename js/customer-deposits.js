@@ -344,7 +344,10 @@ async function useDepositModal(depositNo) {
     const openedRemain = Math.round((((i.opened_qty||0)-(i.opened_used_qty||0)))*100)/100;
     const prod = prodMap[i.product_no];
     const perStock = parseFloat(prod?.service_units_per_stock)||0;
-    const hasRatio = perStock>1 && !!prod?.service_unit;
+    // 血淚教訓（2026-09）：一定要確認「寄放單位」跟「服務單位」不一樣，才是真的需要「開瓶換算」的商品。
+    // 像精華液這種店內直接拆封使用的，寄放單位本來就已經是 ml（跟服務單位一樣），總量本身就是可以直接扣的
+    // 服務用量，不是「幾瓶」——如果不排除這種情況，會把總量誤當成瓶數，乘上換算比例，數字整個算錯。
+    const hasRatio = perStock>1 && !!prod?.service_unit && i.unit !== prod.service_unit;
     const svcUnit = prod?.service_unit||'';
     window._udMeta[i.id] = { hasRatio, perStock, svcUnit, itemUnit:i.unit };
     const canUse = bottleRemain>0 || openedRemain>0;
@@ -422,8 +425,10 @@ async function saveDepositUsage(depositNo) {
       await sb.from('customer_deposit_items').update({
         used_qty:newUsedQty, opened_qty:newOpenedQty, opened_used_qty:(i.opened_used_qty||0)+qty
       }).eq('id',i.id);
+      // 記下這次是不是有開新瓶、開了幾瓶（bottles_opened），將來如果要刪掉這筆記錄，
+      // 才能精準把 used_qty/opened_qty 也還原回去，不會只還 opened_used_qty 留下對不起來的數字。
       await sb.from('customer_deposit_usages').insert({
-        deposit_item_id:i.id, use_date:date, qty_used:qty, use_type:type, note:finalNote, unit:m.svcUnit
+        deposit_item_id:i.id, use_date:date, qty_used:qty, use_type:type, note:finalNote, unit:m.svcUnit, bottles_opened:bottlesToOpen
       });
     } else {
       // 整瓶為主的登記（客戶取回／其他／沒有換算比例的商品）
@@ -541,7 +546,7 @@ async function editDepositItemModal(itemId, depositNo) {
     const { data:p } = await sb.from('products').select('service_unit,service_units_per_stock,unit').eq('product_no',i.product_no).maybeSingle();
     prod = p;
   }
-  const hasRatio = prod && prod.service_unit && parseFloat(prod.service_units_per_stock)>1;
+  const hasRatio = prod && prod.service_unit && parseFloat(prod.service_units_per_stock)>1 && i.unit!==prod.service_unit;
 
   OM(`編輯品項：${i.product_name}`, `
   <div class="al al-w" style="font-size:12px;margin-bottom:10px">已使用/取回 ${i.used_qty||0} ${i.unit}，總量不能改到比已使用的還少。${hasRatio?`<br>這個商品開封後可服務用掉：1${i.unit}＝${prod.service_units_per_stock}${prod.service_unit}（登記「服務使用」時才會用到）。`:''}</div>
