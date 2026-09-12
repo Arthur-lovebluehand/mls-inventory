@@ -292,6 +292,19 @@ async function deleteOpex(id) {
 }
 window.deleteOpex = deleteOpex;
 
+let _bonusVendors=[];
+async function loadBonusVendors(){
+  const{data}=await sb.from('vendors').select('name').eq('is_active',true).order('sort_order').order('name');
+  _bonusVendors=data||[];
+}
+function bonusPayerField(val){
+  return `<div class="fl"><label>發放者（上家，可從廠商選擇或自行輸入）</label>
+    <input id="f-bpayer" list="bpayer-dl" type="text" value="${(val||'').toString().replace(/"/g,'&quot;')}" placeholder="輸入或從廠商中選擇" autocomplete="off"
+      style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none">
+    <datalist id="bpayer-dl">${_bonusVendors.map(x=>`<option value="${x.name.replace(/"/g,'&quot;')}">`).join('')}</datalist>
+  </div>`;
+}
+
 async function bonus(){
   const{data,count}=await sb.from('bonus_records').select('*',{count:'exact'}).order('record_date',{ascending:false}).range((bnP-1)*30,bnP*30-1);
   const tp=Math.ceil((count||0)/30);
@@ -347,6 +360,7 @@ async function bonus(){
 }
 async function addBonus(){
   const td=today(), no=await genNo('BN','bonus_records','record_no');
+  await loadBonusVendors();
   OM('新增獎金/分潤記錄',`<div class="fg">
     ${fi('bno','記錄號','text',no)}
     <div class="fl"><label>日期</label><input id="f-bdt" type="date" value="${td}" onchange="regenNoOnDateChange('bdt','bno','BN','bonus_records','record_no')" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
@@ -359,8 +373,8 @@ async function addBonus(){
         style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none">
     </div>
     ${fs('btype','類型',['分潤','推薦獎金','層碰獎金','對碰獎金','業績獎金','其他'])}
-    <div id="bonus-income-fields" style="display:none;grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      ${fi('bpayer','發放者（上家）')}
+    <div id="bonus-income-fields" style="display:none;grid-column:1/-1;grid-template-columns:1fr 1fr;gap:10px">
+      ${bonusPayerField('')}
       ${fi('btrigger','因誰而收（下家/同階）')}
     </div>
     <div class="fl"><label>金額（收入方向請填含稅實收總額）</label><input id="f-bamt" type="number" autocomplete="off" oninput="bonusCalcTax()"></div>
@@ -604,7 +618,7 @@ function bonusForm(b){
     </div>
     ${fs('btype','類型',['分潤','推薦獎金','層碰獎金','對碰獎金','業績獎金','其他'],b.type)}
     <div id="bonus-income-fields" style="display:${isIncome?'grid':'none'};grid-column:1/-1;grid-template-columns:1fr 1fr;gap:10px">
-      ${fi('bpayer','發放者（上家，誰給的）','text',b.payer)}
+      ${bonusPayerField(b.payer)}
       ${fi('btrigger','因誰而收（下家/同階業績）','text',b.trigger_who)}
     </div>
     <div class="fl"><label>金額（收入方向請填含稅實收總額）</label><input id="f-bamt" type="number" value="${b.amount||''}" autocomplete="off" oninput="bonusCalcTax()"></div>
@@ -644,6 +658,7 @@ async function showBonus(no){
 async function editBonus(no){
   const{data:b}=await sb.from('bonus_records').select('*').eq('record_no',no).single();
   if(!b){toast('找不到記錄','e');return;}
+  await loadBonusVendors();
   OM(`編輯獎金記錄：${no}`, bonusForm(b),
     `<button class="btn" onclick="CM()">取消</button>
      <button class="btn btn-p" onclick="updateBonus('${no}')">儲存</button>`
