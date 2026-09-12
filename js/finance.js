@@ -363,7 +363,9 @@ async function addBonus(){
       ${fi('bpayer','發放者（上家）')}
       ${fi('btrigger','因誰而收（下家/同階）')}
     </div>
-    ${fi('bamt','金額','number')} ${payMethodSel('bpay','')}
+    <div class="fl"><label>金額（收入方向請填含稅實收總額）</label><input id="f-bamt" type="number" autocomplete="off" oninput="bonusCalcTax()"></div>
+    ${payMethodSel('bpay','')}
+    <div class="fl fw" id="bonus-tax-calc" style="display:none;font-size:12px;color:var(--tx3);background:var(--sf2);padding:8px 10px;border-radius:var(--r)"></div>
     ${fi('binv','發票號碼','text')} ${fi('bpdt','發放/收款日期','date')}
     <div class="fl fw">${fa('bnote','備註')}</div>
   </div>`,
@@ -568,7 +570,24 @@ function toggleBonusFields(val){
   const inp = document.getElementById('f-brec');
   if(lbl) lbl.textContent = isIncome ? '關聯人員（可留空）' : '支付對象（誰收款）*';
   if(inp) inp.placeholder = isIncome ? '選填，通常用「因誰而收」即可' : '收款人姓名';
+  // 收入方向（上游分潤給我）才需要開發票給上家，才顯示稅額試算；支出方向不用
+  const taxBox = document.getElementById('bonus-tax-calc');
+  if(taxBox) taxBox.style.display = isIncome ? 'block' : 'none';
+  if(isIncome) bonusCalcTax();
 }
+// 收入方向的金額欄位填的是「含稅實收總額」（發票上的總計），這裡直接反推未稅金額跟稅額，
+// 不用再跳到外面網站算——未稅金額＝總額÷1.05（四捨五入到整數），稅額＝總額－未稅金額，
+// 這樣兩者加起來一定剛好等於你填的總額，不會有湊不起來的問題。
+function bonusCalcTax(){
+  const box = $('bonus-tax-calc');
+  if(!box) return;
+  const amt = parseFloat($('f-bamt')?.value)||0;
+  if(!amt){ box.innerHTML = '<b>開發票試算</b>　請先填金額'; return; }
+  const base = Math.round(amt/1.05);
+  const tax = amt - base;
+  box.innerHTML = `<b>開發票試算（依台灣營業稅5%反推）</b>　未稅金額：<b>${fM(base)}</b>　稅額：<b>${fM(tax)}</b>　合計：${fM(amt)}`;
+}
+window.bonusCalcTax = bonusCalcTax;
 function bonusForm(b){
   b = b || {};
   const dir = b.direction || '支出（我分潤給人）';
@@ -588,7 +607,9 @@ function bonusForm(b){
       ${fi('bpayer','發放者（上家，誰給的）','text',b.payer)}
       ${fi('btrigger','因誰而收（下家/同階業績）','text',b.trigger_who)}
     </div>
-    ${fi('bamt','金額','number',b.amount)} ${payMethodSel('bpay',b.payment_method||'')}
+    <div class="fl"><label>金額（收入方向請填含稅實收總額）</label><input id="f-bamt" type="number" value="${b.amount||''}" autocomplete="off" oninput="bonusCalcTax()"></div>
+    ${payMethodSel('bpay',b.payment_method||'')}
+    <div class="fl fw" id="bonus-tax-calc" style="display:${isIncome?'block':'none'};font-size:12px;color:var(--tx3);background:var(--sf2);padding:8px 10px;border-radius:var(--r)"></div>
     ${fi('binv','發票號碼','text',b.invoice_no)} ${fi('bpdt','發放/收款日期','date',b.payment_date)}
     <div class="fl fw">${fa('bnote','備註',b.note)}</div>
   </div>`;
@@ -604,6 +625,7 @@ async function showBonus(no){
     <div class="dr"><span class="dlb">類型</span><span class="dv">${b.type||'—'}</span></div>
     <div class="dr"><span class="dlb">金額</span><span class="dv" style="font-size:22px;font-weight:700;color:${isIncome?'var(--ac)':'var(--am)'}">${fM(b.amount)}</span></div>
     ${isIncome ? `
+    <div class="dr" style="grid-column:1/-1"><span class="dlb">開發票試算</span><span class="dv">${(()=>{const base=Math.round((b.amount||0)/1.05),tax=(b.amount||0)-base;return `未稅金額 <b>${fM(base)}</b>　稅額(5%) <b>${fM(tax)}</b>　合計 ${fM(b.amount)}`;})()}</span></div>
     <div class="dr"><span class="dlb">發放者（上家）</span><span class="dv" style="font-weight:600">${b.payer||'—'}</span></div>
     <div class="dr"><span class="dlb">因誰而收（觸發人）</span><span class="dv" style="font-weight:600">${b.trigger_who||b.recipient||'—'}</span></div>
     ` : `
@@ -626,6 +648,7 @@ async function editBonus(no){
     `<button class="btn" onclick="CM()">取消</button>
      <button class="btn btn-p" onclick="updateBonus('${no}')">儲存</button>`
   );
+  if(b.direction==='收入') bonusCalcTax();
 }
 async function updateBonus(no){
   const rec=v('brec'), amt=n('bamt');
