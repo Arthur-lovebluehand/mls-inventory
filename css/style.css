@@ -172,6 +172,10 @@ tr:hover td{background:var(--sf2)}
   .mb .fg,.mb .fg3,.mb .dg{grid-template-columns:1fr!important}
   /* 強制含 auto-fill 的 grid 也限制 */
   .mb [style*="repeat(auto-fill"]{grid-template-columns:repeat(2,1fr)!important}
+  /* 服務單「加入服務項目／加入耗材／贈送商品」這類一排塞好幾個欄位（下拉選單＋數量＋單價＋按鈕）的列，
+     手機寬度放不下，會橫向溢出、選了項目也要往右滑才看得到名稱，改成手機版單欄堆疊，每個欄位各佔一整行 */
+  .mb [style*="grid-template-columns:1fr auto"],
+  .mb [style*="grid-template-columns:2fr auto"]{grid-template-columns:1fr!important;row-gap:6px}
   .mb{padding:12px 14px}
   .mh{padding:12px 14px 10px}
   /* modal 裡 dg 改單欄 */
