@@ -305,6 +305,70 @@ function bonusPayerField(val){
   </div>`;
 }
 
+// ── 獎金/分潤明細（選填，記錄佐證依據，例如上游後台顯示的訂單/產品明細）──
+// 純手動謄寫用的備份資料，不連動系統裡的商品/訂單，所以直接存一個 JSON 陣列在
+// bonus_records.detail_items，不用另外開關聯表。_bnDetailItems 是表單開啟期間的暫存清單，
+// 新增/編輯表單開啟時要記得重設或帶入既有資料，儲存時再整包寫回欄位。
+let _bnDetailItems=[];
+function bnDetailListHtml(){
+  if(!_bnDetailItems.length) return '<div style="font-size:12px;color:var(--tx3)">尚未加入明細</div>';
+  const total=_bnDetailItems.reduce((s,it)=>s+(Number(it.unit)||0)*(Number(it.qty)||0),0);
+  return `<div style="overflow-x:auto"><table class="itb" style="min-width:280px">
+    <tr><th>訂單編號</th><th>產品名稱</th><th>分潤金額</th><th>數量</th><th>小計</th><th></th></tr>
+    ${_bnDetailItems.map((it,i)=>`<tr>
+      <td style="font-size:11px;font-family:monospace">${it.order_no||'—'}</td>
+      <td style="font-size:12px">${(it.name||'').toString().replace(/</g,'&lt;')}</td>
+      <td class="num">${fM(it.unit)}</td>
+      <td class="num">${it.qty}</td>
+      <td class="num" style="font-weight:600">${fM((Number(it.unit)||0)*(Number(it.qty)||0))}</td>
+      <td><button type="button" class="btn btn-s btn-r" onclick="bnRemoveDetailItem(${i})">刪</button></td>
+    </tr>`).join('')}
+  </table></div>
+  <div style="text-align:right;margin-top:6px;font-size:12px;color:var(--tx3)">明細加總：<b style="color:var(--tx);font-size:14px">${fM(total)}</b>（僅供核對，不會自動覆蓋上方金額欄位）</div>`;
+}
+function bnRenderDetailList(){ const box=$('bn-detail-list'); if(box) box.innerHTML=bnDetailListHtml(); }
+// 唯讀版本（給「查看」畫面顯示佐證明細用，不帶刪除按鈕，也不依賴表單暫存的 _bnDetailItems）
+function bnDetailViewHtml(items){
+  if(!items||!items.length) return '';
+  const total=items.reduce((s,it)=>s+(Number(it.unit)||0)*(Number(it.qty)||0),0);
+  return `<div style="overflow-x:auto"><table class="itb" style="min-width:280px">
+    <tr><th>訂單編號</th><th>產品名稱</th><th>分潤金額</th><th>數量</th><th>小計</th></tr>
+    ${items.map(it=>`<tr>
+      <td style="font-size:11px;font-family:monospace">${it.order_no||'—'}</td>
+      <td style="font-size:12px">${(it.name||'').toString().replace(/</g,'&lt;')}</td>
+      <td class="num">${fM(it.unit)}</td>
+      <td class="num">${it.qty}</td>
+      <td class="num" style="font-weight:600">${fM((Number(it.unit)||0)*(Number(it.qty)||0))}</td>
+    </tr>`).join('')}
+  </table></div>
+  <div style="text-align:right;margin-top:6px;font-size:12px;color:var(--tx3)">明細加總：<b style="color:var(--tx);font-size:14px">${fM(total)}</b></div>`;
+}
+function bnDetailSection(){
+  return `<label style="margin-bottom:6px;display:block">明細（選填，記錄佐證依據，例如上游後台顯示的訂單/產品明細）</label>
+    <div style="display:grid;grid-template-columns:1fr 1.6fr 90px 60px auto;gap:6px;align-items:end;margin-bottom:8px">
+      <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">訂單編號</div><input id="bn-di-order" type="text" placeholder="選填" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
+      <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">產品名稱</div><input id="bn-di-name" type="text" placeholder="產品名稱" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
+      <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">分潤金額</div><input id="bn-di-unit" type="number" placeholder="單件" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
+      <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">數量</div><input id="bn-di-qty" type="number" value="1" min="1" step="1" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
+      <button type="button" class="btn btn-s" onclick="bnAddDetailItem()">＋加入</button>
+    </div>
+    <div id="bn-detail-list">${bnDetailListHtml()}</div>`;
+}
+function bnAddDetailItem(){
+  const name=($('bn-di-name')?.value||'').trim();
+  const unit=parseFloat($('bn-di-unit')?.value)||0;
+  const qty=parseFloat($('bn-di-qty')?.value)||1;
+  const order_no=($('bn-di-order')?.value||'').trim();
+  if(!name){toast('請填寫產品名稱','e');return;}
+  _bnDetailItems.push({order_no:order_no||null,name,unit,qty});
+  $('bn-di-order').value=''; $('bn-di-name').value=''; $('bn-di-unit').value=''; $('bn-di-qty').value='1';
+  $('bn-di-name').focus();
+  bnRenderDetailList();
+}
+function bnRemoveDetailItem(i){ _bnDetailItems.splice(i,1); bnRenderDetailList(); }
+window.bnAddDetailItem=bnAddDetailItem;
+window.bnRemoveDetailItem=bnRemoveDetailItem;
+
 async function bonus(){
   const{data,count}=await sb.from('bonus_records').select('*',{count:'exact'}).order('record_date',{ascending:false}).range((bnP-1)*30,bnP*30-1);
   const tp=Math.ceil((count||0)/30);
@@ -339,7 +403,7 @@ async function bonus(){
           <td><span class="badge ${b.direction==='收入'?'bg':'br2'}">${b.direction==='收入'?'↙收入':'↗支出'}</span></td>
           <td style="font-weight:500">${b.recipient||'—'}</td>
           <td><span class="badge bgr">${b.type||'—'}</span></td>
-          <td class="num" style="font-weight:600;color:${b.direction==='收入'?'var(--ac)':'var(--rd)'}">${fM(b.amount)}</td>
+          <td class="num" style="font-weight:600;color:${b.direction==='收入'?'var(--ac)':'var(--rd)'}">${fM(b.amount)}${Array.isArray(b.detail_items)&&b.detail_items.length?'<span title="含明細佐證資料" style="margin-left:4px;font-size:11px">📋</span>':''}</td>
           <td style="font-size:11px;color:var(--tx2)">${b.invoice_no||'—'}</td>
           <td><span class="badge ${b.payment_done?'bg':'br2'}">${b.payment_done?'已完成':'待處理'}</span></td>
           <td><div style="display:flex;gap:3px">
@@ -361,6 +425,7 @@ async function bonus(){
 async function addBonus(){
   const td=today(), no=await genNo('BN','bonus_records','record_no');
   await loadBonusVendors();
+  _bnDetailItems=[];
   OM('新增獎金/分潤記錄',`<div class="fg">
     ${fi('bno','記錄號','text',no)}
     <div class="fl"><label>日期</label><input id="f-bdt" type="date" value="${td}" onchange="regenNoOnDateChange('bdt','bno','BN','bonus_records','record_no')" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
@@ -381,6 +446,7 @@ async function addBonus(){
     ${payMethodSel('bpay','')}
     <div class="fl fw" id="bonus-tax-calc" style="display:none;font-size:12px;color:var(--tx3);background:var(--sf2);padding:8px 10px;border-radius:var(--r)"></div>
     ${fi('binv','發票號碼','text')} ${fi('bpdt','發放/收款日期','date')}
+    <div class="fl fw">${bnDetailSection()}</div>
     <div class="fl fw">${fa('bnote','備註')}</div>
   </div>`,
   `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveBonus()">儲存</button>`);
@@ -390,7 +456,7 @@ async function saveBonus(){
   const dir=v('bdir').startsWith('收入')?'收入':'支出';
   if(!amt){toast('請填寫金額','e');return;}
   if(dir==='支出' && !rec){toast('請填寫支付對象（誰收款）','e');return;}
-  const{error}=await sb.from('bonus_records').insert({record_no:no,record_date:v('bdt'),direction:dir,recipient:rec||v('btrigger')||v('bpayer')||null,type:v('btype'),amount:amt,payment_method:v('bpay'),invoice_no:v('binv')||null,payment_date:v('bpdt')||null,note:v('bnote')||null,payer:v('bpayer')||null,trigger_who:v('btrigger')||null,payment_done:false,year_month:ym(v('bdt'))});
+  const{error}=await sb.from('bonus_records').insert({record_no:no,record_date:v('bdt'),direction:dir,recipient:rec||v('btrigger')||v('bpayer')||null,type:v('btype'),amount:amt,payment_method:v('bpay'),invoice_no:v('binv')||null,payment_date:v('bpdt')||null,note:v('bnote')||null,payer:v('bpayer')||null,trigger_who:v('btrigger')||null,payment_done:false,year_month:ym(v('bdt')),detail_items:_bnDetailItems.length?_bnDetailItems:null});
   if(error){toast('新增失敗：'+error.message,'e');return;}
   toast('記錄已新增');CM();bonus();
 }
@@ -625,6 +691,7 @@ function bonusForm(b){
     ${payMethodSel('bpay',b.payment_method||'')}
     <div class="fl fw" id="bonus-tax-calc" style="display:${isIncome?'block':'none'};font-size:12px;color:var(--tx3);background:var(--sf2);padding:8px 10px;border-radius:var(--r)"></div>
     ${fi('binv','發票號碼','text',b.invoice_no)} ${fi('bpdt','發放/收款日期','date',b.payment_date)}
+    <div class="fl fw">${bnDetailSection()}</div>
     <div class="fl fw">${fa('bnote','備註',b.note)}</div>
   </div>`;
 }
@@ -650,7 +717,9 @@ async function showBonus(no){
     <div class="dr"><span class="dlb">發放/收款日期</span><span class="dv">${fD(b.payment_date)}</span></div>
     <div class="dr"><span class="dlb">狀態</span><span class="dv"><span class="badge ${b.payment_done?'bg':'br2'}">${b.payment_done?'已完成':'待處理'}</span></span></div>
     ${b.note?`<div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv" style="white-space:pre-wrap">${b.note}</span></div>`:''}
-  </div>`,
+  </div>
+  ${Array.isArray(b.detail_items)&&b.detail_items.length?`<div class="sh">明細（佐證依據）</div>${bnDetailViewHtml(b.detail_items)}`:''}
+  `,
   `<button class="btn" onclick="CM()">關閉</button>
    <button class="btn" onclick="editBonus('${no}')">編輯</button>`
   );
@@ -659,6 +728,7 @@ async function editBonus(no){
   const{data:b}=await sb.from('bonus_records').select('*').eq('record_no',no).single();
   if(!b){toast('找不到記錄','e');return;}
   await loadBonusVendors();
+  _bnDetailItems=Array.isArray(b.detail_items)?b.detail_items.slice():[];
   OM(`編輯獎金記錄：${no}`, bonusForm(b),
     `<button class="btn" onclick="CM()">取消</button>
      <button class="btn btn-p" onclick="updateBonus('${no}')">儲存</button>`
@@ -677,7 +747,8 @@ async function updateBonus(no){
     note:v('bnote')||null,
     payer:v('bpayer')||null,
     trigger_who:v('btrigger')||null,
-    year_month:ym(v('bdt'))
+    year_month:ym(v('bdt')),
+    detail_items:_bnDetailItems.length?_bnDetailItems:null
   }).eq('record_no',no);
   if(error){toast('更新失敗：'+error.message,'e');return;}
   toast('記錄已更新');CM();bonus();
