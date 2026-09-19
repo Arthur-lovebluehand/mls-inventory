@@ -316,7 +316,8 @@ function bnGroupDetailItems(items){
   const groups=[]; const posByKey=new Map();
   (items||[]).forEach(it=>{
     const key=it.order_no||'';
-    if(!posByKey.has(key)){ posByKey.set(key,groups.length); groups.push({order_no:it.order_no||null,items:[]}); }
+    if(!posByKey.has(key)){ posByKey.set(key,groups.length); groups.push({order_no:it.order_no||null,order_date:it.order_date||null,items:[]}); }
+    else if(!groups[posByKey.get(key)].order_date && it.order_date){ groups[posByKey.get(key)].order_date=it.order_date; }
     groups[posByKey.get(key)].items.push(it);
   });
   return groups;
@@ -331,7 +332,7 @@ function bnDetailGroupsHtml(items,editable){
     total+=subtotal;
     return `<div style="border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;margin-bottom:8px">
       <div style="background:var(--sf2);padding:6px 10px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:12px;font-weight:700;font-family:monospace">${g.order_no||'（未填訂單編號）'}</span>
+        <span style="font-size:12px;font-weight:700;font-family:monospace">${g.order_no||'（未填訂單編號）'}${g.order_date?` <span style="font-weight:400;color:var(--tx3);font-family:inherit">（${fD(g.order_date)}）</span>`:''}</span>
         <span style="font-size:12px;color:var(--tx3)">小計 <b style="color:var(--tx)">${fM(subtotal)}</b></span>
       </div>
       <div style="overflow-x:auto"><table class="itb" style="width:100%;min-width:260px">
@@ -353,12 +354,13 @@ function bnRenderDetailList(){ const box=$('bn-detail-list'); if(box) box.innerH
 // 唯讀版本（給「查看」畫面顯示佐證明細用，不帶刪除按鈕，也不依賴表單暫存的 _bnDetailItems）
 function bnDetailViewHtml(items){ return bnDetailGroupsHtml(items,false); }
 function bnDetailSection(){
-  return `<label style="margin-bottom:6px;display:block">明細（選填，記錄佐證依據，例如上游後台顯示的訂單/產品明細；同一張訂單的產品可以連續加，訂單編號不用每列重打，換下一張單再改）</label>
-    <div style="display:grid;grid-template-columns:1fr 1.6fr 90px 60px auto;gap:6px;align-items:end;margin-bottom:8px">
-      <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">訂單編號</div><input id="bn-di-order" type="text" placeholder="選填" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
-      <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">產品名稱</div><input id="bn-di-name" type="text" placeholder="產品名稱" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
-      <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">分潤金額</div><input id="bn-di-unit" type="number" placeholder="單件" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
-      <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">數量</div><input id="bn-di-qty" type="number" value="1" min="1" step="1" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
+  return `<label style="margin-bottom:6px;display:block">明細（選填，記錄佐證依據，例如上游後台顯示的訂單/產品明細；同一張訂單的產品可以連續加，訂單編號跟日期不用每列重打，換下一張單再改）</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:end;margin-bottom:8px">
+      <div style="flex:1 1 100px;min-width:90px"><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">訂單編號</div><input id="bn-di-order" type="text" placeholder="選填" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
+      <div style="flex:1 1 140px;min-width:130px"><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">官方單據日期</div><input id="bn-di-date" type="date" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
+      <div style="flex:2 1 160px;min-width:120px"><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">產品名稱</div><input id="bn-di-name" type="text" placeholder="產品名稱" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
+      <div style="flex:1 1 90px;min-width:70px"><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">分潤金額</div><input id="bn-di-unit" type="number" placeholder="單件" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
+      <div style="flex:1 1 70px;min-width:60px"><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">數量</div><input id="bn-di-qty" type="number" value="1" min="1" step="1" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
       <button type="button" class="btn btn-s" onclick="bnAddDetailItem()">＋加入</button>
     </div>
     <div id="bn-detail-list">${bnDetailListHtml()}</div>`;
@@ -368,9 +370,10 @@ function bnAddDetailItem(){
   const unit=parseFloat($('bn-di-unit')?.value)||0;
   const qty=parseFloat($('bn-di-qty')?.value)||1;
   const order_no=($('bn-di-order')?.value||'').trim();
+  const order_date=($('bn-di-date')?.value||'').trim();
   if(!name){toast('請填寫產品名稱','e');return;}
-  _bnDetailItems.push({order_no:order_no||null,name,unit,qty});
-  // 訂單編號故意不清空——同一張單通常會連續加好幾個產品，留著方便繼續打；換單再自己改掉
+  _bnDetailItems.push({order_no:order_no||null,order_date:order_date||null,name,unit,qty});
+  // 訂單編號跟日期故意不清空——同一張單通常會連續加好幾個產品，留著方便繼續打；換單再自己改掉
   $('bn-di-name').value=''; $('bn-di-unit').value=''; $('bn-di-qty').value='1';
   $('bn-di-name').focus();
   bnRenderDetailList();
