@@ -310,41 +310,50 @@ function bonusPayerField(val){
 // bonus_records.detail_items，不用另外開關聯表。_bnDetailItems 是表單開啟期間的暫存清單，
 // 新增/編輯表單開啟時要記得重設或帶入既有資料，儲存時再整包寫回欄位。
 let _bnDetailItems=[];
-function bnDetailListHtml(){
-  if(!_bnDetailItems.length) return '<div style="font-size:12px;color:var(--tx3)">尚未加入明細</div>';
-  const total=_bnDetailItems.reduce((s,it)=>s+(Number(it.unit)||0)*(Number(it.qty)||0),0);
-  return `<div style="overflow-x:auto"><table class="itb" style="min-width:280px">
-    <tr><th>訂單編號</th><th>產品名稱</th><th>分潤金額</th><th>數量</th><th>小計</th><th></th></tr>
-    ${_bnDetailItems.map((it,i)=>`<tr>
-      <td style="font-size:11px;font-family:monospace">${it.order_no||'—'}</td>
-      <td style="font-size:12px">${(it.name||'').toString().replace(/</g,'&lt;')}</td>
-      <td class="num">${fM(it.unit)}</td>
-      <td class="num">${it.qty}</td>
-      <td class="num" style="font-weight:600">${fM((Number(it.unit)||0)*(Number(it.qty)||0))}</td>
-      <td><button type="button" class="btn btn-s btn-r" onclick="bnRemoveDetailItem(${i})">刪</button></td>
-    </tr>`).join('')}
-  </table></div>
-  <div style="text-align:right;margin-top:6px;font-size:12px;color:var(--tx3)">明細加總：<b style="color:var(--tx);font-size:14px">${fM(total)}</b>（僅供核對，不會自動覆蓋上方金額欄位）</div>`;
+// 依訂單編號分組（同一張單的品項疊在一起，不用每列都重複打單號），保留第一次出現的順序。
+// items 可以是原始明細，也可以是先標好 _idx（原始陣列位置，給刪除按鈕用）的版本。
+function bnGroupDetailItems(items){
+  const groups=[]; const posByKey=new Map();
+  (items||[]).forEach(it=>{
+    const key=it.order_no||'';
+    if(!posByKey.has(key)){ posByKey.set(key,groups.length); groups.push({order_no:it.order_no||null,items:[]}); }
+    groups[posByKey.get(key)].items.push(it);
+  });
+  return groups;
 }
+// editable=true 時每列多一個刪除按鈕（用 it._idx 對應 _bnDetailItems 原始位置）
+function bnDetailGroupsHtml(items,editable){
+  if(!items||!items.length) return editable?'<div style="font-size:12px;color:var(--tx3)">尚未加入明細</div>':'';
+  const groups=bnGroupDetailItems(items);
+  let total=0;
+  const body=groups.map(g=>{
+    const subtotal=g.items.reduce((s,it)=>s+(Number(it.unit)||0)*(Number(it.qty)||0),0);
+    total+=subtotal;
+    return `<div style="border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;margin-bottom:8px">
+      <div style="background:var(--sf2);padding:6px 10px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;font-weight:700;font-family:monospace">${g.order_no||'（未填訂單編號）'}</span>
+        <span style="font-size:12px;color:var(--tx3)">小計 <b style="color:var(--tx)">${fM(subtotal)}</b></span>
+      </div>
+      <div style="overflow-x:auto"><table class="itb" style="width:100%;min-width:260px">
+        <tr><th>產品名稱</th><th>分潤金額</th><th>數量</th><th>小計</th>${editable?'<th></th>':''}</tr>
+        ${g.items.map(it=>`<tr>
+          <td style="font-size:12px">${(it.name||'').toString().replace(/</g,'&lt;')}</td>
+          <td class="num">${fM(it.unit)}</td>
+          <td class="num">${it.qty}</td>
+          <td class="num" style="font-weight:600">${fM((Number(it.unit)||0)*(Number(it.qty)||0))}</td>
+          ${editable?`<td><button type="button" class="btn btn-s btn-r" onclick="bnRemoveDetailItem(${it._idx})">刪</button></td>`:''}
+        </tr>`).join('')}
+      </table></div>
+    </div>`;
+  }).join('');
+  return body + `<div style="text-align:right;margin-top:6px;font-size:12px;color:var(--tx3)">明細加總：<b style="color:var(--tx);font-size:14px">${fM(total)}</b>${editable?'（僅供核對，不會自動覆蓋上方金額欄位）':''}</div>`;
+}
+function bnDetailListHtml(){ return bnDetailGroupsHtml(_bnDetailItems.map((it,i)=>({...it,_idx:i})),true); }
 function bnRenderDetailList(){ const box=$('bn-detail-list'); if(box) box.innerHTML=bnDetailListHtml(); }
 // 唯讀版本（給「查看」畫面顯示佐證明細用，不帶刪除按鈕，也不依賴表單暫存的 _bnDetailItems）
-function bnDetailViewHtml(items){
-  if(!items||!items.length) return '';
-  const total=items.reduce((s,it)=>s+(Number(it.unit)||0)*(Number(it.qty)||0),0);
-  return `<div style="overflow-x:auto"><table class="itb" style="min-width:280px">
-    <tr><th>訂單編號</th><th>產品名稱</th><th>分潤金額</th><th>數量</th><th>小計</th></tr>
-    ${items.map(it=>`<tr>
-      <td style="font-size:11px;font-family:monospace">${it.order_no||'—'}</td>
-      <td style="font-size:12px">${(it.name||'').toString().replace(/</g,'&lt;')}</td>
-      <td class="num">${fM(it.unit)}</td>
-      <td class="num">${it.qty}</td>
-      <td class="num" style="font-weight:600">${fM((Number(it.unit)||0)*(Number(it.qty)||0))}</td>
-    </tr>`).join('')}
-  </table></div>
-  <div style="text-align:right;margin-top:6px;font-size:12px;color:var(--tx3)">明細加總：<b style="color:var(--tx);font-size:14px">${fM(total)}</b></div>`;
-}
+function bnDetailViewHtml(items){ return bnDetailGroupsHtml(items,false); }
 function bnDetailSection(){
-  return `<label style="margin-bottom:6px;display:block">明細（選填，記錄佐證依據，例如上游後台顯示的訂單/產品明細）</label>
+  return `<label style="margin-bottom:6px;display:block">明細（選填，記錄佐證依據，例如上游後台顯示的訂單/產品明細；同一張訂單的產品可以連續加，訂單編號不用每列重打，換下一張單再改）</label>
     <div style="display:grid;grid-template-columns:1fr 1.6fr 90px 60px auto;gap:6px;align-items:end;margin-bottom:8px">
       <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">訂單編號</div><input id="bn-di-order" type="text" placeholder="選填" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
       <div><div style="font-size:11px;color:var(--tx3);margin-bottom:2px">產品名稱</div><input id="bn-di-name" type="text" placeholder="產品名稱" autocomplete="off" style="width:100%;padding:6px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;box-sizing:border-box"></div>
@@ -361,7 +370,8 @@ function bnAddDetailItem(){
   const order_no=($('bn-di-order')?.value||'').trim();
   if(!name){toast('請填寫產品名稱','e');return;}
   _bnDetailItems.push({order_no:order_no||null,name,unit,qty});
-  $('bn-di-order').value=''; $('bn-di-name').value=''; $('bn-di-unit').value=''; $('bn-di-qty').value='1';
+  // 訂單編號故意不清空——同一張單通常會連續加好幾個產品，留著方便繼續打；換單再自己改掉
+  $('bn-di-name').value=''; $('bn-di-unit').value=''; $('bn-di-qty').value='1';
   $('bn-di-name').focus();
   bnRenderDetailList();
 }
