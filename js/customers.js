@@ -139,7 +139,7 @@ function custForm(c,benList){
     </select></div>
     <div class="fl fw">${fi('caddr','送貨地址','text',c.ship_full_address||c.ship_address)}</div>
     <div class="fl fw" style="background:var(--acl);border-radius:var(--r);padding:8px 10px">
-      <label>分潤受益人（選填——此客戶跟她的上家同階、訂單改由我方出貨時，出貨完成後系統會提示把官方分潤原封不動轉給這位下家）</label>
+      <label>分潤受益人（選填——此客戶與上家同階、改由我方出貨時，分潤要轉給的對象）</label>
       <select id="f-cben" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none">
         <option value="">（無，此客戶不是同階代理）</option>
         ${benList.map(b=>`<option value="${b.customer_no}" ${c.passthrough_beneficiary_no===b.customer_no?'selected':''}>${b.customer_no} ${b.name}${b.agent_level?`（${b.agent_level}）`:''}</option>`).join('')}
@@ -176,6 +176,17 @@ async function saveCust(existingNo){
     // 所以先把她目前所有「已全部出貨」的舊訂單標記成「已處理」（略過），之後只有新出貨的訂單才會出現在待處理清單
     const{data:old}=await sb.from('customers').select('passthrough_beneficiary_no').eq('customer_no',existingNo).single();
     const isNewlyEnabled = !old?.passthrough_beneficiary_no && newBenNo;
+    // 反過來：把「分潤受益人」從有清成無（例如原本同階的上家升階了，出貨權轉回她個人，不再需要代轉分潤）——
+    // 這位客戶底下如果還有「已出貨但還沒建立分潤記錄」的舊訂單（同階期間下的單，理論上仍然欠受益人這筆分潤），
+    // 清空設定後這些訂單就不會再出現在待處理清單裡了，先跳出提醒，讓使用者可以選擇先去處理完再清空
+    const isCleared = old?.passthrough_beneficiary_no && !newBenNo;
+    if(isCleared){
+      const{data:pend}=await sb.from('sales_orders').select('order_no').eq('customer_no',existingNo).eq('ship_status','全部出貨').eq('passthrough_bonus_created',false);
+      if(pend&&pend.length){
+        const ok=confirm(`這位客戶還有 ${pend.length} 筆已出貨、但還沒建立分潤記錄的訂單。\n\n取消「分潤受益人」設定後，這些訂單就不會再出現在「獎金/分潤」的待處理清單裡了。\n\n如果這幾筆是同階代理期間下的單、仍然要分潤給原本的受益人，建議先按「取消」，去「獎金/分潤」頁面把這幾筆處理完，再回來清空設定。\n\n確定要直接清空嗎？`);
+        if(!ok) return;
+      }
+    }
     const{error}=await sb.from('customers').update(obj).eq('customer_no',existingNo);
     if(error){toast('儲存失敗：'+error.message,'e');return;}
     if(isNewlyEnabled){
