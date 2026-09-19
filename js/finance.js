@@ -446,7 +446,7 @@ async function createPassthroughBonus(orderNo){
   const no=await genNo('BN','bonus_records','record_no');
   const{error}=await sb.from('bonus_records').insert({
     record_no:no,record_date:orderDate,direction:'支出',recipient:ben?.name||benNo,type:'分潤',amount:total,
-    payment_done:false,note:`同階代理「${order.customer_name}」訂單 ${orderNo} 確認收款，官方分潤原封不動轉給下家`,trigger_who:order.customer_name,
+    payment_done:false,note:`同階代理「${order.customer_name}」訂單 ${orderNo} 確認收款，分潤轉給下家`,trigger_who:order.customer_name,
     year_month:ym(orderDate),detail_items:detailItems
   });
   if(error){toast('建立失敗：'+error.message,'e');return;}
