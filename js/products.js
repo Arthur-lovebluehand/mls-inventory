@@ -133,6 +133,11 @@ function prodForm(p){
     ${fi('pf','創始','number',p.price_founder)} ${fi('prg','大區','number',p.price_region)} ${fi('pct','市代','number',p.price_city)}
     ${fi('pdr','經銷','number',p.price_dealer)} ${fi('pvp','VIP','number',p.price_vip)} ${fi('prl','零售','number',p.price_retail)}
     ${fi('pcost','進貨價','number',p.cost)}
+    <div class="fl" style="background:var(--acl);border-radius:var(--r);padding:8px 10px">
+      <label>官方分潤金額（選填，上游制度表公告的單件分潤，給獎金/分潤記錄核對用）</label>
+      <input id="f-pobonus" type="number" value="${p.official_bonus_amount??''}" autocomplete="off"
+        style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none">
+    </div>
     <div style="background:var(--acl);border:1px solid var(--bd);border-radius:var(--rl);padding:16px;margin-top:8px">
       <div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:14px">🛁 服務用途設定（選填）</div>
       <div style="margin-bottom:12px">
@@ -241,6 +246,7 @@ async function saveProd(existingNo){
   const no=existingNo||v('pno'), nm=v('pname');
   if(!nm){toast('請填寫商品名稱','e');return;}
   const priceFields={price_founder:n('pf'),price_region:n('prg'),price_city:n('pct'),price_dealer:n('pdr'),price_vip:n('pvp'),price_retail:n('prl'),cost:n('pcost')};
+  const officialBonus=n('pobonus');
   // 處理圖片：先上傳檔案（如果有），再存 URL
   let imageUrl = v('pimg') || document.getElementById('prod-img-url')?.value || null;
   if(window._prodImgFile){
@@ -255,7 +261,7 @@ async function saveProd(existingNo){
     }
     window._prodImgFile=null;
   }
-  const obj={name:nm,spec:v('pspec')||null,category:(()=>{const cv=v('pcat');return(cv&&cv!=='__new__')?cv:null;})(),unit:v('punit')||'個',stock:n('pstock')||0,...priceFields,source:v('psource')||null,vendor_product_no:v('pvpno')||null,image_url:imageUrl,description:v('pdesc')||null,
+  const obj={name:nm,spec:v('pspec')||null,category:(()=>{const cv=v('pcat');return(cv&&cv!=='__new__')?cv:null;})(),unit:v('punit')||'個',stock:n('pstock')||0,...priceFields,official_bonus_amount:officialBonus,source:v('psource')||null,vendor_product_no:v('pvpno')||null,image_url:imageUrl,description:v('pdesc')||null,
     service_unit:document.getElementById('f-psunit')?.value||null,
     service_units_per_stock:parseFloat(document.getElementById('f-psuperunit')?.value)||1,
     default_service_qty:parseFloat(document.getElementById('f-psdefqty')?.value)||1};
@@ -373,6 +379,10 @@ function showProdPage(p, its, poIts, loanIts, adjLogs, soMap, poMap, lnMap) {
           </div>`;
         }).join('')}
       </div>
+      ${p?.official_bonus_amount!=null?`<div style="margin-top:8px;background:#fff8e1;border:1px solid #ffd54f;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;color:#8d6e00">📋 官方分潤金額（上游制度表公告，單件）</span>
+        <span style="font-size:16px;font-weight:700;color:#8d6e00">${fM(p.official_bonus_amount)}</span>
+      </div>`:''}
     </div>
 
     <!-- 記錄 -->
