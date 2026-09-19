@@ -53,7 +53,7 @@ let _opexCarryChecked = false; // 同一個分頁只需要檢查一次，不用�
 async function autoCarryForwardOpex(){
   if(_opexCarryChecked) return;
   _opexCarryChecked = true;
-  const thisMonth = new Date().toISOString().slice(0,7);
+  const thisMonth = ym();
   const { data:all } = await sb.from('operating_expenses').select('id,expense_date,category,amount,recur_freq,amortize_months,note');
   if(!all || !all.length) return;
   const keyOf = r => `${r.category}::${stripOpexAutoMark(r.note)}`;
@@ -100,7 +100,7 @@ async function opex(){
   await autoCarryForwardOpex();
   const { data:allRecs, count } = await sb.from('operating_expenses').select('*',{count:'exact'}).order('expense_date',{ascending:false});
 
-  const thisMonth = new Date().toISOString().slice(0,7);
+  const thisMonth = ym();
 
   // 依「攤提月數」把每一筆記錄展開到它涵蓋的月份，年度/月份彙整都用展開後的金額，
   // 這樣像保費、借址登記費這種一次繳一年的支出，才會平均反映在每個月的營運成本裡，

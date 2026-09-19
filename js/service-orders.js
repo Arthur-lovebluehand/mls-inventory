@@ -136,7 +136,7 @@ async function svcNewOrder(editNo) {
   window._svcKitsList = kitsList||[];
   const techOpts = (techs||[]).map(t=>`<option value="${t.id}" data-rate="${t.commission_rate}" data-mode="${t.commission_mode||'percentage'}" data-fixed="${t.commission_fixed_amount||0}" data-name="${t.name}">${t.name}（${t.role||'技師'}，${t.commission_mode==='fixed'?`固定${fM(t.commission_fixed_amount||0)}/次`:`抽成 ${Math.round(t.commission_rate*100)}%`}）</option>`).join('');
 
-  const today2 = new Date().toISOString().split('T')[0];
+  const today2 = today();
   const orderNo = editNo || await genNo('SV','service_orders','order_no');
   window._svcEditNo = editNo || null;
 

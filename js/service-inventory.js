@@ -65,7 +65,7 @@ async function svcNewTransfer() {
     .gt('stock',0)
     .order('is_active',{ascending:false});
 
-  const today2 = new Date().toISOString().split('T')[0];
+  const today2 = today();
   const opts = (prods||[]).map(p=>
     `<option value="${p.product_no}" data-stock="${p.stock}"
       data-units="${p.service_units_per_stock||1}" data-unit="${p.service_unit||'次'}">
@@ -224,7 +224,7 @@ async function saveConsumable() {
   const cost = parseFloat(v('sc-cost'))||0;
   const stock = parseFloat(v('sc-stock'))||0;
   const note = v('sc-note');
-  const itemNo = 'SC-'+new Date().toISOString().split('T')[0].replace(/-/g,'')+'-'+Date.now().toString().slice(-4);
+  const itemNo = 'SC-'+today().replace(/-/g,'')+'-'+Date.now().toString().slice(-4);
 
   const { error } = await sb.from('service_consumables').insert({
     item_no:itemNo, name, spec:spec||null, unit, cost, stock_qty:stock, note:note||null
@@ -234,7 +234,7 @@ async function saveConsumable() {
   if(stock>0) {
     const { data:sc } = await sb.from('service_consumables').select('id').eq('item_no',itemNo).single();
     await sb.from('service_consumable_restocks').insert({
-      restock_no:'SCR-'+itemNo, restock_date:new Date().toISOString().split('T')[0],
+      restock_no:'SCR-'+itemNo, restock_date:today(),
       consumable_id:sc?.id, item_name:name, qty:stock, unit_cost:cost, total_cost:cost*stock, note:'初始建檔庫存'
     });
   }
@@ -289,7 +289,7 @@ window.toggleConsumableActive = toggleConsumableActive;
 async function svcRestockConsumable(id) {
   const { data:c } = await sb.from('service_consumables').select('*').eq('id',id).single();
   if(!c){ toast('找不到耗材','e'); return; }
-  const today2 = new Date().toISOString().split('T')[0];
+  const today2 = today();
   OM(`補貨：${c.name}`, `
   <div class="al al-w" style="font-size:12px;margin-bottom:12px">目前庫存 ${c.stock_qty} ${c.unit}，單位成本 ${fM(c.cost)}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">

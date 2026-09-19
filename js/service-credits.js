@@ -137,7 +137,7 @@ async function svcAddCredit(custNo, custName, walletType) {
     </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-    ${fi('cr-date','日期','date',new Date().toISOString().split('T')[0])}
+    ${fi('cr-date','日期','date',today())}
     ${fi('cr-amount','儲值金額 *','number','')}
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">

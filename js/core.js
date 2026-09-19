@@ -266,7 +266,13 @@ const n=id=>{const x=parseFloat($('f-'+id)?.value);return isNaN(x)?null:x;}
 const fM=x=>x==null?'—':'$'+Math.round(Number(x)||0).toLocaleString('zh-TW');
 const fN=x=>x==null?'—':Number(x).toLocaleString('zh-TW');
 const fD=x=>x?x.slice(0,10):'—';
-const today=()=>new Date().toISOString().slice(0,10);
+// 注意：這裡故意不用 new Date().toISOString()——toISOString() 一律轉成 UTC 時間再輸出，
+// 台灣是 UTC+8，只要在台灣當地時間 00:00~07:59 之間使用系統，UTC 那邊還停在「前一天」，
+// 會導致「今天」整整晚報一天（2026-09 使用者半夜/凌晨用系統時實測抓到：畫面顯示 2026-09-19，
+// 但當下台灣時間已經是 2026-09-20）。改用瀏覽器本地時區的年/月/日組字串，才會跟使用者
+// 電腦上實際看到的日曆日期一致。這個函式是全站幾乎所有「日期欄位預設值」的唯一來源，
+// 修好這裡，其他直接用 new Date().toISOString() 湊日期字串的地方也要比照修正（見下方各檔案）。
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 const ym=d=>(d||today()).slice(0,7);
 
 const LEVELS=['創始','大區','市代','經銷','VIP','零售'];

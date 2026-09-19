@@ -785,7 +785,7 @@ async function confirmReturn(no) {
   // 1. 標記訂單為退貨
   const { error: e1 } = await sb.from('sales_orders').update({
     is_return: true,
-    return_date: new Date().toISOString().split('T')[0],
+    return_date: today(),
     return_reason: reason || null,
     status: '已退貨',
   }).eq('order_no', no);
