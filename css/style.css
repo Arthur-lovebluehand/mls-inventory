@@ -206,9 +206,29 @@ tr:hover td{background:var(--sf2)}
   .mh .mt{font-size:16px!important;font-weight:700}
   /* dg grid 手機單欄 */
   .md .dg,.md-lg .dg{grid-template-columns:1fr!important}
-  .ir-order{grid-template-columns:2fr 48px 68px 48px 58px 26px}
-  .ir-po{grid-template-columns:2fr 48px 68px 48px 58px 26px}
-  .ir-loan{grid-template-columns:2fr 68px 26px}
+  /* 手機上的品項列（銷貨/進貨）：原本擠成一排導致「商品」搜尋框只剩幾十px、選了商品也看不到品名，
+     且欄位數兜不起來，刪除鈕還會被擠到下一行。改成兩行：第一行「#＋商品搜尋框（佔滿寬度）」，
+     第二行才是數量/單價/贈品數/金額/刪除，商品名稱才看得清楚。 */
+  .ir-order,.ir-po{
+    grid-template-columns:24px 1fr 1fr 1fr 1fr 24px;
+    row-gap:6px;
+  }
+  .ir-order>*:nth-child(1),.ir-po>*:nth-child(1){grid-column:1;grid-row:1}
+  .ir-order>*:nth-child(2),.ir-po>*:nth-child(2){grid-column:2/7;grid-row:1}
+  .ir-order>*:nth-child(3),.ir-po>*:nth-child(3){grid-column:2;grid-row:2}
+  .ir-order>*:nth-child(4),.ir-po>*:nth-child(4){grid-column:3;grid-row:2}
+  .ir-order>*:nth-child(5),.ir-po>*:nth-child(5){grid-column:4;grid-row:2}
+  .ir-order>*:nth-child(6),.ir-po>*:nth-child(6){grid-column:5;grid-row:2}
+  .ir-order>*:nth-child(7),.ir-po>*:nth-child(7){grid-column:6;grid-row:2}
+  /* 借貨品項一樣改兩行：# + 商品搜尋框佔滿寬度，第二行才是數量/刪除 */
+  .ir-loan{
+    grid-template-columns:24px 1fr 40px;
+    row-gap:6px;
+  }
+  .ir-loan>*:nth-child(1){grid-column:1;grid-row:1}
+  .ir-loan>*:nth-child(2){grid-column:2/4;grid-row:1}
+  .ir-loan>*:nth-child(3){grid-column:2;grid-row:2}
+  .ir-loan>*:nth-child(4){grid-column:3;grid-row:2}
   .dg{grid-template-columns:1fr}
   .tab{padding:7px 11px;font-size:12px}
   .si input{width:135px}
@@ -218,7 +238,6 @@ tr:hover td{background:var(--sf2)}
 @media(max-width:400px){
   .mg{grid-template-columns:1fr}
   .ha .btn{font-size:11px;padding:4px 6px}
-  .ir-order{grid-template-columns:2fr 44px 60px 44px 55px 24px}
 }
 /* 手機頂部固定 bar */
 #mobile-topbar{
