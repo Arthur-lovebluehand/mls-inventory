@@ -82,6 +82,11 @@ async function showCust(no){
   const creditDisplay = (credits&&credits.length)
     ? credits.map(cr=>`<div>${cr.wallet_type}：<b style="color:${cr.balance>0?'var(--ac)':cr.balance<0?'var(--rd)':'var(--tx3)'}">${fM(cr.balance)}</b></div>`).join('')
     : '<div style="color:var(--tx3)">尚未開過儲值帳戶</div>';
+  let benName=null;
+  if(c?.passthrough_beneficiary_no){
+    const{data:ben}=await sb.from('customers').select('name').eq('customer_no',c.passthrough_beneficiary_no).single();
+    benName=ben?.name||c.passthrough_beneficiary_no;
+  }
   OM(`客戶：${c?.name}`,`
   <div class="dg" style="margin-bottom:13px">
     <div class="dr"><span class="dlb">客戶編號</span><span class="dv">${c?.customer_no}</span></div>
@@ -93,6 +98,7 @@ async function showCust(no){
     <div class="dr"><span class="dlb">愛閃耀會員編號</span><span class="dv" style="font-family:monospace">${c?.member_no||'—'}</span></div>
     <div class="dr"><span class="dlb">儲值餘額</span><span class="dv ok" style="font-weight:600">${creditDisplay}</span></div>
     <div class="dr"><span class="dlb">付款方式</span><span class="dv">${c?.payment_method||'—'}</span></div>
+    ${benName?`<div class="dr" style="grid-column:1/-1"><span class="dlb">📋 分潤受益人</span><span class="dv" style="color:#8d6e00">同階代理，訂單出貨完成後分潤轉給：<b>${benName}</b>（${c.passthrough_beneficiary_no}）</span></div>`:''}
     <div class="dr" style="grid-column:1/-1"><span class="dlb">送貨地址</span><span class="dv">${c?.ship_full_address||c?.ship_address||'—'}</span></div>
     <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${c?.note||'—'}</span></div>
   </div>
@@ -116,8 +122,9 @@ async function delCust(no, name){
   await logAction('delete','customers',no,'刪除客戶 '+name+' ('+no+')');
   toast('客戶已刪除');customers();
 }
-function custForm(c){
+function custForm(c,benList){
   c=c||{};
+  benList=benList||[];
   return `<div class="fg">
     ${fi('cno','客戶編號','text',c.customer_no)} ${fi('cname','姓名 *','text',c.name)}
     ${fs('clv','位階',LEVELS,c.agent_level||'零售')}
@@ -131,6 +138,13 @@ function custForm(c){
       <option value="separate" ${c.wallet_mode==='separate'?'selected':''}>服務、產品分開算</option>
     </select></div>
     <div class="fl fw">${fi('caddr','送貨地址','text',c.ship_full_address||c.ship_address)}</div>
+    <div class="fl fw" style="background:var(--acl);border-radius:var(--r);padding:8px 10px">
+      <label>分潤受益人（選填——此客戶跟她的上家同階、訂單改由我方出貨時，出貨完成後系統會提示把官方分潤原封不動轉給這位下家）</label>
+      <select id="f-cben" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none">
+        <option value="">（無，此客戶不是同階代理）</option>
+        ${benList.map(b=>`<option value="${b.customer_no}" ${c.passthrough_beneficiary_no===b.customer_no?'selected':''}>${b.customer_no} ${b.name}${b.agent_level?`（${b.agent_level}）`:''}</option>`).join('')}
+      </select>
+    </div>
     <div class="fl fw">${fa('cnote','備註',c.note)}</div>
   </div>`;
 }
@@ -143,18 +157,30 @@ async function addCust(){
     const nums=last.map(r=>{const m=r.customer_no?.match(/^C-0(\d{4})$/);return m?parseInt('0'+m[1]):0;}).filter(n=>n>0&&n<10000);
     if(nums.length){const mx=Math.max(...nums);nextNo='C-'+String(mx+1).padStart(5,'0');}
   }
-  OM('新增客戶',custForm({customer_no:nextNo}),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveCust(false)">新增</button>`);
+  const{data:benList}=await sb.from('customers').select('customer_no,name,agent_level').order('customer_no');
+  OM('新增客戶',custForm({customer_no:nextNo},benList),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveCust(false)">新增</button>`);
 }
 async function eCust(no){
-  const{data:c}=await sb.from('customers').select('*').eq('customer_no',no).single();
-  OM('編輯客戶',custForm(c),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveCust('${no}')">儲存</button>`);
+  const[{data:c},{data:benList}]=await Promise.all([
+    sb.from('customers').select('*').eq('customer_no',no).single(),
+    sb.from('customers').select('customer_no,name,agent_level').neq('customer_no',no).order('customer_no'),
+  ]);
+  OM('編輯客戶',custForm(c,benList),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveCust('${no}')">儲存</button>`);
 }
 async function saveCust(existingNo){
   const nm=v('cname');if(!nm){toast('請填寫姓名','e');return;}
-  const obj={name:nm,agent_level:v('clv'),member_no:v('cmno')||null,phone:v('cph'),email:v('ceml'),birthday:v('cbday')||null,lunar_mark:v('clmk')||null,payment_method:v('cpay'),shipping_method:v('cshp')||null,wallet_mode:v('cwallet')||'shared',ship_address:v('caddr'),ship_full_address:v('caddr'),note:v('cnote')||null};
+  const newBenNo=v('cben')||null;
+  const obj={name:nm,agent_level:v('clv'),member_no:v('cmno')||null,phone:v('cph'),email:v('ceml'),birthday:v('cbday')||null,lunar_mark:v('clmk')||null,payment_method:v('cpay'),shipping_method:v('cshp')||null,wallet_mode:v('cwallet')||'shared',ship_address:v('caddr'),ship_full_address:v('caddr'),note:v('cnote')||null,passthrough_beneficiary_no:newBenNo};
   if(existingNo){
+    // 第一次把「分潤受益人」從無設定成有：這位客戶過去的舊訂單不該一次全部跳出來要建分潤（不知道同階狀態是何時開始的），
+    // 所以先把她目前所有「已全部出貨」的舊訂單標記成「已處理」（略過），之後只有新出貨的訂單才會出現在待處理清單
+    const{data:old}=await sb.from('customers').select('passthrough_beneficiary_no').eq('customer_no',existingNo).single();
+    const isNewlyEnabled = !old?.passthrough_beneficiary_no && newBenNo;
     const{error}=await sb.from('customers').update(obj).eq('customer_no',existingNo);
     if(error){toast('儲存失敗：'+error.message,'e');return;}
+    if(isNewlyEnabled){
+      await sb.from('sales_orders').update({passthrough_bonus_created:true}).eq('customer_no',existingNo).eq('ship_status','全部出貨').eq('passthrough_bonus_created',false);
+    }
   } else {
     const no=v('cno');obj.customer_no=no||null;
     const{error}=await sb.from('customers').insert(obj);
