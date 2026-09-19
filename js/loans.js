@@ -80,7 +80,7 @@ async function loans(){
   }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
 }
 async function addLoan(){
-  const{data:pr}=await sb.from('products').select('product_no,name,spec,stock').eq('is_active',true).order('product_no');
+  const{data:pr}=await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('product_no');
   _loanProds=pr||[];
   _loanItems=[{id:1,pno:'',qty:1}];
   const td=today(), no=await genNo('LO','loan_orders','loan_no');
@@ -149,9 +149,10 @@ function renderLoanItems(){
     <span style="font-size:12px;color:var(--tx3);text-align:center">${idx+1}</span>
     <div style="position:relative">
       <input type="text" value="${item.pno?(_loanProds.find(p=>p.product_no===item.pno)?.name||item.pno):''}" placeholder="輸入關鍵字搜尋商品…"
-        style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
+        style="font-size:12px;padding:5px 24px 5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"
         oninput="filterLoanDrop(${item.id},this.value)" onfocus="filterLoanDrop(${item.id},this.value)"
         oncompositionstart="window._ime=true" oncompositionend="window._ime=false" onblur="if(!window._ime)setTimeout(()=>closeLoanDrop(${item.id}),400)" autocomplete="off">
+      <button type="button" title="瀏覽商品（依品牌選，不用打字）" onmousedown="event.preventDefault();openProductBrowser(_loanProds,function(p){pickLoanItem(${item.id},p.product_no,p.name);})" style="position:absolute;right:1px;top:1px;bottom:1px;background:none;border:none;cursor:pointer;color:var(--tx3);font-size:13px;padding:0 5px">📋</button>
       <div id="ldrop-${item.id}" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
     </div>
     <input type="number" value="${item.qty}" min="1" onchange="setLoanIQ(${item.id},this.value)" placeholder="數量" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">

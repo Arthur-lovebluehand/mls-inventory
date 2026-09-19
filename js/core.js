@@ -92,6 +92,59 @@ function OM(title,body,foot,lg){
   document.getElementById('modal').classList.add('open');
 }
 
+// ── 商品瀏覽選擇器（依品牌分頁籤點選，給不方便打字的人多一種選商品的方式）──
+// 用法：openProductBrowser(商品陣列, p=>{ ...拿到選到的商品 p 做事... })
+// 商品陣列直接沿用呼叫端現有的資料（例如 _allProds/_poProds/_loanProds），不會另外重新查詢。
+let _pbList=[], _pbBrand='', _pbOnPick=null;
+function openProductBrowser(prods, onPick){
+  _pbList=(prods||[]).filter(p=>p.is_active!==false);
+  _pbOnPick=onPick;
+  const brands=[...new Set(_pbList.map(p=>p.source||'未分類'))].sort((a,b)=>a==='未分類'?1:b==='未分類'?-1:a.localeCompare(b,'zh-Hant'));
+  _pbBrand=brands[0]||'';
+  OM2('瀏覽商品選擇（依品牌）', `
+    <div style="margin-bottom:10px"><input id="pb-q" type="text" placeholder="也可以直接打字搜尋（全品牌）…" oninput="pbFilterList(this.value)" autocomplete="off" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
+    <div id="pb-tabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;max-height:90px;overflow-y:auto">
+      ${brands.map(b=>`<span data-pb-tab="${b.replace(/"/g,'&quot;')}" onclick="pbSwitchTab(this.dataset.pbTab)" style="flex-shrink:0;font-size:12px;padding:5px 12px;border-radius:14px;cursor:pointer;white-space:nowrap;${b===_pbBrand?'background:var(--ac);color:#fff':'background:var(--sf2);color:var(--tx2)'}">${b}</span>`).join('')}
+    </div>
+    <div id="pb-list" style="max-height:42vh;overflow-y:auto;border:1px solid var(--bd);border-radius:var(--r)"></div>
+  `, `<button class="btn" onclick="CM2()">關閉</button>`);
+  pbRenderList();
+}
+function pbSwitchTab(b){
+  _pbBrand=b;
+  document.querySelectorAll('#pb-tabs [data-pb-tab]').forEach(el=>{
+    const active=el.dataset.pbTab===b;
+    el.style.background=active?'var(--ac)':'var(--sf2)';
+    el.style.color=active?'#fff':'var(--tx2)';
+  });
+  const q=$('pb-q'); if(q) q.value='';
+  pbRenderList();
+}
+function pbFilterList(q){ pbRenderList(q); }
+function pbRenderList(q){
+  const box=$('pb-list'); if(!box) return;
+  const items=q?_pbList.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)||(p.spec||'').includes(q)):_pbList.filter(p=>(p.source||'未分類')===_pbBrand);
+  box.innerHTML=items.map(p=>`
+    <div onclick="pbPick('${p.product_no}')" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bd)"
+      onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+      <div>
+        <div style="font-size:13px;font-weight:500">${p.name}${p.spec?` <span class="badge bb" style="font-size:11px;margin-left:4px">${p.spec}</span>`:''}</div>
+        <div style="font-size:11px;color:var(--tx3)">${p.product_no||''}${p.stock!=null?' · 庫存 '+p.stock:''}</div>
+      </div>
+      ${p.source&&q?`<span class="badge bgr" style="font-size:10px;flex-shrink:0;margin-left:8px">${p.source}</span>`:''}
+    </div>`).join('')||'<div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">沒有符合的商品</div>';
+}
+function pbPick(pno){
+  const p=_pbList.find(x=>x.product_no===pno);
+  if(!p) return;
+  if(_pbOnPick) _pbOnPick(p);
+  CM2();
+}
+window.openProductBrowser=openProductBrowser;
+window.pbSwitchTab=pbSwitchTab;
+window.pbFilterList=pbFilterList;
+window.pbPick=pbPick;
+
 // ── toast ──
 let _tt;
 function toast(msg,t){

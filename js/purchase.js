@@ -157,7 +157,7 @@ async function showPO(no){
 }
 async function loadPOForm(poData,itsData){
   const[{data:pr},{data:vn}]=await Promise.all([
-    sb.from('products').select('product_no,name,spec,cost').eq('is_active',true).order('product_no'),
+    sb.from('products').select('product_no,name,spec,cost,source,stock').eq('is_active',true).order('product_no'),
     sb.from('vendors').select('vendor_no,name').eq('is_active',true).order('sort_order').order('name'),
   ]);
   _poProds=pr||[]; _vends2=vn||[];
@@ -234,10 +234,11 @@ function renderPOItems(){
     const pname=item._pname||(item.pno?(_poProds.find(p=>p.product_no===item.pno)?.name||item.pno):'');
     _html+='<div style="position:relative">'
       +'<input type="text" id="posrch-'+item.id+'" value="'+pname.replace(/"/g,'&quot;')+'" placeholder="輸入關鍵字搜尋商品…"'
-      +' style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"'
+      +' style="font-size:12px;padding:5px 24px 5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none"'
       +' oninput="filterPODrop('+item.id+',this.value)" onfocus="filterPODrop('+item.id+',this.value)"'
       +' onblur="if(!window._ime)setTimeout(()=>closePODrop('+item.id+'),400)"'
       +' oncompositionstart="window._ime=true" oncompositionend="window._ime=false" autocomplete="off">'
+      +'<button type="button" title="瀏覽商品（依品牌選，不用打字）" onmousedown="event.preventDefault();openProductBrowser(_poProds,function(p){pickPOItem('+item.id+',p.product_no,p.name,p.cost);})" style="position:absolute;right:1px;top:1px;bottom:1px;background:none;border:none;cursor:pointer;color:var(--tx3);font-size:13px;padding:0 5px">📋</button>'
       +'<div id="podrop-'+item.id+'" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>'
       +'</div>';
 

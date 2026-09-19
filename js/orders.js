@@ -205,7 +205,7 @@ window.onOrderTypeChange = onOrderTypeChange;
 
 async function addOrder(){
   const[{data:pr},{data:cu}]=await Promise.all([
-    sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('product_no'),
+    sb.from('products').select('product_no,name,spec,stock,source,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('product_no'),
     sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address,wallet_mode').order('name'),
   ]);
   _allProds=pr||[]; _allCusts=cu||[];
@@ -344,7 +344,9 @@ function renderItems(){
     // 以下繼續加各欄內容（用同樣的 template，但改成字串拼接）
     // 搜尋框
     const pname=item._pname||(item.pno?(_allProds.find(p=>p.product_no===item.pno)?.name||item.pno):'');
-    _html+='<div style="position:relative"><input type="text" id="isrch-'+item.id+'" value="'+pname.replace(/"/g,'&quot;')+'" placeholder="輸入關鍵字搜尋商品…" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none" oninput="filterItemDrop('+item.id+',this.value)" onfocus="filterItemDrop('+item.id+',this.value)" onblur="if(!window._ime)setTimeout(()=>closeItemDrop('+item.id+'),400)" oncompositionstart="window._ime=true" oncompositionend="window._ime=false" autocomplete="off"><div id="idrop-'+item.id+'" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div></div>';
+    _html+='<div style="position:relative"><input type="text" id="isrch-'+item.id+'" value="'+pname.replace(/"/g,'&quot;')+'" placeholder="輸入關鍵字搜尋商品…" style="font-size:12px;padding:5px 24px 5px 7px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);width:100%;outline:none" oninput="filterItemDrop('+item.id+',this.value)" onfocus="filterItemDrop('+item.id+',this.value)" onblur="if(!window._ime)setTimeout(()=>closeItemDrop('+item.id+'),400)" oncompositionstart="window._ime=true" oncompositionend="window._ime=false" autocomplete="off">'
+      +'<button type="button" title="瀏覽商品（依品牌選，不用打字）" onmousedown="event.preventDefault();openProductBrowser(_allProds,function(p){pickItem('+item.id+',p.product_no,p.name);})" style="position:absolute;right:1px;top:1px;bottom:1px;background:none;border:none;cursor:pointer;color:var(--tx3);font-size:13px;padding:0 5px">📋</button>'
+      +'<div id="idrop-'+item.id+'" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);max-height:160px;overflow-y:auto;z-index:500;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div></div>';
     _html+='<input type="number" value="'+item.qty+'" min="0" onchange="setIQ('+item.id+',this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none" title="銷售數量">';
     _html+='<input type="number" value="'+(item.price||'')+'" placeholder="單價" onchange="setIV('+item.id+',this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">';
     _html+='<input type="number" value="'+(item.giftQty||0)+'" min="0" onchange="setIG('+item.id+',this.value)" style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none;background:var(--aml);color:var(--am)" title="贈品數量（免費）">';
@@ -429,7 +431,7 @@ async function editOrder(no){
   const[{data:o},{data:its},{data:pr},{data:cu}]=await Promise.all([
     sb.from('sales_orders').select('*').eq('order_no',no).single(),
     sb.from('sales_order_items').select('*').eq('order_no',no),
-    sb.from('products').select('product_no,name,spec,stock,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('product_no'),
+    sb.from('products').select('product_no,name,spec,stock,source,price_founder,price_region,price_city,price_dealer,price_vip,price_retail').not('product_no','is',null).eq('is_active',true).order('product_no'),
     sb.from('customers').select('customer_no,name,agent_level,phone,ship_full_address,wallet_mode').order('name'),
   ]);
   _allProds=pr||[]; _allCusts=cu||[];

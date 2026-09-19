@@ -105,7 +105,7 @@ window.doConvertWallet = doConvertWallet;
 async function svcAddCredit(custNo, custName, walletType) {
   const [{ data:custs },{ data:allProds }] = await Promise.all([
     sb.from('customers').select('customer_no,name,phone,wallet_mode').order('name'),
-    sb.from('products').select('product_no,name,spec,stock').eq('is_active',true).order('product_no'),
+    sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('product_no'),
   ]);
   window._crCusts = custs||[];
   window._crAllProds = allProds||[];
@@ -147,11 +147,12 @@ async function svcAddCredit(custNo, custName, walletType) {
   <div style="margin-top:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
     <div style="font-weight:600;margin-bottom:8px;font-size:13px">贈送商品（選填，會直接扣銷售商品庫存）</div>
     <div style="display:grid;grid-template-columns:2fr auto auto;gap:6px;align-items:end">
-      <div class="ss-wrap" id="ss-crgift">
-        <input class="ss-input" id="ss-inp-crgift" placeholder="輸入商品名稱搜尋…" autocomplete="off"
+      <div class="ss-wrap" id="ss-crgift" style="position:relative">
+        <input class="ss-input" id="ss-inp-crgift" placeholder="輸入商品名稱搜尋…" autocomplete="off" style="padding-right:26px"
           oninput="crFilterGiftProd(this.value)" onfocus="crFilterGiftProd(this.value)"
           onblur="setTimeout(()=>$('ss-drop-crgift')?.classList.remove('open'),200)">
         <input type="hidden" id="cr-giftpno">
+        <button type="button" title="瀏覽商品（依品牌選，不用打字）" onmousedown="event.preventDefault();openProductBrowser(window._crAllProds,function(p){crPickGiftProd(p.product_no,p.name);})" style="position:absolute;right:1px;top:1px;bottom:1px;background:none;border:none;cursor:pointer;color:var(--tx3);font-size:13px;padding:0 5px">📋</button>
         <div class="ss-drop" id="ss-drop-crgift"></div>
       </div>
       <input type="number" id="cr-giftqty" value="1" min="1" step="1" placeholder="數量"

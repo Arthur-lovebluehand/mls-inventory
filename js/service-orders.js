@@ -123,7 +123,7 @@ async function svcNewOrder(editNo) {
     sb.from('service_consumables').select('*').eq('is_active',true).gt('stock_qty',0).order('name'),
     sb.from('customers').select('customer_no,name,phone').order('name'),
     sb.from('technicians').select('*').eq('is_active',true).order('name'),
-    sb.from('products').select('product_no,name,spec,stock,cost').eq('is_active',true).order('product_no'),
+    sb.from('products').select('product_no,name,spec,stock,cost,source').eq('is_active',true).order('product_no'),
     window.getSvcKitsList?.() || Promise.resolve([]),
     sb.from('settings').select('value').eq('key','svc_item_cat_order').single(),
   ]);
@@ -235,11 +235,12 @@ async function svcNewOrder(editNo) {
   <div style="margin-bottom:14px;padding:12px;background:var(--sf2);border-radius:var(--r)">
     <div style="font-weight:600;margin-bottom:8px;font-size:13px">贈送商品（會直接扣銷售商品庫存，自動連結這張服務單）</div>
     <div style="display:grid;grid-template-columns:2fr auto;gap:6px;align-items:end">
-      <div class="ss-wrap" id="ss-svgift">
-        <input class="ss-input" id="ss-inp-svgift" placeholder="輸入商品名稱搜尋…" autocomplete="off"
+      <div class="ss-wrap" id="ss-svgift" style="position:relative">
+        <input class="ss-input" id="ss-inp-svgift" placeholder="輸入商品名稱搜尋…" autocomplete="off" style="padding-right:26px"
           oninput="svcFilterGiftProd(this.value)" onfocus="svcFilterGiftProd(this.value)"
           onblur="setTimeout(()=>$('ss-drop-svgift')?.classList.remove('open'),200)">
         <input type="hidden" id="sv-giftpno">
+        <button type="button" title="瀏覽商品（依品牌選，不用打字）" onmousedown="event.preventDefault();openProductBrowser(window._svcAllProds,function(p){svcPickGiftProd(p.product_no,p.name);})" style="position:absolute;right:1px;top:1px;bottom:1px;background:none;border:none;cursor:pointer;color:var(--tx3);font-size:13px;padding:0 5px">📋</button>
         <div class="ss-drop" id="ss-drop-svgift"></div>
       </div>
       <input type="number" id="sv-giftqty" value="1" min="1" step="1" placeholder="數量"
