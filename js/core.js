@@ -490,7 +490,7 @@ window.setPOIG=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.giftQty
 
 
 // ── CUSTOMERS ──
-var cS='',cP=1;
+var cS='',cP=1,cLv='';
 
 
 // ── VENDORS ──

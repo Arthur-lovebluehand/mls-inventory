@@ -4,8 +4,23 @@
 
 async function customers(){
   try{
+    // 位階 Tab：抓資料庫裡實際出現過的位階（含 LEVELS 沒列到的舊值，例如「總盤」），照 LEVELS 順序排、沒列到的排最後
+    let allLvs = ['全部'];
+    try {
+      const { data: lvList } = await sb.from('customers').select('agent_level');
+      const rawLvs = [...new Set((lvList||[]).map(x=>x.agent_level).filter(Boolean))];
+      rawLvs.sort((a,b)=>{
+        const ia=LEVELS.indexOf(a), ib=LEVELS.indexOf(b);
+        if(ia===-1&&ib===-1) return a.localeCompare(b);
+        if(ia===-1) return 1;
+        if(ib===-1) return -1;
+        return ia-ib;
+      });
+      allLvs = ['全部', ...rawLvs];
+    } catch(e2){}
     let q=sb.from('customers').select('customer_no,name,agent_level,phone,email,ship_full_address',{count:'exact'}).order('customer_no');
     if(cS) q=q.or(`name.ilike.%${cS}%,phone.ilike.%${cS}%,customer_no.ilike.%${cS}%`);
+    if(cLv) q=q.eq('agent_level',cLv);
     const{data,count}=await q.range((cP-1)*30,cP*30-1);
     const tp=Math.ceil((count||0)/30);
     // 即時查這一頁客戶的儲值帳戶餘額（不用舊的customers.store_credit欄位，那個沒有跟真正的儲值系統連動）
@@ -25,7 +40,9 @@ async function customers(){
     <div class="ph"><div><div class="pt">客戶資料</div><div class="ps">${count||0} 位</div></div>
       <div class="ha"><button class="btn btn-p btn-s" onclick="addCust()">＋ 新增客戶</button></div></div>
     <div class="pc">
-    
+    <div class="tab-bar" style="margin-bottom:10px;overflow-x:auto">
+      ${allLvs.map(s=>{const on=s===(cLv||'全部');const click=s==='全部'?"cLv='';cP=1;customers()":"cLv='"+s+"';cP=1;customers()";return '<div class="tab'+(on?' on':'')+'" onclick="'+click+'" style="white-space:nowrap">'+s+'</div>';}).join('')}
+    </div>
     <div class="tc">
       <div class="tb"><span class="tt">客戶列表</span>
         <div class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
