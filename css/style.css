@@ -176,6 +176,15 @@ tr:hover td{background:var(--sf2)}
      手機寬度放不下，會橫向溢出、選了項目也要往右滑才看得到名稱，改成手機版單欄堆疊，每個欄位各佔一整行 */
   .mb [style*="grid-template-columns:1fr auto"],
   .mb [style*="grid-template-columns:2fr auto"]{grid-template-columns:1fr!important;row-gap:6px}
+  /* 上面那排改單欄後，裡面的 <select>（服務項目/技師）預設寬度是照最長選項文字撐開，
+     grid 欄位預設又不會把它壓縮到低於這個「內容最小寬度」，所以整排還是會被撐爆、要橫向滑動；
+     加 min-width:0 解除這個限制，再用 width:100% 讓每個欄位老實佔滿整行寬度 */
+  .mb [style*="grid-template-columns:1fr auto"] > *,
+  .mb [style*="grid-template-columns:2fr auto"] > *{
+    min-width:0!important;
+    width:100%!important;
+    box-sizing:border-box!important;
+  }
   .mb{padding:12px 14px}
   .mh{padding:12px 14px 10px}
   /* modal 裡 dg 改單欄 */
