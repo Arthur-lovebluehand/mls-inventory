@@ -455,6 +455,16 @@ async function createPassthroughBonus(orderNo){
   bonus();
 }
 window.createPassthroughBonus=createPassthroughBonus;
+// 「略過」：這筆訂單雖然符合同階代理分潤的條件，但實際上不需要（也不應該）建立分潤記錄——
+// 最常見的情況是這張單發生在建這套系統以前、當初分潤早就已經處理過了。直接把 passthrough_bonus_created
+// 標成 true（不建立 bonus_records），讓它從待處理清單消失，但不會假造一筆不存在的分潤記錄。
+async function skipPassthroughOrder(orderNo){
+  if(!confirm(`確定要略過這張訂單、不建立分潤記錄嗎？\n\n通常用在這筆訂單其實早就處理過分潤了（例如是建立這套系統以前的舊訂單），不是系統漏算，只是不需要再建一次。\n\n這個動作不會建立任何分潤記錄，只是讓這張單不再出現在待處理清單。`))return;
+  await sb.from('sales_orders').update({passthrough_bonus_created:true}).eq('order_no',orderNo);
+  toast('已略過這張訂單');
+  bonus();
+}
+window.skipPassthroughOrder=skipPassthroughOrder;
 
 async function bonus(){
   const passthroughRows=await passthroughPendingRows();
@@ -493,7 +503,10 @@ async function bonus(){
             <td style="font-size:12px">${r.custName}</td>
             <td style="font-size:12px">${r.benName||'—'}</td>
             <td class="num" style="font-weight:600">${fM(r.amount)}${r.missingPrice?'<span title="有品項還沒設定官方分潤金額，金額可能不完整" style="color:var(--rd);margin-left:4px">⚠</span>':''}</td>
-            <td><button class="btn btn-s btn-p" onclick="createPassthroughBonus('${r.order_no}')">建立分潤</button></td>
+            <td><div style="display:flex;gap:4px">
+              <button class="btn btn-s btn-p" onclick="createPassthroughBonus('${r.order_no}')">建立分潤</button>
+              <button class="btn btn-s" onclick="skipPassthroughOrder('${r.order_no}')">略過</button>
+            </div></td>
           </tr>`).join('')}
         </table></div>
       </div>
