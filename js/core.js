@@ -321,7 +321,16 @@ window.pickItem=(id,pno,name)=>{
   updAmt();
 };
 window.addItem=()=>{_items.push({id:Date.now(),pno:'',_pname:'',qty:1,price:0,giftQty:0,amt:0});renderItems();};
-window.rmItem=id=>{_items=_items.filter(x=>x.id!==id);renderItems();};
+window.rmItem=id=>{
+  const it=_items.find(x=>x.id===id);
+  if(it && it.bundle_group){
+    if(!confirm('這是套組裡的一項，要把整個套組（含贈品/折扣）一起移除嗎？'))return;
+    _items=_items.filter(x=>x.bundle_group!==it.bundle_group);
+  } else {
+    _items=_items.filter(x=>x.id!==id);
+  }
+  renderItems();
+};
 window.setIQ=(id,val)=>{const it=_items.find(x=>x.id===id);if(it){it.qty=Math.max(0,+val||0);it.amt=it.qty*it.price;}renderItems();};
 window.setIV=(id,val)=>{const it=_items.find(x=>x.id===id);if(it){it.price=+val||0;it.amt=it.qty*it.price;}renderItems();};
 window.setIG=(id,val)=>{const it=_items.find(x=>x.id===id);if(it)it.giftQty=Math.max(0,+val||0);};
@@ -350,7 +359,16 @@ window.pickPOItem=(id,pno,name,cost)=>{
   updPOAmt();
 };
 window.addPOItem=()=>{_poItems.push({id:Date.now(),pno:'',qty:1,price:0,amt:0});renderPOItems();};
-window.rmPOItem=id=>{_poItems=_poItems.filter(x=>x.id!==id);renderPOItems();};
+window.rmPOItem=id=>{
+  const it=_poItems.find(x=>x.id===id);
+  if(it && it.bundle_group){
+    if(!confirm('這是套組裡的一項，要把整個套組（含贈品/折扣）一起移除嗎？'))return;
+    _poItems=_poItems.filter(x=>x.bundle_group!==it.bundle_group);
+  } else {
+    _poItems=_poItems.filter(x=>x.id!==id);
+  }
+  renderPOItems();
+};
 window.setPOIQ=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.qty=Math.max(0,+val||0);it.amt=it.qty*it.price;}renderPOItems();};
 window.setPOIV=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.price=+val||0;it.amt=it.qty*it.price;}renderPOItems();};
 window.setPOIG=(id,val)=>{const it=_poItems.find(x=>x.id===id);if(it){it.giftQty=Math.max(0,+val||0);}updPOAmt();};
@@ -373,7 +391,16 @@ window.filterLoanDrop=(id,q)=>{const drop=$('ldrop-'+id);if(!drop)return;drop.st
 window.closeLoanDrop=id=>{const d=$('ldrop-'+id);if(d)d.style.display='none';};
 window.pickLoanItem=(id,pno,name)=>{const it=_loanItems.find(x=>x.id===id);if(it){it.pno=pno;}renderLoanItems();const inp=document.querySelector(`#ldrop-${id}`)?.previousElementSibling;if(inp)inp.value=name;closeLoanDrop(id);};
 window.addLoanItem=()=>{_loanItems.push({id:Date.now(),pno:'',qty:1});renderLoanItems();};
-window.rmLoanItem=id=>{_loanItems=_loanItems.filter(x=>x.id!==id);renderLoanItems();};
+window.rmLoanItem=id=>{
+  const it=_loanItems.find(x=>x.id===id);
+  if(it && it.bundle_group){
+    if(!confirm('這是套組裡的一項，要把整個套組一起移除嗎？'))return;
+    _loanItems=_loanItems.filter(x=>x.bundle_group!==it.bundle_group);
+  } else {
+    _loanItems=_loanItems.filter(x=>x.id!==id);
+  }
+  renderLoanItems();
+};
 window.setLoanIQ=(id,val)=>{const it=_loanItems.find(x=>x.id===id);if(it)it.qty=Math.max(1,+val||1);};
 
 
