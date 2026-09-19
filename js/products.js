@@ -522,6 +522,10 @@ async function showProd(no) {
       </div>`;
     }).join('')}
   </div>
+  ${p?.official_bonus_amount!=null?`<div style="margin-bottom:14px;background:#fff8e1;border:1px solid #ffd54f;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:12px;color:#8d6e00">📋 官方分潤金額（上游制度表公告，單件）</span>
+    <span style="font-size:16px;font-weight:700;color:#8d6e00">${fM(p.official_bonus_amount)}</span>
+  </div>`:''}
   <div style="display:flex;gap:2px;border-bottom:1px solid var(--bd);margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch">
     <div class="tab on" id="ptab-s" onclick="switchProdTab('s')" style="white-space:nowrap">銷貨${soTotalCount>15?`（近15/共${soTotalCount}）`:''}</div>
     <div class="tab" id="ptab-p" onclick="switchProdTab('p')" style="white-space:nowrap">進貨${poTotalCount>10?`（近10/共${poTotalCount}）`:''}</div>
