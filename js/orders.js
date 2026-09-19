@@ -134,6 +134,14 @@ async function printOrder(no){
     sb.from('sales_orders').select('*').eq('order_no',no).single(),
     sb.from('sales_order_items').select('*').eq('order_no',no),
   ]);
+  // 規格未存在訂單明細裡（品項只存商品名稱），額外查商品表補上規格，
+  // 讓客戶看列印出貨單時，同名但不同大小/包裝的商品也能分辨清楚
+  const pnos=[...new Set((its||[]).map(i=>i.product_no).filter(Boolean))];
+  let specMap={};
+  if(pnos.length){
+    const{data:prods}=await sb.from('products').select('product_no,spec').in('product_no',pnos);
+    (prods||[]).forEach(p=>{specMap[p.product_no]=p.spec;});
+  }
   const win=window.open('','_blank','width=800,height=600');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>出貨單 ${no}</title>
   <style>
@@ -157,7 +165,7 @@ async function printOrder(no){
   <div class="row"><div class="lbl">送貨地址</div></div><div>${o?.ship_address||'—'}</div>
   <div class="row"><div><div class="lbl">寄送方式</div><div>${o?.shipping_method||'—'}</div></div><div><div class="lbl">付款方式</div><div>${o?.payment_method||'—'}</div></div></div>
   <table>
-    <tr><th style="text-align:center;width:28px">#</th><th>商品名稱</th><th style="text-align:right">單價</th><th style="text-align:right">數量</th><th style="text-align:right">金額</th></tr>
+    <tr><th style="text-align:center;width:28px">#</th><th>商品名稱</th><th>規格</th><th style="text-align:right">單價</th><th style="text-align:right">數量</th><th style="text-align:right">金額</th></tr>
     ${(()=>{
       let html='', prevBG='', idx=0;
       const list=its||[];
@@ -165,19 +173,19 @@ async function printOrder(no){
         idx++;
         if(i.bundle_group && i.bundle_group!==prevBG){
           prevBG=i.bundle_group;
-          html+=`<tr><td colspan="5" style="background:#dbe6f5;padding:5px 8px;font-weight:700;font-size:12px;color:#2c4a75">📦 ${i.bundle_name||i.promo_code||'套組'}</td></tr>`;
+          html+=`<tr><td colspan="6" style="background:#dbe6f5;padding:5px 8px;font-weight:700;font-size:12px;color:#2c4a75">📦 ${i.bundle_name||i.promo_code||'套組'}</td></tr>`;
         } else if(!i.bundle_group){ prevBG=''; }
         const rowBg = i.bundle_group ? 'background:#f0f4fa' : '';
-        html+=`<tr style="${rowBg}"><td style="text-align:center;color:#888">${idx}</td><td>${i.product_name||'—'}${i.gift_qty&&i.gift_qty>0?` <span style="background:#fef9e7;color:#b8860b;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">含贈品×${i.gift_qty}</span>`:''}</td><td style="text-align:right">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString():''}</td><td style="text-align:right">${(i.qty||0)+(i.gift_qty||0)}${i.gift_qty&&i.gift_qty>0?`<span style="font-size:10px;color:#b8860b;display:block">（贈${i.gift_qty}）</span>`:''}</td><td style="text-align:right">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString():'贈品'}</td></tr>`;
+        html+=`<tr style="${rowBg}"><td style="text-align:center;color:#888">${idx}</td><td>${i.product_name||'—'}${i.gift_qty&&i.gift_qty>0?` <span style="background:#fef9e7;color:#b8860b;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">含贈品×${i.gift_qty}</span>`:''}</td><td style="font-size:12px;color:#666">${specMap[i.product_no]||'—'}</td><td style="text-align:right">${i.unit_price?'$'+Math.round(Number(i.unit_price)).toLocaleString():''}</td><td style="text-align:right">${(i.qty||0)+(i.gift_qty||0)}${i.gift_qty&&i.gift_qty>0?`<span style="font-size:10px;color:#b8860b;display:block">（贈${i.gift_qty}）</span>`:''}</td><td style="text-align:right">${i.amount?'$'+Math.round(Number(i.amount)).toLocaleString():'贈品'}</td></tr>`;
         // 套組結束、下一項不是同套組（或是最後一項）時，補一條分隔線讓套組跟接下來的單獨商品明顯分開
         const next = list[arrIdx+1];
         if(i.bundle_group && (!next || next.bundle_group!==i.bundle_group)){
-          html+=`<tr><td colspan="5" style="border-bottom:2px solid #c3d3ea;padding:0"></td></tr>`;
+          html+=`<tr><td colspan="6" style="border-bottom:2px solid #c3d3ea;padding:0"></td></tr>`;
         }
       });
       return html;
     })()}
-    <tr><td colspan="3" style="text-align:right;font-size:11px;color:#888;border:none">共 ${(its||[]).length} 項</td><td style="border:none"></td><td style="border:none"></td></tr>
+    <tr><td colspan="4" style="text-align:right;font-size:11px;color:#888;border:none">共 ${(its||[]).length} 項</td><td style="border:none"></td><td style="border:none"></td></tr>
   </table>
   <div class="tot">
     <div class="row"><span>小計</span><span>${o?.subtotal?'$'+Number(o.subtotal).toLocaleString():''}</span></div>

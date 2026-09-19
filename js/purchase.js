@@ -128,22 +128,35 @@ async function showPO(no){
     ${po?.note?`<div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv" style="white-space:pre-wrap">${po.note}</span></div>`:''}
   </div>
   <table class="itb"><tr><th>#</th><th>商品</th><th>規格</th><th>單價</th><th>訂購</th><th style="color:var(--am)">贈品</th><th style="font-weight:700">應收總計</th><th>已收</th><th>待收</th><th>金額</th></tr>
-  ${(its||[]).map((i,idx)=>{
-    const total=(i.qty||0)+(i.gift_qty||0);
-    const pending=total-(i.received_qty||0);
-    return `<tr>
-      <td style="color:var(--tx3);font-size:12px">${idx+1}</td>
-      <td>${i.product_name||'—'}${(i.gift_qty>0&&!i.qty)?'<span class="badge ba" style="margin-left:4px;font-size:10px">贈品</span>':''}</td>
-      <td style="font-size:11px">${i.spec||'—'}</td>
-      <td class="num">${i.unit_price?fM(i.unit_price):'<span style="color:var(--am)">$0</span>'}</td>
-      <td class="num">${i.qty?fN(i.qty):'—'}</td>
-      <td class="num" style="color:var(--am)">${i.gift_qty?fN(i.gift_qty):'—'}</td>
-      <td class="num" style="font-weight:700">${fN(total)}</td>
-      <td class="num ok">${fN(i.received_qty||0)}</td>
-      <td class="num ${pending>0?'cr':''}">${fN(pending)}</td>
-      <td class="num">${fM(i.amount)}</td>
-    </tr>`;
-  }).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--tx3)">無明細</td></tr>'}
+  ${(()=>{
+    // 有套組的品項比照出貨明細，用一個橫幅標題把整套組合併顯示成一整塊；單品維持原本一列一項
+    let html='', prevBG='', idx=0;
+    const list=its||[];
+    list.forEach(i=>{
+      idx++;
+      if(i.bundle_group && i.bundle_group!==prevBG){
+        prevBG=i.bundle_group;
+        const bItems=list.filter(x=>x.bundle_group===i.bundle_group);
+        const bTotal=bItems.reduce((s,x)=>s+(x.amount||0),0);
+        html+=`<tr><td colspan="10" style="background:var(--bll);padding:6px 10px;font-weight:600;color:var(--bl);font-size:12px">📦 ${i.bundle_name||i.promo_code||'套組'}${bTotal?`（合計 ${fM(bTotal)}）`:''}</td></tr>`;
+      } else if(!i.bundle_group){ prevBG=''; }
+      const total=(i.qty||0)+(i.gift_qty||0);
+      const pending=total-(i.received_qty||0);
+      html+=`<tr${i.bundle_group?' style="border-left:3px solid var(--bl)"':''}>
+        <td style="color:var(--tx3);font-size:12px">${idx}</td>
+        <td>${i.product_name||'—'}${(i.gift_qty>0&&!i.qty)?'<span class="badge ba" style="margin-left:4px;font-size:10px">贈品</span>':''}</td>
+        <td style="font-size:11px">${i.spec||'—'}</td>
+        <td class="num">${i.unit_price?fM(i.unit_price):'<span style="color:var(--am)">$0</span>'}</td>
+        <td class="num">${i.qty?fN(i.qty):'—'}</td>
+        <td class="num" style="color:var(--am)">${i.gift_qty?fN(i.gift_qty):'—'}</td>
+        <td class="num" style="font-weight:700">${fN(total)}</td>
+        <td class="num ok">${fN(i.received_qty||0)}</td>
+        <td class="num ${pending>0?'cr':''}">${fN(pending)}</td>
+        <td class="num">${fM(i.amount)}</td>
+      </tr>`;
+    });
+    return html||'<tr><td colspan="10" style="text-align:center;color:var(--tx3)">無明細</td></tr>';
+  })()}
   </table>
   <div style="background:var(--sf2);border-radius:var(--r);padding:10px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:13px">
     <span>小計（稅前參考）</span><span class="num" style="text-align:right">${fM(po?.subtotal)}</span>
