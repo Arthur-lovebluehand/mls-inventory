@@ -4,7 +4,11 @@
 
 async function loadCats() {
   const { data } = await sb.from('products').select('category').not('category','is',null);
-  window._cats = [...new Set((data||[]).map(x=>x.category).filter(Boolean))].sort();
+  const cats = [...new Set((data||[]).map(x=>x.category).filter(Boolean))];
+  let catOrd = {};
+  try{ const{data:co}=await sb.from('settings').select('value').eq('key','prod_cat_order').single(); if(co?.value) catOrd=JSON.parse(co.value); }catch(e){}
+  window._prodCatOrd = catOrd;
+  window._cats = cats.sort((a,b)=>(catOrd[a]||99)-(catOrd[b]||99) || a.localeCompare(b,'zh-Hant'));
   return window._cats;
 }
 var _catTab = 'products'; // products | roles | payment
@@ -39,10 +43,11 @@ async function categoriesProducts() {
 
   $('main').innerHTML += `
   <div class="pc">
-  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
+    ${cats.length>1?'<button class="btn btn-s" onclick="showProdCatOrder()">⚙ 分類排序</button>':''}
     <button class="btn btn-p btn-s" onclick="addCategoryModal()">＋ 新增類別</button>
   </div>
-  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理商品類別。新增類別後，在編輯商品時可從下拉選單選擇；類別名稱修改後，現有商品的類別不會自動更新，請至商品列表手動更新。</div>
+  <div class="al al-w" style="font-size:12px;margin-bottom:10px">管理商品類別。新增類別後，在編輯商品時可從下拉選單選擇；類別名稱修改後，現有商品的類別不會自動更新，請至商品列表手動更新。下面的排序會套用到所有選商品類別的地方（例如瀏覽商品時的分類分組）。</div>
     <div class="tc"><div class="tb"><span class="tt">類別列表</span></div>
     <div class="tw"><table style="width:100%">
       <tr><th>類別名稱</th><th style="text-align:center">使用中商品</th><th>操作</th></tr>
@@ -97,6 +102,35 @@ async function renameCategory(oldName) {
   CM();
   categories();
 }
+// ── 商品類別排序設定（跟服務項目分類排序同一套做法）：套用到所有選商品類別的地方，
+// 包括商品編輯的下拉選單、還有「瀏覽商品」視窗裡的分類分組 ──
+function showProdCatOrder() {
+  const cats = window._cats || [];
+  const ord = window._prodCatOrd || {};
+  const sorted = cats.slice().sort((a,b)=>(ord[a]||99)-(ord[b]||99) || a.localeCompare(b,'zh-Hant'));
+  const rows = sorted.map(c=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bd)">
+      <input type="number" id="pcord-${c}" value="${ord[c]||99}" min="1" max="99"
+        style="width:46px;padding:4px;border:1px solid var(--bd);border-radius:var(--r);font-size:12px;text-align:center">
+      <span style="font-weight:500;flex:1">${c}</span>
+    </div>`).join('');
+  OM('商品類別排序', `
+  <div style="font-size:12px;color:var(--tx3);margin-bottom:12px">數字設排序（1=最前），數字愈小愈前面，可以重複時就照名稱排。</div>
+  ${rows}`,
+  `<button class="btn" onclick="CM()">取消</button>
+   <button class="btn btn-p" onclick="saveProdCatOrder()">儲存</button>`);
+}
+window.showProdCatOrder = showProdCatOrder;
+async function saveProdCatOrder() {
+  const cats = window._cats || [];
+  const newOrd = {};
+  cats.forEach(c=>{ const el=document.getElementById('pcord-'+c); if(el) newOrd[c]=parseInt(el.value)||99; });
+  await sb.from('settings').upsert({key:'prod_cat_order', value:JSON.stringify(newOrd), updated_at:new Date().toISOString()});
+  toast('✅ 排序已儲存');
+  CM();
+  categories();
+}
+window.saveProdCatOrder = saveProdCatOrder;
 window.categories = categories;
 window.addCategoryModal = addCategoryModal;
 window.saveNewCategory = saveNewCategory;

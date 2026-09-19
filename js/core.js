@@ -149,7 +149,8 @@ function pbRenderList(q){
   // 商品一多時再依「商品類別」分組，每組標題可以點擊收合／展開，不用整頁往下捲著找
   const catGroups={};
   items.forEach(p=>{ const c=p.category||'未分類'; (catGroups[c]=catGroups[c]||[]).push(p); });
-  const cats=Object.keys(catGroups).sort((a,b)=>a==='未分類'?1:b==='未分類'?-1:a.localeCompare(b,'zh-Hant'));
+  const catOrd=window._prodCatOrd||{};
+  const cats=Object.keys(catGroups).sort((a,b)=>a==='未分類'?1:b==='未分類'?-1:((catOrd[a]||99)-(catOrd[b]||99))||a.localeCompare(b,'zh-Hant'));
   if(cats.length<=1){
     box.innerHTML=items.map(p=>pbItemRow(p,false)).join('')||'<div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">此品牌尚無商品</div>';
     return;
