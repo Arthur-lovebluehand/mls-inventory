@@ -520,6 +520,19 @@ window.syncOrderCreditDeduction = syncOrderCreditDeduction;
 
 async function togglePay(no,done){
   if(done){
+    // 取消收款：如果這張單已經因為「同階代理下家分潤」自動建立過分潤記錄（分潤觸發點是確認收款），
+    // 取消收款代表這筆訂單其實還沒真的成立，分潤記錄不該繼續掛著沒人管——先提醒使用者，讓她選擇要不要一併刪除
+    const{data:ord}=await sb.from('sales_orders').select('passthrough_bonus_created').eq('order_no',no).single();
+    if(ord?.passthrough_bonus_created){
+      const{data:bn}=await sb.from('bonus_records').select('id,record_no,amount,recipient').eq('passthrough_order_no',no).maybeSingle();
+      if(bn){
+        const delBn=confirm(`這張訂單已經建立過下家分潤記錄（${bn.record_no}，分潤給 ${bn.recipient}，$${Math.round(bn.amount)}）。\n\n取消收款後這筆訂單還沒真的成立，這筆分潤記錄要不要一併刪除？\n\n按「確定」會連同分潤記錄一起刪除；按「取消」則只取消收款，分潤記錄先保留，之後要處理再自己去獎金/分潤頁面刪。`);
+        if(delBn){
+          await sb.from('bonus_records').delete().eq('id',bn.id);
+          await sb.from('sales_orders').update({passthrough_bonus_created:false}).eq('order_no',no);
+        }
+      }
+    }
     await sb.from('sales_orders').update({payment_done:false,payment_date:null}).eq('order_no',no);
     await syncOrderCreditDeduction(no);
     orders(); return;
