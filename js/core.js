@@ -16,6 +16,25 @@ window.addEventListener('error',e=>{
   const m=document.getElementById('main');
   if(m&&m.innerHTML.includes('sp')){m.innerHTML='<div class="ld" style="flex-direction:column;gap:12px"><span style="color:var(--rd)">JS錯誤：'+e.message+'</span><span style="font-size:12px;color:var(--tx3)">'+e.filename+' 行'+e.lineno+'</span></div>';}
 });
+// 有些瀏覽器/網路狀況下，各功能模組 .js 檔案（products.js/orders.js/...）跟動態載入的
+// Supabase CDN 腳本是各自非同步下載，理論上模組檔案應該都比 CDN 腳本先載入完成，
+// 但偶爾（尤其強制重新整理、網路較慢時）CDN 腳本反而先執行完，這時候某個模組函式
+// （例如 orders()）還沒被定義，直接呼叫就會整頁卡住轉圈圈、畫面也不會顯示任何錯誤。
+// 用這個小工具在真正呼叫 go('dashboard') 開機之前，等所有需要的模組函式都真的存在。
+function _waitForModules(fnNames,cb,tries){
+  tries=tries||0;
+  if(fnNames.every(n=>typeof window[n]==='function')){ cb(); return; }
+  if(tries>200){ // 等了約6秒還沒好，放棄等待、直接跳錯誤訊息而不是無限轉圈圈
+    const m=document.getElementById('main');
+    if(m) m.innerHTML='<div class="ld" style="flex-direction:column;gap:12px"><span style="color:var(--rd)">部分功能模組載入逾時，請重新整理頁面再試一次</span></div>';
+    return;
+  }
+  setTimeout(()=>_waitForModules(fnNames,cb,tries+1),30);
+}
+window.addEventListener('unhandledrejection',e=>{
+  const m=document.getElementById('main');
+  if(m&&m.innerHTML.includes('sp')){m.innerHTML='<div class="ld" style="flex-direction:column;gap:12px"><span style="color:var(--rd)">JS錯誤：'+(e.reason&&e.reason.message||e.reason)+'</span></div>';}
+});
 (function(){
   const s=document.createElement('script');
   s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
@@ -41,7 +60,7 @@ window.addEventListener('error',e=>{
     }
     Promise.all([loadPayMethods(),loadShipMethods(),loadBrandNames(),loadOrderTypes(),loadOpexCategories(),loadPromoTypes(),
       typeof autoCarryForwardOpex==='function'?autoCarryForwardOpex().catch(()=>{}):Promise.resolve()
-    ]).then(() => go('dashboard'));
+    ]).then(() => _waitForModules(['dashboard','products','orders','purchase','customers','loans','accounts','bonus','vendors'],() => go('dashboard')));
   };
   s.onerror=()=>{document.getElementById('main').innerHTML='<div class="ld" style="color:var(--rd)">無法載入Supabase Library，請檢查網路</div>';};
   document.head.appendChild(s);
@@ -51,8 +70,15 @@ window.addEventListener('error',e=>{
 // pages 動態建立（所有模組載入後才呼叫 go()，所以函數都存在）
 function _getPages(){
   return {
-    dashboard,products,orders,purchase,customers,loans,
-    accounts,bonus,vendors,
+    dashboard:()=>window.dashboard?.(),
+    products:()=>window.products?.(),
+    orders:()=>window.orders?.(),
+    purchase:()=>window.purchase?.(),
+    customers:()=>window.customers?.(),
+    loans:()=>window.loans?.(),
+    accounts:()=>window.accounts?.(),
+    bonus:()=>window.bonus?.(),
+    vendors:()=>window.vendors?.(),
     promotions:()=>window.promotions?.(),
     loanParties:()=>window.loanParties?.(),
     auditLogs:()=>window.auditLogs?.(),
