@@ -447,7 +447,7 @@ async function createPassthroughBonus(orderNo){
   const{error}=await sb.from('bonus_records').insert({
     record_no:no,record_date:orderDate,direction:'支出',recipient:ben?.name||benNo,type:'分潤',amount:total,
     payment_done:false,note:`同階代理「${order.customer_name}」訂單 ${orderNo} 確認收款，分潤轉給下家`,trigger_who:order.customer_name,
-    year_month:ym(orderDate),detail_items:detailItems
+    year_month:ym(orderDate),detail_items:detailItems,passthrough_order_no:orderNo
   });
   if(error){toast('建立失敗：'+error.message,'e');return;}
   await sb.from('sales_orders').update({passthrough_bonus_created:true}).eq('order_no',orderNo);
@@ -566,7 +566,18 @@ async function saveBonus(){
   toast('記錄已新增');CM();bonus();
 }
 async function toggleBonus(id,done){await sb.from('bonus_records').update({payment_done:!done,payment_date:!done?today():null}).eq('id',id);toast(!done?'已標記發放':'已取消');bonus();}
-async function dBonus(id){if(!confirm('確定刪除此記錄？'))return;await sb.from('bonus_records').delete().eq('id',id);toast('已刪除');bonus();}
+async function dBonus(id){
+  if(!confirm('確定刪除此記錄？'))return;
+  // 如果這筆是「同階代理下家分潤」自動建立的（有記錄 passthrough_order_no），刪除後要把來源訂單的
+  // passthrough_bonus_created 重設回 false，讓它重新回到「獎金/分潤」的待處理清單——
+  // 不然誤刪這筆分潤記錄後，這張訂單會永遠消失在待處理清單裡，變成明明還欠著分潤、卻沒有任何提醒
+  const{data:rec}=await sb.from('bonus_records').select('passthrough_order_no').eq('id',id).single();
+  await sb.from('bonus_records').delete().eq('id',id);
+  if(rec?.passthrough_order_no){
+    await sb.from('sales_orders').update({passthrough_bonus_created:false}).eq('order_no',rec.passthrough_order_no);
+  }
+  toast('已刪除');bonus();
+}
 async function accounts(){
   const[{data:orders_m},{data:po_m},{data:bn_m}]=await Promise.all([
     sb.from('sales_orders').select('year_month,total,payment_done,payment_date,order_no,order_date,customer_name'),
