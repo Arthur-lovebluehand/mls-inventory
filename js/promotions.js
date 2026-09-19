@@ -510,9 +510,11 @@ function renderPromoItems() {
   if (cntEl) cntEl.textContent = `共 ${_promoItems.length} 項`;
 }
 var _bundlePickerTab = 'active';
+var _bundlePickerGroupFilter = ''; // '' = 全部類型
 async function openBundlePicker(mode) {
   // mode: 'order' | 'po' | 'loan'
   _bundlePickerSearch = '';
+  _bundlePickerGroupFilter = '';
   const today_s = today();
   const cutoff_s = new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10); // 3個月前
 
@@ -522,15 +524,54 @@ async function openBundlePicker(mode) {
     .or(`end_date.is.null,end_date.gte.${cutoff_s}`)
     .order('name');
 
+  // 跟「活動管理」列表頁一樣，把「買X送Y」細分成「同商品」跟「買大送小（不同商品）」，
+  // 這樣挑選視窗裡的分類標籤才會跟你平常看的活動管理頁一致
+  const buyGetCodes = (promos||[]).filter(p=>promoTypeCalcMode(p.type)==='buy_get').map(p=>p.promo_code);
+  let sameProductCodes = new Set();
+  if(buyGetCodes.length) {
+    const { data:allItems } = await sb.from('promotion_items').select('promo_code,product_no,is_gift').in('promo_code',buyGetCodes);
+    const byPromo = {};
+    (allItems||[]).forEach(i=>{ (byPromo[i.promo_code]=byPromo[i.promo_code]||[]).push(i); });
+    Object.keys(byPromo).forEach(code=>{
+      const items = byPromo[code];
+      const buyNos = new Set(items.filter(i=>!i.is_gift).map(i=>i.product_no));
+      const giftNos = new Set(items.filter(i=>i.is_gift).map(i=>i.product_no));
+      const allGiftInBuy = [...giftNos].every(n=>buyNos.has(n));
+      if(allGiftInBuy) sameProductCodes.add(code);
+    });
+  }
+
   window._bundlePickerData = {
     mode,
     active: (promos||[]).filter(p=>!isPromoExpired(p)),
     expired: (promos||[]).filter(p=>isPromoExpired(p)),
+    sameProductCodes,
   };
   _bundlePickerTab = 'active';
   renderBundlePickerBody();
 }
 var _bundlePickerSearch = '';
+// 依類型分組（邏輯跟「活動管理」列表頁一致）：套裝組合優先，然後買X送Y（同商品）、買大送小，其他類型排後面
+function promoGroupInfo(p, sameProductCodes) {
+  const calcMode = promoTypeCalcMode(p.type);
+  if(calcMode==='buy_get') {
+    if((sameProductCodes||new Set()).has(p.promo_code)) return { key:'buyget_same', label:'買X送Y（同商品）', color:promoTypeColor(p.type) };
+    return { key:'buyget_diff', label:'買大送小（不同商品）', color:promoTypeColor(p.type) };
+  }
+  return { key:'type_'+p.type, label:p.type, color:promoTypeColor(p.type) };
+}
+function groupPromoList(list, sameProductCodes) {
+  const groups = {};
+  list.forEach(p=>{
+    const info = promoGroupInfo(p, sameProductCodes);
+    if(!groups[info.key]) groups[info.key] = { label:info.label, color:info.color, items:[] };
+    groups[info.key].items.push(p);
+  });
+  const fixedKey = 'type_'+(promoTypeNames().find(n=>promoTypeCalcMode(n)==='fixed_price')||'');
+  const priority = [fixedKey,'buyget_same','buyget_diff'];
+  const orderedKeys = [...priority.filter(k=>groups[k]), ...Object.keys(groups).filter(k=>!priority.includes(k)).sort()];
+  return orderedKeys.map(k=>({ key:k, ...groups[k] }));
+}
 function renderBundlePickerBody() {
   // 外殼（搜尋框、頁籤）只在第一次打開時畫；之後打字/換頁籤只更新下面的結果區塊，
   // 搜尋框本身不會被重畫，才不會打斷中文輸入法的組字（打字打到一半跳掉的問題）
@@ -540,12 +581,13 @@ function renderBundlePickerBody() {
   <div style="margin:10px 0">
     <input id="bp-search" placeholder="輸入名稱或說明關鍵字搜尋…（例如：8週年慶、王者肽）" value="${_bundlePickerSearch}"
       style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"
-      oninput="_bundlePickerSearch=this.value;updateBundlePickerResults()">
+      oninput="_bundlePickerSearch=this.value;_bundlePickerGroupFilter='';updateBundlePickerResults()">
   </div>
   <div class="tab-bar" style="margin-bottom:10px">
-    <div class="tab${_bundlePickerTab==='active'?' on':''}" onclick="_bundlePickerTab='active';updateBundlePickerResults()">進行中（${active.length}）</div>
-    <div class="tab${_bundlePickerTab==='expired'?' on':''}" onclick="_bundlePickerTab='expired';updateBundlePickerResults()">已過期（${expired.length}）</div>
+    <div class="tab${_bundlePickerTab==='active'?' on':''}" onclick="_bundlePickerTab='active';_bundlePickerGroupFilter='';updateBundlePickerResults()">進行中（${active.length}）</div>
+    <div class="tab${_bundlePickerTab==='expired'?' on':''}" onclick="_bundlePickerTab='expired';_bundlePickerGroupFilter='';updateBundlePickerResults()">已過期（${expired.length}）</div>
   </div>
+  <div id="bp-group-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
   <div id="bp-results"></div>`, '');
   updateBundlePickerResults();
 }
@@ -553,7 +595,8 @@ window.renderBundlePickerBody = renderBundlePickerBody;
 
 function updateBundlePickerResults() {
   const box = $('bp-results'); if(!box) return;
-  const { mode, active, expired } = window._bundlePickerData||{};
+  const chipsBox = $('bp-group-chips');
+  const { mode, active, expired, sameProductCodes } = window._bundlePickerData||{};
   const tab = _bundlePickerTab;
   let list = tab==='active' ? active : expired;
   // 依代碼排序（最新建立的排最前面），跟活動管理列表一致
@@ -566,6 +609,19 @@ function updateBundlePickerResults() {
   document.querySelectorAll('.tab-bar .tab').forEach((el,i)=>{
     el.classList.toggle('on', (i===0 && tab==='active') || (i===1 && tab==='expired'));
   });
+
+  // 依類型分組（跟活動管理頁同一套分組邏輯）：項目一多時可以先點類型標籤縮小範圍，不用整頁往下捲找
+  const groups = groupPromoList(list, sameProductCodes);
+  if(chipsBox) {
+    if(groups.length<=1) {
+      chipsBox.innerHTML = '';
+    } else {
+      chipsBox.innerHTML = `<span onclick="_bundlePickerGroupFilter='';updateBundlePickerResults()" style="font-size:12px;padding:5px 12px;border-radius:14px;cursor:pointer;white-space:nowrap;${!_bundlePickerGroupFilter?'background:var(--ac);color:#fff':'background:var(--sf2);color:var(--tx2)'}">全部（${list.length}）</span>`
+        + groups.map(g=>`<span onclick="_bundlePickerGroupFilter='${g.key}';updateBundlePickerResults()" style="font-size:12px;padding:5px 12px;border-radius:14px;cursor:pointer;white-space:nowrap;${_bundlePickerGroupFilter===g.key?'background:var(--ac);color:#fff':'background:var(--sf2);color:var(--tx2)'}">${g.label}（${g.items.length}）</span>`).join('');
+    }
+  }
+  const shownGroups = _bundlePickerGroupFilter ? groups.filter(g=>g.key===_bundlePickerGroupFilter) : groups;
+
   const cardHtml = p => {
     const isExpired = tab==='expired';
     return `
@@ -589,8 +645,19 @@ function updateBundlePickerResults() {
       </div>
     </div>`;
   };
-  box.innerHTML = list.length === 0 ? `<div style="color:var(--tx3);padding:20px;text-align:center">${_bundlePickerSearch?'找不到符合的套組':(tab==='active'?'目前無進行中的套組':'沒有已過期的套組（3個月內）')}</div>` :
-    list.map(cardHtml).join('');
+  if(list.length === 0) {
+    box.innerHTML = `<div style="color:var(--tx3);padding:20px;text-align:center">${_bundlePickerSearch?'找不到符合的套組':(tab==='active'?'目前無進行中的套組':'沒有已過期的套組（3個月內）')}</div>`;
+    return;
+  }
+  if(shownGroups.reduce((s,g)=>s+g.items.length,0) === 0) {
+    box.innerHTML = `<div style="color:var(--tx3);padding:20px;text-align:center">這個類型目前沒有符合的套組 — <span style="color:var(--ac);cursor:pointer;text-decoration:underline" onclick="_bundlePickerGroupFilter='';updateBundlePickerResults()">顯示全部類型</span></div>`;
+    return;
+  }
+  // 只有1個分類時直接列表，不重複顯示分類標題；超過1個分類才在每組上方加小標題方便掃視
+  box.innerHTML = shownGroups.map((g,gi)=>`
+    ${groups.length>1?`<div style="font-size:12px;font-weight:600;color:var(--tx3);margin:${gi===0?'0':'12px'} 0 6px;${gi===0?'':'padding-top:8px;border-top:1px solid var(--bd);'}display:flex;align-items:center;gap:6px"><span class="badge ${g.color}" style="font-size:10px">${g.label}</span><span>共 ${g.items.length} 項</span></div>`:''}
+    ${g.items.map(cardHtml).join('')}
+  `).join('');
 }
 window.updateBundlePickerResults = updateBundlePickerResults;
 
