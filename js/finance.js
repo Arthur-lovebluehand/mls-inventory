@@ -382,8 +382,10 @@ function bnRemoveDetailItem(i){ _bnDetailItems.splice(i,1); bnRenderDetailList()
 window.bnAddDetailItem=bnAddDetailItem;
 window.bnRemoveDetailItem=bnRemoveDetailItem;
 
-// ── 同階代理下家分潤：客戶因跟她的上家同階被拉到我方出貨，出貨完成後要把官方分潤原封不動轉給她真正的上家（受益人）──
-// 抓所有「有設定分潤受益人」的客戶底下、已全部出貨、還沒建立過分潤記錄的訂單，用「出貨數量 × 商品官方分潤金額」自動算出應分潤金額
+// ── 同階代理下家分潤：客戶因跟她的上家同階被拉到我方出貨，訂單確認收款後要把官方分潤原封不動轉給她真正的上家（受益人）──
+// 抓所有「有設定分潤受益人」的客戶底下、已確認收款、還沒建立過分潤記錄的訂單，用「訂購數量 × 商品官方分潤金額」自動算出應分潤金額
+// （原本用「全部出貨」當觸發點，2026-09 使用者實測後改成「確認收款」就觸發，不用等出貨完成——所以這裡的數量要用訂購量 qty，不能用 shipped_qty，
+//  出貨前 shipped_qty 在資料庫預設值就是 0（不是 null），用 shipped_qty??qty 會被 0 卡住、金額永遠算成 0）
 async function passthroughPendingRows(){
   const{data:benCusts}=await sb.from('customers').select('customer_no,name,passthrough_beneficiary_no').not('passthrough_beneficiary_no','is',null);
   if(!benCusts||!benCusts.length) return [];
@@ -392,10 +394,10 @@ async function passthroughPendingRows(){
   const{data:benInfo}=await sb.from('customers').select('customer_no,name').in('customer_no',benNos);
   const benNameMap={}; (benInfo||[]).forEach(b=>benNameMap[b.customer_no]=b.name);
   const custBenMap={}; benCusts.forEach(c=>custBenMap[c.customer_no]=c.passthrough_beneficiary_no);
-  const{data:orders}=await sb.from('sales_orders').select('order_no,order_date,actual_ship_date,customer_no,customer_name').eq('ship_status','全部出貨').eq('passthrough_bonus_created',false).in('customer_no',custNos);
+  const{data:orders}=await sb.from('sales_orders').select('order_no,order_date,payment_date,customer_no,customer_name').eq('payment_done',true).eq('passthrough_bonus_created',false).in('customer_no',custNos);
   if(!orders||!orders.length) return [];
   const orderNos=orders.map(o=>o.order_no);
-  const{data:items}=await sb.from('sales_order_items').select('order_no,product_no,product_name,qty,shipped_qty,is_gift').in('order_no',orderNos);
+  const{data:items}=await sb.from('sales_order_items').select('order_no,product_no,product_name,qty,is_gift').in('order_no',orderNos);
   const prodNos=[...new Set((items||[]).filter(i=>!i.is_gift).map(i=>i.product_no).filter(Boolean))];
   let bonusMap={};
   if(prodNos.length){
@@ -408,22 +410,22 @@ async function passthroughPendingRows(){
     let amount=0,missingPrice=false;
     its.forEach(i=>{
       const unitBonus=bonusMap[i.product_no];
-      const qty=i.shipped_qty??i.qty??0;
+      const qty=i.qty||0;
       if(unitBonus==null){ if(qty) missingPrice=true; return; }
       amount+=unitBonus*qty;
     });
-    return{order_no:o.order_no,order_date:o.actual_ship_date||o.order_date,custName:o.customer_name,benName:benNameMap[custBenMap[o.customer_no]]||custBenMap[o.customer_no],amount,missingPrice};
+    return{order_no:o.order_no,order_date:o.payment_date||o.order_date,custName:o.customer_name,benName:benNameMap[custBenMap[o.customer_no]]||custBenMap[o.customer_no],amount,missingPrice};
   });
 }
 async function createPassthroughBonus(orderNo){
   if(!confirm('確定要建立這張訂單的下家分潤記錄嗎？'))return;
-  const{data:order}=await sb.from('sales_orders').select('order_no,order_date,actual_ship_date,customer_no,customer_name').eq('order_no',orderNo).single();
+  const{data:order}=await sb.from('sales_orders').select('order_no,order_date,payment_date,customer_no,customer_name').eq('order_no',orderNo).single();
   if(!order){toast('找不到這張訂單','e');return;}
   const{data:cust}=await sb.from('customers').select('passthrough_beneficiary_no').eq('customer_no',order.customer_no).single();
   const benNo=cust?.passthrough_beneficiary_no;
   if(!benNo){toast('這位客戶目前沒有設定分潤受益人','e');return;}
   const{data:ben}=await sb.from('customers').select('name').eq('customer_no',benNo).single();
-  const{data:items}=await sb.from('sales_order_items').select('product_no,product_name,qty,shipped_qty,is_gift').eq('order_no',orderNo);
+  const{data:items}=await sb.from('sales_order_items').select('product_no,product_name,qty,is_gift').eq('order_no',orderNo);
   const nonGift=(items||[]).filter(i=>!i.is_gift);
   const prodNos=[...new Set(nonGift.map(i=>i.product_no).filter(Boolean))];
   let bonusMap={};
@@ -431,11 +433,11 @@ async function createPassthroughBonus(orderNo){
     const{data:prods}=await sb.from('products').select('product_no,official_bonus_amount').in('product_no',prodNos);
     (prods||[]).forEach(p=>bonusMap[p.product_no]=p.official_bonus_amount);
   }
-  const orderDate=order.actual_ship_date||order.order_date;
+  const orderDate=order.payment_date||order.order_date;
   const detailItems=[]; let total=0;
   nonGift.forEach(i=>{
     const unitBonus=bonusMap[i.product_no];
-    const qty=i.shipped_qty??i.qty??0;
+    const qty=i.qty||0;
     if(unitBonus==null||!qty) return;
     total+=unitBonus*qty;
     detailItems.push({order_no:orderNo,order_date:orderDate,name:i.product_name,unit:unitBonus,qty});
@@ -444,7 +446,7 @@ async function createPassthroughBonus(orderNo){
   const no=await genNo('BN','bonus_records','record_no');
   const{error}=await sb.from('bonus_records').insert({
     record_no:no,record_date:orderDate,direction:'支出',recipient:ben?.name||benNo,type:'分潤',amount:total,
-    payment_done:false,note:`同階代理「${order.customer_name}」訂單 ${orderNo} 出貨完成，官方分潤原封不動轉給下家`,trigger_who:order.customer_name,
+    payment_done:false,note:`同階代理「${order.customer_name}」訂單 ${orderNo} 確認收款，官方分潤原封不動轉給下家`,trigger_who:order.customer_name,
     year_month:ym(orderDate),detail_items:detailItems
   });
   if(error){toast('建立失敗：'+error.message,'e');return;}
@@ -482,7 +484,7 @@ async function bonus(){
     ${passthroughRows.length?`<div class="tc" style="margin-bottom:16px;border:1px solid #ffd54f">
       <div class="tb" style="background:#fff8e1"><span class="tt" style="color:#8d6e00">📋 待建立的下家分潤（${passthroughRows.length} 筆訂單）</span></div>
       <div style="padding:10px 14px">
-        <div style="font-size:12px;color:var(--tx3);margin-bottom:10px">以下訂單的客戶跟她的上家同階，被拉到我方出貨、已經全部出貨完成。官方會給你分潤，記得原封不動轉給下面列出的受益人。金額是用「出貨數量 × 商品的官方分潤金額」自動算的，⚠ 代表有品項還沒設定官方分潤金額（金額可能不完整，記得去商品列表補上）。</div>
+        <div style="font-size:12px;color:var(--tx3);margin-bottom:10px">以下是同階代理客戶、已確認收款的訂單，分潤要轉給右邊列出的受益人。金額用「訂購數量 × 商品官方分潤金額」自動算，⚠ 代表有品項還沒設定官方分潤金額（去商品列表補上即可）。</div>
         <div style="overflow-x:auto"><table class="itb" style="width:100%;min-width:480px">
           <tr><th>訂單號</th><th>日期</th><th>下單客戶</th><th>分潤受益人</th><th>應分潤金額</th><th></th></tr>
           ${passthroughRows.map(r=>`<tr>

@@ -547,9 +547,16 @@ async function confirmPay(no){
   CM(); orders();
 }
 async function dOrder(no){
-  if(!confirm(`確定刪除訂單 ${no}？\n\n此操作會：\n・刪除整張訂單及明細\n・不會回復庫存（請手動調整）\n\n操作記錄將被保留。`))return;
   const{data:o}=await sb.from('sales_orders').select('*').eq('order_no',no).single();
   const{data:its}=await sb.from('sales_order_items').select('*').eq('order_no',no);
+  // 這張單如果已經扣過庫存（建單時扣，或已經記錄過出貨），直接刪除不會把扣掉的庫存加回來——
+  // 正確流程是先「退貨」（會自動回補庫存），刪除單本身從來就不會動庫存。這裡刪除前先判斷、換成更明確的警告文字，
+  // 避免使用者以為刪單跟退貨效果一樣，事後庫存對不起來才發現。
+  const stockTouched = o?.stock_deducted_at_creation===true || (its||[]).some(i=>(i.shipped_qty||0)>0);
+  const msg = stockTouched
+    ? `⚠️ 這張訂單已經扣過庫存了（${o?.stock_deducted_at_creation?'建單時扣的':'已出貨的部分扣的'}）。\n\n直接刪除訂單「不會」把扣掉的庫存加回來，庫存之後會對不起來。\n\n正確做法：先按「退貨」把商品退回（會自動回補庫存），確認庫存沒問題後，要不要再刪除這張單都可以。\n\n如果您很確定要跳過退貨、直接刪除（之後要自己手動調整庫存），請按確定。`
+    : `確定刪除訂單 ${no}？\n\n這張單目前還沒扣過庫存，刪除不會影響庫存。\n操作記錄將被保留。`;
+  if(!confirm(msg))return;
   await sb.from('sales_order_items').delete().eq('order_no',no);
   await sb.from('sales_orders').delete().eq('order_no',no);
   await logAction('delete','sales_orders',no,'刪除銷售訂單 '+no,{order:o,items:its});
