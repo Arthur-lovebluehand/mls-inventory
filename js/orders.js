@@ -160,7 +160,7 @@ async function printOrder(no){
   <button onclick="window.print()" style="float:right;padding:6px 14px;cursor:pointer;margin-bottom:10px">🖨 列印</button>
   <h1>出 貨 單</h1>
   <div class="sub">慢樂仙坊</div>
-  <div class="row"><div><div class="lbl">訂單編號</div><div>${no}</div></div><div><div class="lbl">出貨日期</div><div>${fD(o?.actual_ship_date||o?.order_date)}</div></div></div>
+  <div class="row"><div><div class="lbl">訂單編號</div><div>${no}</div></div><div><div class="lbl">出貨日期</div><div>${fD(o?.actual_ship_date||today())}</div></div></div>
   <div class="row"><div><div class="lbl">客戶</div><div>${o?.customer_name||'—'}</div></div><div><div class="lbl">手機</div><div>${o?.phone||'—'}</div></div></div>
   <div class="row"><div class="lbl">送貨地址</div></div><div>${o?.ship_address||'—'}</div>
   <div class="row"><div><div class="lbl">寄送方式</div><div>${o?.shipping_method||'—'}</div></div><div><div class="lbl">付款方式</div><div>${o?.payment_method||'—'}</div></div></div>
@@ -644,7 +644,10 @@ async function doShipment(no,its){
   const allDone=(updatedIts||[]).every(i=>(i.shipped_qty||0)>=(i.qty||0)+(i.gift_qty||0));
   const partDone=(updatedIts||[]).some(i=>(i.shipped_qty||0)>0);
   const status=allDone?'全部出貨':partDone?'部分出貨':'待出貨';
-  await sb.from('sales_orders').update({ship_status:status,actual_ship_date:allDone?sdt:null}).eq('order_no',no);
+  // 出貨日期一律記錄「這次實際操作出貨記錄當下填的日期」，不管這次是全部出貨還是部分出貨——
+  // 原本只有 allDone 才寫日期、部分出貨會把日期洗回 null，導致「出貨單」列印時抓不到真正的出貨日，
+  // 誤顯示成訂單建立日期（2026-09 使用者發現回報）。
+  await sb.from('sales_orders').update({ship_status:status,actual_ship_date:sdt}).eq('order_no',no);
   toast(stockShort?'⚠️ 出貨記錄已更新，但部分商品庫存不足（已扣至0）':'出貨記錄已更新！');CM();orders();
 }
 async function applyPromo(code, mode, sets) {
