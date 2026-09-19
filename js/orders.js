@@ -408,7 +408,10 @@ async function saveOrder(editNo){
       qty:i.qty||0,
       gift_qty:i.giftQty||0,
       actual_qty:actualOut,
-      shipped_qty: (!editNo && otype==='自用') ? actualOut : undefined,
+      // 新建自用訂單：視同當下已全部出貨。修改既有訂單：延用原本記錄的已出貨數量，
+      // 不能整批刪除重建品項時漏帶，不然出貨進度會被無聲清成0（用 min 夾住，避免使用者把訂購數量
+      // 改少到比已出貨數量還低時，出現「已出貨」比「訂購合計」還多的不合理畫面）。
+      shipped_qty: !editNo ? (otype==='自用'?actualOut:undefined) : Math.min(i.shipped_qty||0,actualOut),
       amount:i.amt||0,
       year_month:ym(dt),
       promo_code:i.promo_code||null,
@@ -444,7 +447,12 @@ async function editOrder(no){
   ]);
   _allProds=pr||[]; _allCusts=cu||[];
   window._editOrderOrig=o||null; // 記住修改前的原始訂單資料，saveOrder() 用來判斷日期欄位有沒有被真的改動過
-  _items=(its||[]).map((i,idx)=>({id:idx+1,pno:i.product_no,_pname:i.product_name||'',qty:i.qty||0,price:i.unit_price||0,giftQty:i.gift_qty||0,amt:i.amount||0}));
+  // 套組資訊（promo_code/bundle_group/bundle_name）跟贈品標記（is_gift）、已出貨進度（shipped_qty）
+  // 一定要一起帶進來，不然修改訂單存檔時會用這份 _items 整批刪除重建品項，
+  // 少帶到的欄位全部變成 null/預設值——這是 2026-09 使用者實測發現的 bug：
+  // 訂單一經修改，明細/出貨單就會失去套組的分組顯示（📦 標題不見了），
+  // 且已經記錄過的出貨進度也會被悄悄清成 0。
+  _items=(its||[]).map((i,idx)=>({id:idx+1,pno:i.product_no,_pname:i.product_name||'',qty:i.qty||0,price:i.unit_price||0,giftQty:i.gift_qty||0,amt:i.amount||0,promo_code:i.promo_code||null,bundle_group:i.bundle_group||null,bundle_name:i.bundle_name||null,is_gift:i.is_gift||false,shipped_qty:i.shipped_qty||0}));
   const custOpts=_allCusts.map(c=>({value:c.customer_no,label:`${c.name} (${c.agent_level||'—'})`,data:c}));
   OM(`修改訂單：${no}`,`
   <div class="fg" style="margin-bottom:13px">

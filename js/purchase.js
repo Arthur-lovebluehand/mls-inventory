@@ -174,7 +174,10 @@ async function loadPOForm(poData,itsData){
     sb.from('vendors').select('vendor_no,name').eq('is_active',true).order('sort_order').order('name'),
   ]);
   _poProds=pr||[]; _vends2=vn||[];
-  if(itsData) _poItems=itsData.map((i,idx)=>({id:idx+1,pno:i.product_no,_pname:i.product_name||'',qty:i.qty||0,price:i.unit_price||0,giftQty:i.gift_qty||0,amt:i.amount||0}));
+  // 套組資訊（promo_code/bundle_group）跟已收貨進度（received_qty）一定要一起帶進來，
+  // 不然修改進貨單存檔時，這份 _poItems 會整批刪除重建品項，少帶到的欄位全部變成 null/0——
+  // 跟銷售訂單修改時會弄丟套組分組顯示、清空出貨進度是同一類 bug（2026-09 修正）。
+  if(itsData) _poItems=itsData.map((i,idx)=>({id:idx+1,pno:i.product_no,_pname:i.product_name||'',qty:i.qty||0,price:i.unit_price||0,giftQty:i.gift_qty||0,amt:i.amount||0,promo_code:i.promo_code||null,bundle_group:i.bundle_group||null,received_qty:i.received_qty||0}));
   else _poItems=[{id:1,pno:'',qty:1,price:0,amt:0}];
   const vOpts=_vends2.map(v=>`<option value="${v.vendor_no}" ${v.name===poData?.vendor_name?'selected':''}>${v.name}</option>`).join('');
   const td=today(), no=poData?.po_no||(await genNo('PO','purchase_orders','po_no'));
@@ -299,6 +302,7 @@ async function savePO(editNo){
   if(its.length){
     await sb.from('purchase_order_items').insert(its.map(i=>{
       const p=_poProds.find(x=>x.product_no===i.pno);
+      const total=(i.qty||0)+(i.giftQty||0);
       return {
         po_no:no, product_no:i.pno, product_name:p?.name||i._pname||i.pno,
         spec:p?.spec, unit_price:i.price||0,
@@ -307,7 +311,10 @@ async function savePO(editNo){
         amount:i.amt||0,
         po_date:dt,
         promo_code:i.promo_code||null,
-        bundle_group:i.bundle_group||null
+        bundle_group:i.bundle_group||null,
+        // 修改既有進貨單：延用原本已收貨數量（用 min 夾住，避免訂購數量改少到比已收貨還低時
+        // 出現「已收」比「應收總計」還多的不合理畫面）；新增進貨單一律從0開始，不用特別帶。
+        received_qty: editNo ? Math.min(i.received_qty||0,total) : undefined
       };
     }));
     // 庫存由「收貨記錄」按鈕更新，建單時不自動增加
