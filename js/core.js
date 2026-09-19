@@ -95,11 +95,16 @@ function OM(title,body,foot,lg){
 // ── 商品瀏覽選擇器（依品牌分頁籤點選，給不方便打字的人多一種選商品的方式）──
 // 用法：openProductBrowser(商品陣列, p=>{ ...拿到選到的商品 p 做事... })
 // 商品陣列直接沿用呼叫端現有的資料（例如 _allProds/_poProds/_loanProds），不會另外重新查詢。
-let _pbList=[], _pbBrand='', _pbOnPick=null;
+let _pbList=[], _pbBrand='', _pbOnPick=null, _pbCollapsed=new Set();
 function openProductBrowser(prods, onPick){
   _pbList=(prods||[]).filter(p=>p.is_active!==false);
   _pbOnPick=onPick;
-  const brands=[...new Set(_pbList.map(p=>p.source||'未分類'))].sort((a,b)=>a==='未分類'?1:b==='未分類'?-1:a.localeCompare(b,'zh-Hant'));
+  _pbCollapsed=new Set();
+  // 品牌頁籤直接沿用「品牌管理」設定的排序、且只列啟用中的品牌（跟查價區的做法一致）；
+  // 商品上的品牌文字如果對不到任何啟用中的品牌（品牌被停用、或打字誤植），歸到「其他」頁籤，才不會憑空消失找不到
+  const knownBrands=(_brandNames||[]).filter(b=>_pbList.some(p=>p.source===b));
+  const hasOther=_pbList.some(p=>!p.source||!(_brandNames||[]).includes(p.source));
+  const brands=hasOther?[...knownBrands,'其他']:knownBrands;
   _pbBrand=brands[0]||'';
   OM2('瀏覽商品選擇（依品牌）', `
     <div style="margin-bottom:10px"><input id="pb-q" type="text" placeholder="也可以直接打字搜尋（全品牌）…" oninput="pbFilterList(this.value)" autocomplete="off" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
@@ -112,6 +117,7 @@ function openProductBrowser(prods, onPick){
 }
 function pbSwitchTab(b){
   _pbBrand=b;
+  _pbCollapsed=new Set();
   document.querySelectorAll('#pb-tabs [data-pb-tab]').forEach(el=>{
     const active=el.dataset.pbTab===b;
     el.style.background=active?'var(--ac)':'var(--sf2)';
@@ -121,18 +127,46 @@ function pbSwitchTab(b){
   pbRenderList();
 }
 function pbFilterList(q){ pbRenderList(q); }
+function pbItemRow(p, showBrand){
+  return `<div onclick="pbPick('${p.product_no}')" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bd)"
+    onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
+    <div>
+      <div style="font-size:13px;font-weight:500">${p.name}${p.spec?` <span class="badge bb" style="font-size:11px;margin-left:4px">${p.spec}</span>`:''}</div>
+      <div style="font-size:11px;color:var(--tx3)">${p.product_no||''}${p.stock!=null?' · 庫存 '+p.stock:''}</div>
+    </div>
+    ${showBrand&&p.source?`<span class="badge bgr" style="font-size:10px;flex-shrink:0;margin-left:8px">${p.source}</span>`:''}
+  </div>`;
+}
 function pbRenderList(q){
   const box=$('pb-list'); if(!box) return;
-  const items=q?_pbList.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)||(p.spec||'').includes(q)):_pbList.filter(p=>(p.source||'未分類')===_pbBrand);
-  box.innerHTML=items.map(p=>`
-    <div onclick="pbPick('${p.product_no}')" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bd)"
-      onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
-      <div>
-        <div style="font-size:13px;font-weight:500">${p.name}${p.spec?` <span class="badge bb" style="font-size:11px;margin-left:4px">${p.spec}</span>`:''}</div>
-        <div style="font-size:11px;color:var(--tx3)">${p.product_no||''}${p.stock!=null?' · 庫存 '+p.stock:''}</div>
+  if(q){
+    const items=_pbList.filter(p=>p.name.includes(q)||(p.product_no||'').includes(q)||(p.spec||'').includes(q));
+    box.innerHTML=items.map(p=>pbItemRow(p,true)).join('')||'<div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">沒有符合的商品</div>';
+    return;
+  }
+  const isOther=_pbBrand==='其他';
+  const items=_pbList.filter(p=>isOther?(!p.source||!(_brandNames||[]).includes(p.source)):p.source===_pbBrand);
+  // 商品一多時再依「商品類別」分組，每組標題可以點擊收合／展開，不用整頁往下捲著找
+  const catGroups={};
+  items.forEach(p=>{ const c=p.category||'未分類'; (catGroups[c]=catGroups[c]||[]).push(p); });
+  const cats=Object.keys(catGroups).sort((a,b)=>a==='未分類'?1:b==='未分類'?-1:a.localeCompare(b,'zh-Hant'));
+  if(cats.length<=1){
+    box.innerHTML=items.map(p=>pbItemRow(p,false)).join('')||'<div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">此品牌尚無商品</div>';
+    return;
+  }
+  box.innerHTML=cats.map(c=>{
+    const collapsed=_pbCollapsed.has(c);
+    return `<div>
+      <div onclick="pbToggleCat('${c.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--sf2);cursor:pointer;font-size:12px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bd)">
+        <span>${collapsed?'▶':'▼'}</span><span>${c}（${catGroups[c].length}）</span>
       </div>
-      ${p.source&&q?`<span class="badge bgr" style="font-size:10px;flex-shrink:0;margin-left:8px">${p.source}</span>`:''}
-    </div>`).join('')||'<div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">沒有符合的商品</div>';
+      ${collapsed?'':catGroups[c].map(p=>pbItemRow(p,false)).join('')}
+    </div>`;
+  }).join('');
+}
+function pbToggleCat(c){
+  if(_pbCollapsed.has(c)) _pbCollapsed.delete(c); else _pbCollapsed.add(c);
+  pbRenderList();
 }
 function pbPick(pno){
   const p=_pbList.find(x=>x.product_no===pno);
@@ -142,6 +176,7 @@ function pbPick(pno){
 }
 window.openProductBrowser=openProductBrowser;
 window.pbSwitchTab=pbSwitchTab;
+window.pbToggleCat=pbToggleCat;
 window.pbFilterList=pbFilterList;
 window.pbPick=pbPick;
 
