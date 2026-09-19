@@ -382,7 +382,11 @@ async function saveOrder(editNo){
   // 修改模式下，日期欄位如果沒被使用者實際改動過，就不要送出去覆蓋資料庫（避免任何前置渲染上的小差異
   // 把原本正確的日期洗掉）；只有真的跟原始值不一樣時才更新，比照 payment_done/payment_date 的做法。
   const origDate = editNo ? fD(window._editOrderOrig?.order_date) : null;
-  const payload={order_date:(editNo && dt===origDate)?undefined:dt,customer_name:nm,phone:v('ophone'),ship_address:v('oaddr'),payment_method:v('opay'),shipping_method:v('oshp'),shipping_fee:fee,note:v('onote'),agent_level:v('oalv'),order_type:otype,invoice_no:v('oinv')||null,subtotal:sub,tax,total,payment_done:editNo?undefined:(otype==='自用'?true:false),payment_date:editNo?undefined:(otype==='自用'?dt:null),products_summary:its.map(i=>(_allProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、')};
+  // year_month 這裡一定要設：這是銷售單「表頭」自己的欄位（跟品項列各自的 year_month 是分開的兩份資料），
+  // 2026-09 發現這欄位從系統上線以來就從沒在這裡寫入過，只有品項列有寫，導致總覽儀表板「月度收支」的
+  // 收入欄位一路是空的（那個小工具直接讀這個欄位分月，沒有像正式財務報表那樣改抓收款日期）。
+  // 不管 order_date 這次是否有改動，year_month 都照 dt 重新算一次寫進去，順便修好舊資料缺這個欄位的問題。
+  const payload={order_date:(editNo && dt===origDate)?undefined:dt,year_month:ym(dt),customer_name:nm,phone:v('ophone'),ship_address:v('oaddr'),payment_method:v('opay'),shipping_method:v('oshp'),shipping_fee:fee,note:v('onote'),agent_level:v('oalv'),order_type:otype,invoice_no:v('oinv')||null,subtotal:sub,tax,total,payment_done:editNo?undefined:(otype==='自用'?true:false),payment_date:editNo?undefined:(otype==='自用'?dt:null),products_summary:its.map(i=>(_allProds.find(p=>p.product_no===i.pno)?.name||i.pno)).join('、')};
   const custNoEl=document.getElementById('ss-val-cust');
   if(custNoEl) payload.customer_no=custNoEl.value||null; // 只有新增畫面才有搜尋框，避免修改時誤把已存的客戶編號覆蓋掉
   if(editNo){

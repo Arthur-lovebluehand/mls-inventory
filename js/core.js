@@ -360,14 +360,21 @@ async function dashboard(){
       sb.from('products').select('name,spec,stock').lte('stock',5).gt('stock',0).order('stock').limit(8),
       sb.from('products').select('name,spec').eq('stock',0).not('product_no','is',null).limit(8),
       sb.from('sales_orders').select('order_no,order_date,customer_name,total,payment_done').order('order_date',{ascending:false}).limit(6),
-      sb.from('sales_orders').select('year_month,total,payment_done').not('year_month','is',null),
+      sb.from('sales_orders').select('year_month,order_date,payment_date,total,payment_done'),
       sb.from('purchase_orders').select('year_month,total').not('year_month','is',null),
     ]);
     const oos=r5.data||[],ls=r4.data||[],rec=r6.data||[];
     // 從銷售和進貨直接計算月度收支
     const _normYM=ym=>ym?ym.replace(/\//g,'-').replace(/^(\d{4})-(\d)$/,'$1-0$2'):'';
     const _monMap={};
-    (r7.data||[]).forEach(o=>{const k=_normYM(o.year_month);if(!k)return;_monMap[k]=_monMap[k]||{in:0,out:0};if(o.payment_done)_monMap[k].in+=Number(o.total||0);});
+    // 已收款訂單一律用「收款日期」的月份分類，未收款才退回訂單自己的 year_month——
+    // 跟「財務報表」（finance.js accounts()）用的是同一套規則，不要只讀 sales_orders.year_month
+    // 就把已收款訂單分月：這欄位以前在建立/修改訂單時沒有正確寫入，會讓這裡看起來一路是0，
+    // 但正式財務報表其實是對的（因為它是直接照收款日期分月，沒有這個依賴）。
+    (r7.data||[]).forEach(o=>{
+      const k=o.payment_done?_normYM((o.payment_date||o.order_date||'').slice(0,7)):_normYM(o.year_month);
+      if(!k)return;_monMap[k]=_monMap[k]||{in:0,out:0};if(o.payment_done)_monMap[k].in+=Number(o.total||0);
+    });
     (r8.data||[]).forEach(p=>{const k=_normYM(p.year_month);if(!k)return;_monMap[k]=_monMap[k]||{in:0,out:0};_monMap[k].out+=Number(p.total||0);});
     const mon=Object.entries(_monMap).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6).map(([k,v])=>({month:k,income:v.in,expense:v.out,total:v.in-v.out}));
     $('main').innerHTML=`
