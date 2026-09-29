@@ -527,6 +527,7 @@ async function bonus(){
           <td><div style="display:flex;gap:3px">
             <button class="btn btn-s" onclick="showBonus('${b.record_no}')">查看</button>
             <button class="btn btn-s" onclick="editBonus('${b.record_no}')">編輯</button>
+            <button class="btn btn-s" onclick="quickInvoiceBN('${b.record_no}')">發票</button>
             <button class="btn btn-s ${b.payment_done?'':'btn-p'}" onclick="toggleBonus('${b.id}',${b.payment_done},'${b.direction}')">${b.payment_done?'取消':(b.direction==='收入'?'收款':'發放')}</button>
             <button class="btn btn-s btn-r" onclick="dBonus('${b.id}')">刪</button>
           </div></td>
@@ -859,9 +860,29 @@ async function showBonus(no){
   ${Array.isArray(b.detail_items)&&b.detail_items.length?`<div class="sh">明細（佐證依據）</div>${bnDetailViewHtml(b.detail_items)}`:''}
   `,
   `<button class="btn" onclick="CM()">關閉</button>
+   <button class="btn" onclick="CM();quickInvoiceBN('${no}')">補發票</button>
    <button class="btn" onclick="editBonus('${no}')">編輯</button>`
   );
 }
+// 補發票號碼（快速編輯）：只更新 bonus_records.invoice_no 這一個欄位，理由跟進貨單／銷售訂單／
+// 服務訂單的 quickInvoice 系列一樣——不用為了補一個發票號碼打開整張記錄的編輯表單
+// （2026-09 新增；bonus_records 本身沒有品項子表，不像訂單/進貨單有「整批刪除重建」的風險，
+// 但一樣提供這個輕量入口方便使用者，不用每次都走「編輯」）。
+async function quickInvoiceBN(no){
+  const {data:b}=await sb.from('bonus_records').select('record_no,invoice_no').eq('record_no',no).single();
+  OM(`補發票號碼：${no}`,
+    fi('qinvbn','發票號碼','text',b?.invoice_no||''),
+    `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveQuickInvoiceBN('${no}')">儲存</button>`
+  );
+}
+async function saveQuickInvoiceBN(no){
+  const inv=v('qinvbn')?.trim()||null;
+  const {error}=await sb.from('bonus_records').update({invoice_no:inv}).eq('record_no',no);
+  if(error){toast('儲存失敗：'+error.message,'e');return;}
+  toast('發票號碼已更新！');CM();bonus();
+}
+window.quickInvoiceBN=quickInvoiceBN;
+window.saveQuickInvoiceBN=saveQuickInvoiceBN;
 async function editBonus(no){
   const{data:b}=await sb.from('bonus_records').select('*').eq('record_no',no).single();
   if(!b){toast('找不到記錄','e');return;}
