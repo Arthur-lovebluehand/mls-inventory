@@ -489,7 +489,7 @@ async function bonus(){
     </div>
     <div class="al al-w" style="font-size:12px">
       <b>獎金/分潤記帳建議：</b>每次收到獎金或需發放分潤時，在此新增一筆記錄，填寫對象、金額、類型（分潤/推薦獎金/層碰獎金/其他）。
-      發放完成後勾選「已發放」，財務月結算時此處合計即為當月獎金支出。
+      我方是收入方（上游分潤給我們）才需要填發票號碼，支出方向（我方分潤給下家）不用開發票。完成後按下「收款」或「發放」，財務月結算時此處合計即為當月獎金收支。
     </div>
     ${passthroughRows.length?`<div class="tc" style="margin-bottom:16px;border:1px solid #ffd54f">
       <div class="tb" style="background:#fff8e1"><span class="tt" style="color:#8d6e00">📋 待建立的下家分潤（${passthroughRows.length} 筆訂單）</span></div>
@@ -527,7 +527,7 @@ async function bonus(){
           <td><div style="display:flex;gap:3px">
             <button class="btn btn-s" onclick="showBonus('${b.record_no}')">查看</button>
             <button class="btn btn-s" onclick="editBonus('${b.record_no}')">編輯</button>
-            <button class="btn btn-s ${b.payment_done?'':'btn-p'}" onclick="toggleBonus('${b.id}',${b.payment_done})">${b.payment_done?'取消':'發放'}</button>
+            <button class="btn btn-s ${b.payment_done?'':'btn-p'}" onclick="toggleBonus('${b.id}',${b.payment_done},'${b.direction}')">${b.payment_done?'取消':(b.direction==='收入'?'收款':'發放')}</button>
             <button class="btn btn-s btn-r" onclick="dBonus('${b.id}')">刪</button>
           </div></td>
         </tr>`).join('')}
@@ -563,7 +563,8 @@ async function addBonus(){
     <div class="fl"><label>金額（收入方向請填含稅實收總額）</label><input id="f-bamt" type="number" autocomplete="off" oninput="bonusCalcTax()"></div>
     ${payMethodSel('bpay','')}
     <div class="fl fw" id="bonus-tax-calc" style="display:none;font-size:12px;color:var(--tx3);background:var(--sf2);padding:8px 10px;border-radius:var(--r)"></div>
-    ${fi('binv','發票號碼','text')} ${fi('bpdt','發放/收款日期','date')}
+    <div id="bonus-invoice-wrap" style="display:none">${fi('binv','發票號碼','text')}</div>
+    ${fi('bpdt','發放/收款日期','date')}
     <div class="fl fw">${bnDetailSection()}</div>
     <div class="fl fw">${fa('bnote','備註')}</div>
   </div>`,
@@ -578,7 +579,14 @@ async function saveBonus(){
   if(error){toast('新增失敗：'+error.message,'e');return;}
   toast('記錄已新增');CM();bonus();
 }
-async function toggleBonus(id,done){await sb.from('bonus_records').update({payment_done:!done,payment_date:!done?today():null}).eq('id',id);toast(!done?'已標記發放':'已取消');bonus();}
+// 「發放」跟「收款」是同一個 payment_done 狀態的兩種說法：我們是支出方（分潤給人）時是「發放」，
+// 我們是收入方（上游分潤給我們）時其實是「收款」，按鈕文字要照 direction 顯示對應的字，不能兩種情況都寫死「發放」
+// （2026-09 使用者反映收入方向的記錄按鈕也寫「發放」，語意不對，已修正成依方向顯示）。
+async function toggleBonus(id,done,direction){
+  await sb.from('bonus_records').update({payment_done:!done,payment_date:!done?today():null}).eq('id',id);
+  toast(!done?(direction==='收入'?'已標記收款':'已標記發放'):'已取消');
+  bonus();
+}
 async function dBonus(id){
   if(!confirm('確定刪除此記錄？'))return;
   // 如果這筆是「同階代理下家分潤」自動建立的（有記錄 passthrough_order_no），刪除後要把來源訂單的
@@ -779,9 +787,13 @@ function toggleBonusFields(val){
   const inp = document.getElementById('f-brec');
   if(lbl) lbl.textContent = isIncome ? '關聯人員（可留空）' : '支付對象（誰收款）*';
   if(inp) inp.placeholder = isIncome ? '選填，通常用「因誰而收」即可' : '收款人姓名';
-  // 收入方向（上游分潤給我）才需要開發票給上家，才顯示稅額試算；支出方向不用
+  // 收入方向（上游分潤給我）才需要開發票給上家，才顯示稅額試算、也才需要填發票號碼；
+  // 支出方向（我方分潤給下家）是我方付錢出去，不用開發票，發票號碼欄位不相關，直接隱藏不顯示
+  // （2026-09 使用者反映：我們是收款方時要開發票，發放方時不用，發票號碼欄位應該跟著方向自動顯示/隱藏）
   const taxBox = document.getElementById('bonus-tax-calc');
   if(taxBox) taxBox.style.display = isIncome ? 'block' : 'none';
+  const invField = document.getElementById('bonus-invoice-wrap');
+  if(invField) invField.style.display = isIncome ? 'block' : 'none';
   if(isIncome) bonusCalcTax();
 }
 // 收入方向的金額欄位填的是「含稅實收總額」（發票上的總計），這裡直接反推未稅金額跟稅額，
@@ -819,7 +831,8 @@ function bonusForm(b){
     <div class="fl"><label>金額（收入方向請填含稅實收總額）</label><input id="f-bamt" type="number" value="${b.amount||''}" autocomplete="off" oninput="bonusCalcTax()"></div>
     ${payMethodSel('bpay',b.payment_method||'')}
     <div class="fl fw" id="bonus-tax-calc" style="display:${isIncome?'block':'none'};font-size:12px;color:var(--tx3);background:var(--sf2);padding:8px 10px;border-radius:var(--r)"></div>
-    ${fi('binv','發票號碼','text',b.invoice_no)} ${fi('bpdt','發放/收款日期','date',b.payment_date)}
+    <div id="bonus-invoice-wrap" style="display:${isIncome?'block':'none'}">${fi('binv','發票號碼','text',b.invoice_no)}</div>
+    ${fi('bpdt','發放/收款日期','date',b.payment_date)}
     <div class="fl fw">${bnDetailSection()}</div>
     <div class="fl fw">${fa('bnote','備註',b.note)}</div>
   </div>`;
