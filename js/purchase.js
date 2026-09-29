@@ -93,6 +93,7 @@ async function purchase(){
           <td><div style="display:flex;gap:3px">
             <button class="btn btn-s" onclick="showPO('${p.po_no}')">明細</button>
             <button class="btn btn-s" onclick="editPO('${p.po_no}')">修改</button>
+            <button class="btn btn-s" onclick="quickInvoicePO('${p.po_no}')">發票</button>
             <button class="btn btn-s" onclick="recordReceipt('${p.po_no}')">收貨記錄</button>
             <button class="btn btn-s" style="color:var(--am);border-color:var(--am)" onclick="returnPO('${p.po_no}')">退貨</button>
             <button class="btn btn-s btn-r" onclick="deletePO('${p.po_no}')">刪除</button>
@@ -165,9 +166,28 @@ async function showPO(no){
   </div>`,
   `<button class="btn" onclick="CM()">關閉</button>
    <button class="btn" onclick="CM();editPO('${no}')">修改</button>
+   <button class="btn" onclick="CM();quickInvoicePO('${no}')">補發票</button>
    <button class="btn btn-p" onclick="CM();recordReceipt('${no}')">📦 收貨記錄</button>
    <button class="btn" style="color:var(--am);border-color:var(--am)" onclick="CM();returnPO('${no}')">退貨</button>`);
 }
+// 補發票號碼（快速編輯）：只更新 purchase_orders.invoice_no 這一個欄位，完全不碰 purchase_order_items，
+// 避免每次補發票號碼都要走「修改進貨單」整批刪除重建品項的流程，把套組分組/已收貨進度洗掉
+// （2026-09：使用者反映幾乎每張單建立後都要補發票號碼，用完整修改流程風險太高，改成獨立輕量入口）。
+async function quickInvoicePO(no){
+  const {data:po}=await sb.from('purchase_orders').select('po_no,invoice_no').eq('po_no',no).single();
+  OM(`補發票號碼：${no}`,
+    fi('qinvpo','發票號碼','text',po?.invoice_no||''),
+    `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveQuickInvoicePO('${no}')">儲存</button>`
+  );
+}
+async function saveQuickInvoicePO(no){
+  const inv=v('qinvpo')?.trim()||null;
+  const {error}=await sb.from('purchase_orders').update({invoice_no:inv}).eq('po_no',no);
+  if(error){toast('儲存失敗：'+error.message,'e');return;}
+  toast('發票號碼已更新！');CM();purchase();
+}
+window.quickInvoicePO=quickInvoicePO;
+window.saveQuickInvoicePO=saveQuickInvoicePO;
 async function loadPOForm(poData,itsData){
   const[{data:pr},{data:vn}]=await Promise.all([
     sb.from('products').select('product_no,name,spec,cost,source,stock,category').eq('is_active',true).order('product_no'),

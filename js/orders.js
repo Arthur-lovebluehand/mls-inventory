@@ -42,6 +42,7 @@ async function orders(){
             <td><div style="display:flex;gap:3px">
               <button class="btn btn-s" onclick="showOrder('${o.order_no}')">明細</button>
               <button class="btn btn-s" onclick="editOrder('${o.order_no}')">修改</button>
+              <button class="btn btn-s" onclick="quickInvoiceSO('${o.order_no}')">發票</button>
               <button class="btn btn-s" onclick="recordShipment('${o.order_no}')">出貨記錄</button>
               <button class="btn btn-s" onclick="printOrder('${o.order_no}')">列印</button>
               <button class="btn btn-s" onclick="togglePay('${o.order_no}',${o.payment_done})">${o.payment_done?'取消收款':'標記收款'}</button>
@@ -125,10 +126,29 @@ async function showOrder(no){
     <span>淨利</span><span class="num" style="text-align:right">${o?.total_profit?'$'+Math.round(Number(o.total_profit)).toLocaleString('zh-TW'):'—'}</span>
   </div>`,
   `<button class="btn" onclick="CM()">關閉</button>
+   <button class="btn" onclick="CM();quickInvoiceSO('${no}')">補發票</button>
    <button class="btn" onclick="printOrder('${no}')">🖨 列印出貨單</button>
    ${o?.is_return?'<span class="badge br2" style="padding:8px 12px">已退貨</span>':'<button class="btn btn-r" style="background:var(--am);border-color:var(--am)" onclick="startReturn(this.dataset.no)" data-no="'+no+'">↩ 退貨</button>'}
    <button class="btn btn-r" onclick="dOrder('${no}')">刪除</button>`);
 }
+// 補發票號碼（快速編輯）：只更新 sales_orders.invoice_no 這一個欄位，完全不碰 sales_order_items，
+// 避免月底統一補發票號碼時，每張都要走「修改訂單」整批刪除重建品項的流程，把套組分組/出貨進度洗掉
+// （2026-09：跟進貨單同一個道理，見 purchase.js 的 quickInvoicePO）。
+async function quickInvoiceSO(no){
+  const {data:o}=await sb.from('sales_orders').select('order_no,invoice_no').eq('order_no',no).single();
+  OM(`補發票號碼：${no}`,
+    fi('qinvso','發票號碼','text',o?.invoice_no||''),
+    `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveQuickInvoiceSO('${no}')">儲存</button>`
+  );
+}
+async function saveQuickInvoiceSO(no){
+  const inv=v('qinvso')?.trim()||null;
+  const {error}=await sb.from('sales_orders').update({invoice_no:inv}).eq('order_no',no);
+  if(error){toast('儲存失敗：'+error.message,'e');return;}
+  toast('發票號碼已更新！');CM();orders();
+}
+window.quickInvoiceSO=quickInvoiceSO;
+window.saveQuickInvoiceSO=saveQuickInvoiceSO;
 async function printOrder(no){
   const[{data:o},{data:its}]=await Promise.all([
     sb.from('sales_orders').select('*').eq('order_no',no).single(),
