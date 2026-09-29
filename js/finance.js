@@ -489,7 +489,7 @@ async function bonus(){
     </div>
     <div class="al al-w" style="font-size:12px">
       <b>獎金/分潤記帳建議：</b>每次收到獎金或需發放分潤時，在此新增一筆記錄，填寫對象、金額、類型（分潤/推薦獎金/層碰獎金/其他）。
-      我方是收入方（上游分潤給我們）才需要填發票號碼，支出方向（我方分潤給下家）不用開發票。完成後按下「收款」或「發放」，財務月結算時此處合計即為當月獎金收支。
+      發票號碼是否要填看對方是不是會開發票的營業人（收入方向是上家開給我方；支出方向如果下家本身是店家/公司行號，對方也會開發票給我方），不是單純看方向決定。完成後按下「收款」或「發放」，財務月結算時此處合計即為當月獎金收支。
     </div>
     ${passthroughRows.length?`<div class="tc" style="margin-bottom:16px;border:1px solid #ffd54f">
       <div class="tb" style="background:#fff8e1"><span class="tt" style="color:#8d6e00">📋 待建立的下家分潤（${passthroughRows.length} 筆訂單）</span></div>
@@ -563,8 +563,7 @@ async function addBonus(){
     <div class="fl"><label>金額（收入方向請填含稅實收總額）</label><input id="f-bamt" type="number" autocomplete="off" oninput="bonusCalcTax()"></div>
     ${payMethodSel('bpay','')}
     <div class="fl fw" id="bonus-tax-calc" style="display:none;font-size:12px;color:var(--tx3);background:var(--sf2);padding:8px 10px;border-radius:var(--r)"></div>
-    <div id="bonus-invoice-wrap" style="display:none">${fi('binv','發票號碼','text')}</div>
-    ${fi('bpdt','發放/收款日期','date')}
+    ${fi('binv','發票號碼','text')} ${fi('bpdt','發放/收款日期','date')}
     <div class="fl fw">${bnDetailSection()}</div>
     <div class="fl fw">${fa('bnote','備註')}</div>
   </div>`,
@@ -787,13 +786,12 @@ function toggleBonusFields(val){
   const inp = document.getElementById('f-brec');
   if(lbl) lbl.textContent = isIncome ? '關聯人員（可留空）' : '支付對象（誰收款）*';
   if(inp) inp.placeholder = isIncome ? '選填，通常用「因誰而收」即可' : '收款人姓名';
-  // 收入方向（上游分潤給我）才需要開發票給上家，才顯示稅額試算、也才需要填發票號碼；
-  // 支出方向（我方分潤給下家）是我方付錢出去，不用開發票，發票號碼欄位不相關，直接隱藏不顯示
-  // （2026-09 使用者反映：我們是收款方時要開發票，發放方時不用，發票號碼欄位應該跟著方向自動顯示/隱藏）
+  // 收入方向（上游分潤給我）才需要開發票給上家，才顯示稅額試算；支出方向不用試算稅額。
+  // 發票號碼欄位兩個方向都留著（2026-09 一度改成只有收入方向才顯示，但使用者想到：支出方向如果
+  // 下家本身是店家/公司行號，對方也會開發票給我方報稅，所以支出方向一樣可能用得到這個欄位，
+  // 不能只看方向就決定要不要顯示——是否需要發票取決於「對方是不是會開發票的營業人」，不是單純看方向）
   const taxBox = document.getElementById('bonus-tax-calc');
   if(taxBox) taxBox.style.display = isIncome ? 'block' : 'none';
-  const invField = document.getElementById('bonus-invoice-wrap');
-  if(invField) invField.style.display = isIncome ? 'block' : 'none';
   if(isIncome) bonusCalcTax();
 }
 // 收入方向的金額欄位填的是「含稅實收總額」（發票上的總計），這裡直接反推未稅金額跟稅額，
@@ -831,8 +829,7 @@ function bonusForm(b){
     <div class="fl"><label>金額（收入方向請填含稅實收總額）</label><input id="f-bamt" type="number" value="${b.amount||''}" autocomplete="off" oninput="bonusCalcTax()"></div>
     ${payMethodSel('bpay',b.payment_method||'')}
     <div class="fl fw" id="bonus-tax-calc" style="display:${isIncome?'block':'none'};font-size:12px;color:var(--tx3);background:var(--sf2);padding:8px 10px;border-radius:var(--r)"></div>
-    <div id="bonus-invoice-wrap" style="display:${isIncome?'block':'none'}">${fi('binv','發票號碼','text',b.invoice_no)}</div>
-    ${fi('bpdt','發放/收款日期','date',b.payment_date)}
+    ${fi('binv','發票號碼','text',b.invoice_no)} ${fi('bpdt','發放/收款日期','date',b.payment_date)}
     <div class="fl fw">${bnDetailSection()}</div>
     <div class="fl fw">${fa('bnote','備註',b.note)}</div>
   </div>`;
