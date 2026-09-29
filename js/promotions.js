@@ -390,10 +390,16 @@ async function saveBatchBigSmall() {
     try {
       const code = await genPromoNo();
       const sameGift = row.sameGift || 0;
+      // 「買大送小」這個字面意思是「同一個商品、買大size送小size」，只有買的商品跟送的商品
+      // 名稱完全相同（規格/spec 是分開存的欄位，名稱相同代表同一條產品線只是尺寸不同）時才適用；
+      // 如果送的其實是完全不同的商品，硬套「買大送小」這四個字語意是錯的，要照實際商品名稱命名
+      // （2026-09：使用者反映常常是送不同商品，不該每次都自動塞「買大送小」文字，要自動判斷）。
+      const isSizeVariant = row.smallPno && row.bigName === row.smallName;
       let nameSuffix;
-      if (sameGift > 0 && row.smallPno) nameSuffix = ` 買${row.bigQty}送${sameGift}+加贈旅行組`;
+      if (sameGift > 0 && row.smallPno) nameSuffix = ` 買${row.bigQty}送${sameGift}+加贈${row.smallName}`;
       else if (sameGift > 0) nameSuffix = ` 買${row.bigQty}送${sameGift}`;
-      else nameSuffix = ' 買大送小';
+      else if (isSizeVariant) nameSuffix = ' 買大送小';
+      else nameSuffix = ` 加贈${row.smallName}`;
       const name = (prefix ? prefix + '_' : '') + row.bigName + nameSuffix;
       const { error: pErr } = await sb.from('promotions').insert({
         promo_code: code, name, type: buyGetTypeName,

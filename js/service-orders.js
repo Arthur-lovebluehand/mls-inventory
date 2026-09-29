@@ -34,7 +34,10 @@ async function svcOrders() {
         <td>${o.customer_name||'—'}</td>
         <td class="num">${fM(o.total)}</td>
         <td><span style="font-size:11px">${o.payment_method||''}</span></td>
-        <td><button class="btn btn-s" onclick="svcShowOrder('${o.order_no}')">明細</button></td>
+        <td><div style="display:flex;gap:3px">
+          <button class="btn btn-s" onclick="svcShowOrder('${o.order_no}')">明細</button>
+          <button class="btn btn-s" onclick="quickInvoiceSV('${o.order_no}')">發票</button>
+        </div></td>
       </tr>`).join('')||`<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">${svcOrderSearch?'查無符合的訂單':'尚無記錄'}</td></tr>`}
     </table></div>
   </div>
@@ -69,6 +72,7 @@ async function svcShowOrder(no) {
     <div><span style="color:var(--tx3)">客戶：</span>${o.customer_name||'—'}</div>
     <div><span style="color:var(--tx3)">付款：</span>${o.payment_method||''}</div>
     <div><span style="color:var(--tx3)">儲值扣：</span>${fM(o.paid_by_credit)}</div>
+    <div><span style="color:var(--tx3)">發票號碼：</span><span style="font-family:monospace">${o.invoice_no||'—'}</span></div>
     ${txBalance!=null?`<div style="grid-column:1/-1"><span style="color:var(--tx3)">扣款帳戶（${walletLabel}）本筆後餘額：</span><b style="color:${txBalance>0?'var(--ac)':'var(--rd)'}">${fM(txBalance)}</b></div>`:''}
     ${curBalance!=null?`<div style="grid-column:1/-1;font-size:12px;color:var(--tx3)">${walletLabel}帳戶目前（現在）餘額：${fM(curBalance)}</div>`:''}
   </div>
@@ -98,11 +102,30 @@ async function svcShowOrder(no) {
     <span style="color:var(--tx3);font-weight:600">備註：</span>${o.note}
   </div>`:''}`,
   `<button class="btn" onclick="CM()">關閉</button>
+   <button class="btn" onclick="CM();quickInvoiceSV('${no}')">補發票</button>
    <button class="btn btn-p" onclick="CM();svcNewOrder('${no}')">修改</button>
    <button class="btn btn-r" onclick="deleteSvcOrder('${no}')">刪除</button>`);
 }
 
 window.svcShowOrder    = svcShowOrder;
+// 補發票號碼（快速編輯）：只更新 service_orders.invoice_no 這一個欄位，完全不碰 service_order_items，
+// 理由跟進貨單／銷售訂單的 quickInvoicePO／quickInvoiceSO 一樣——避免補發票號碼要走「修改」整批
+// 刪除重建品項的流程（2026-09 新增；同時新增 service_orders.invoice_no 欄位，原本沒有這個欄位）。
+async function quickInvoiceSV(no){
+  const {data:o}=await sb.from('service_orders').select('order_no,invoice_no').eq('order_no',no).single();
+  OM(`補發票號碼：${no}`,
+    fi('qinvsv','發票號碼','text',o?.invoice_no||''),
+    `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveQuickInvoiceSV('${no}')">儲存</button>`
+  );
+}
+async function saveQuickInvoiceSV(no){
+  const inv=v('qinvsv')?.trim()||null;
+  const {error}=await sb.from('service_orders').update({invoice_no:inv}).eq('order_no',no);
+  if(error){toast('儲存失敗：'+error.message,'e');return;}
+  toast('發票號碼已更新！');CM();svcOrders();
+}
+window.quickInvoiceSV=quickInvoiceSV;
+window.saveQuickInvoiceSV=saveQuickInvoiceSV;
 async function svcNewOrder(editNo) {
   let existingOrder=null, existingItems=[];
   if(editNo) {
