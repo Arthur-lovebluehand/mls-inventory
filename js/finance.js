@@ -489,7 +489,7 @@ async function bonus(){
     </div>
     <div class="al al-w" style="font-size:12px">
       <b>獎金/分潤記帳建議：</b>每次收到獎金或需發放分潤時，在此新增一筆記錄，填寫對象、金額、類型（分潤/推薦獎金/層碰獎金/其他）。
-      發票號碼是否要填看對方是不是會開發票的營業人（收入方向是上家開給我方；支出方向如果下家本身是店家/公司行號，對方也會開發票給我方），不是單純看方向決定。完成後按下「收款」或「發放」，財務月結算時此處合計即為當月獎金收支。
+      發票號碼：收入方向是我方開票給上家報稅；支出方向如果下家本身是營業人，換成下家開票給我方——兩種方向都可能用到，這欄不強制填。完成後按下「收款」或「發放」，財務月結算時此處合計即為當月獎金收支。
     </div>
     ${passthroughRows.length?`<div class="tc" style="margin-bottom:16px;border:1px solid #ffd54f">
       <div class="tb" style="background:#fff8e1"><span class="tt" style="color:#8d6e00">📋 待建立的下家分潤（${passthroughRows.length} 筆訂單）</span></div>
@@ -786,10 +786,9 @@ function toggleBonusFields(val){
   const inp = document.getElementById('f-brec');
   if(lbl) lbl.textContent = isIncome ? '關聯人員（可留空）' : '支付對象（誰收款）*';
   if(inp) inp.placeholder = isIncome ? '選填，通常用「因誰而收」即可' : '收款人姓名';
-  // 收入方向（上游分潤給我）才需要開發票給上家，才顯示稅額試算；支出方向不用試算稅額。
-  // 發票號碼欄位兩個方向都留著（2026-09 一度改成只有收入方向才顯示，但使用者想到：支出方向如果
-  // 下家本身是店家/公司行號，對方也會開發票給我方報稅，所以支出方向一樣可能用得到這個欄位，
-  // 不能只看方向就決定要不要顯示——是否需要發票取決於「對方是不是會開發票的營業人」，不是單純看方向）
+  // 收入方向（上游分潤給我）才需要試算稅額（我方開票給上家報稅），支出方向不用。
+  // 發票號碼欄位兩個方向都留著、不跟著隱藏：收入方向是我方開票給上家；支出方向如果下家本身是營業人，
+  // 換成下家開票給我方——不管哪邊，這個欄位都是單純記錄那張發票的號碼。
   const taxBox = document.getElementById('bonus-tax-calc');
   if(taxBox) taxBox.style.display = isIncome ? 'block' : 'none';
   if(isIncome) bonusCalcTax();
