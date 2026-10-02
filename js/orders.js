@@ -4,7 +4,7 @@
 
 async function orders(){
   try{
-    let q=sb.from('sales_orders').select('order_no,order_date,customer_name,agent_level,order_type,subtotal,total,payment_done,is_return,status,ship_status',{count:'exact'}).order('order_date',{ascending:false}).order('order_no',{ascending:false});
+    let q=sb.from('sales_orders').select('order_no,order_date,customer_name,agent_level,order_type,subtotal,total,payment_done,is_return,status,ship_status,actual_ship_date',{count:'exact'}).order('order_date',{ascending:false}).order('order_no',{ascending:false});
     if(oS) q=q.or(`order_no.ilike.%${oS}%,customer_name.ilike.%${oS}%`);
     if(oF==='unpaid') q=q.eq('payment_done',false);
     if(oF==='unshipped') q=q.neq('ship_status','全部出貨');
@@ -38,7 +38,7 @@ async function orders(){
             <td class="num">${fM(o.subtotal)}</td>
             <td class="num" style="font-weight:600">${fM(o.total)}</td>
             <td><span class="badge ${o.payment_done?'bg':'br2'}">${o.payment_done?'已收':'未收'}</span></td>
-            <td><span class="badge ${o.ship_status==='全部出貨'?'bg':o.ship_status==='部分出貨'?'ba':'br2'}">${o.ship_status||'待出貨'}</span></td>
+            <td><span class="badge ${o.ship_status==='全部出貨'?'bg':o.ship_status==='部分出貨'?'ba':'br2'}">${o.ship_status||'待出貨'}</span>${o.actual_ship_date?`<div style="font-size:10px;color:var(--tx3);margin-top:2px">出貨 ${fD(o.actual_ship_date)}</div>`:''}</td>
             <td><div style="display:flex;gap:3px">
               <button class="btn btn-s" onclick="showOrder('${o.order_no}')">明細</button>
               <button class="btn btn-s" onclick="editOrder('${o.order_no}')">修改</button>
@@ -86,6 +86,8 @@ async function showOrder(no){
     <div class="dr"><span class="dlb">寄送方式</span><span class="dv">${o?.shipping_method||'—'}</span></div>
     <div class="dr"><span class="dlb">付款方式</span><span class="dv">${o?.payment_method||'—'}</span></div>
     <div class="dr"><span class="dlb">收款</span><span class="dv"><span class="badge ${o?.payment_done?'bg':'br2'}">${o?.payment_done?'已收款':'未收款'}</span></span></div>
+    <div class="dr"><span class="dlb">出貨狀態</span><span class="dv"><span class="badge ${o?.ship_status==='全部出貨'?'bg':o?.ship_status==='部分出貨'?'ba':'br2'}">${o?.ship_status||'待出貨'}</span></span></div>
+    <div class="dr"><span class="dlb">出貨日期</span><span class="dv">${o?.actual_ship_date?fD(o.actual_ship_date):'—'}</span></div>
     <div class="dr"><span class="dlb">促銷</span><span class="dv">${o?.promo_name||'—'}</span></div>
     <div class="dr"><span class="dlb">發票號碼</span><span class="dv" style="font-family:monospace">${o?.invoice_no||'—'}</span></div>
     ${txBalance!=null?`<div class="dr" style="grid-column:1/-1"><span class="dlb">扣款帳戶（${walletLabel}）本筆後餘額</span><span class="dv" style="font-weight:700;color:${txBalance>0?'var(--ac)':'var(--rd)'}">${fM(txBalance)}</span></div>`:''}
