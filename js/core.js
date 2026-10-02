@@ -351,17 +351,71 @@ function ssGet(id){return $('ss-val-'+id)?.value||'';}
 function ssInit(id,items,onChange){_ssState[id]={items,onChange};}
 
 // ── DASHBOARD ──
+// 近六個月營收圖（2026-10 新增）。
+// 分月規則刻意跟「財務報表 → 總財報」一模一樣，兩邊數字才對得起來：
+//   銷售營收＝已收款的訂單，算在「收款日期」的月份，不含「自用」訂單；
+//   服務營收＝服務單，算在服務單日期的月份。
+// 樣式全部寫在這裡（inline），不用另外改 style.css。
+const DASH_REV_COLORS=['#3d8a5a','#3a6fb0'];
+function dashRevenueData(orders,svcOrders){
+  const months=[],now=new Date();
+  for(let i=5;i>=0;i--){const x=new Date(now.getFullYear(),now.getMonth()-i,1);months.push(x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0'));}
+  const norm=s=>(s||'').slice(0,7).replace(/\//g,'-').replace(/^(\d{4})-(\d)$/,'$1-0$2');
+  const map={};months.forEach(m=>map[m]={ym:m,sales:0,svc:0});
+  (orders||[]).forEach(o=>{
+    if(!o.payment_done||o.order_type==='自用')return;
+    const k=norm(o.payment_date||o.order_date);
+    if(map[k])map[k].sales+=Number(o.total||0);
+  });
+  (svcOrders||[]).forEach(o=>{const k=norm(o.order_date);if(map[k])map[k].svc+=Number(o.total||0);});
+  return months.map(m=>map[m]);
+}
+function dashDrawRevenue(){
+  const box=$('dash-rev-chart'),F=window._dashRev;
+  if(!box||!F||!F.length)return;
+  const W=Math.max(260,Math.floor(box.clientWidth-28)),H=230,L=48,B=28,T=20,R=8,ih=H-T-B,iw=W-L-R;
+  const mx=Math.max(...F.map(d=>Math.max(d.sales,d.svc)),1);
+  const step=[1e3,2e3,5e3,1e4,2e4,25e3,5e4,1e5,2e5,5e5].find(s=>mx/s<=5)||1e6,top=Math.ceil(mx/step)*step;
+  const y=v=>T+ih-(v/top)*ih,gw=iw/F.length,bw=Math.max(8,Math.min(26,gw*.3));
+  const bar=(x,v,c)=>{if(v<=0)return'';const h=Math.max(1,(v/top)*ih),r=Math.min(4,h);return `<path d="M${x} ${T+ih}V${T+ih-h+r}q0 ${-r} ${r} ${-r}h${bw-2*r}q${r} 0 ${r} ${r}V${T+ih}z" fill="${c}"/>`;};
+  let g='';
+  for(let v=0;v<=top;v+=step)g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="#e9e5dd" stroke-width="1"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end" fill="#6b6560" font-size="11">${v>=1e4?(v/1e4)+' 萬':v.toLocaleString('zh-TW')}</text>`;
+  F.forEach((d,i)=>{
+    const cx=L+gw*i+gw/2;
+    g+=bar(cx-bw-1,d.sales,DASH_REV_COLORS[0])+bar(cx+1,d.svc,DASH_REV_COLORS[1])
+      +`<text x="${cx}" y="${H-9}" text-anchor="middle" fill="#6b6560" font-size="11">${+d.ym.slice(5)} 月</text>`
+      +`<rect x="${L+gw*i}" y="${T}" width="${gw}" height="${ih}" fill="transparent" onmousemove="dashRevTip(event,${i})" onmouseleave="dashRevTip()" onclick="dashRevTip(event,${i})"/>`;
+  });
+  box.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="近六個月銷售與服務營收長條圖" style="display:block;max-width:100%">${g}</svg>`
+    +`<div id="dash-rev-tip" style="display:none;position:absolute;pointer-events:none;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.15);padding:7px 10px;font-size:12px;white-space:nowrap;z-index:5"></div>`;
+}
+function dashRevTip(e,i){
+  const tip=$('dash-rev-tip');if(!tip)return;
+  const d=(window._dashRev||[])[i];
+  if(!e||!d){tip.style.display='none';return;}
+  const dot=c=>`<i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:${c}"></i>`;
+  tip.innerHTML=`<div style="color:var(--tx3)">${d.ym}</div><div>${dot(DASH_REV_COLORS[0])}銷售營收 <b>${fM(d.sales)}</b></div><div>${dot(DASH_REV_COLORS[1])}服務營收 <b>${fM(d.svc)}</b></div><div style="border-top:1px solid var(--bd);margin-top:4px;padding-top:4px">合計 <b>${fM(d.sales+d.svc)}</b></div>`;
+  tip.style.display='block';
+  const box=tip.parentElement.getBoundingClientRect();
+  tip.style.left=Math.max(6,Math.min(e.clientX-box.left+12,box.width-tip.offsetWidth-6))+'px';
+  tip.style.top=Math.max(6,e.clientY-box.top-tip.offsetHeight-10)+'px';
+}
+window.dashRevTip=dashRevTip;
+// 視窗寬度改變（例如手機轉向）時重畫，讓圖表寬度跟著版面走
+let _dashRevRz;
+window.addEventListener('resize',()=>{clearTimeout(_dashRevRz);_dashRevRz=setTimeout(dashDrawRevenue,150);});
 async function dashboard(){
   try{
-    const[r1,r2,r3,r4,r5,r6,r7,r8]=await Promise.all([
+    const[r1,r2,r3,r4,r5,r6,r7,r8,r9]=await Promise.all([
       sb.from('products').select('*',{count:'exact',head:true}).not('product_no','is',null),
       sb.from('sales_orders').select('*',{count:'exact',head:true}),
       sb.from('customers').select('*',{count:'exact',head:true}),
       sb.from('products').select('name,spec,stock').lte('stock',5).gt('stock',0).order('stock').limit(8),
       sb.from('products').select('name,spec').eq('stock',0).not('product_no','is',null).limit(8),
       sb.from('sales_orders').select('order_no,order_date,customer_name,total,payment_done').order('order_date',{ascending:false}).limit(6),
-      sb.from('sales_orders').select('year_month,order_date,payment_date,total,payment_done'),
+      sb.from('sales_orders').select('year_month,order_date,payment_date,total,payment_done,order_type'),
       sb.from('purchase_orders').select('year_month,total').not('year_month','is',null),
+      sb.from('service_orders').select('order_date,total'),
     ]);
     const oos=r5.data||[],ls=r4.data||[],rec=r6.data||[];
     // 從銷售和進貨直接計算月度收支
@@ -390,6 +444,16 @@ async function dashboard(){
           <div class="ms">項 ▸ 點擊查看</div>
         </div>
       </div>
+      <div class="tc" style="margin-bottom:16px">
+        <div class="tb"><span class="tt">近六個月營收</span>
+          <div style="display:flex;gap:14px;font-size:12px;color:var(--tx2);flex-wrap:wrap">
+            <span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:${DASH_REV_COLORS[0]}"></i>銷售營收（已收款）</span>
+            <span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:${DASH_REV_COLORS[1]}"></i>服務營收</span>
+          </div>
+          <button class="btn btn-s" onclick="window._accTab='total';go('accounts')">總財報</button>
+        </div>
+        <div id="dash-rev-chart" style="padding:12px 14px 14px;position:relative"></div>
+      </div>
       ${oos.length?`<div class="al al-e"><b>庫存歸零（${oos.length}）：</b>${oos.map(p=>p.name+(p.spec?` (${p.spec})`:'')).join('、')}</div>`:''}
       ${ls.length?`<div class="al al-w"><b>低庫存（${ls.length}）：</b>${ls.map(p=>`${p.name} <b>${p.stock}</b>件`).join('、')}</div>`:''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
@@ -403,6 +467,8 @@ async function dashboard(){
           </table></div></div>
       </div>
     </div>`;
+    window._dashRev=dashRevenueData(r7.data,r9.data);
+    dashDrawRevenue();
   }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
 }
 

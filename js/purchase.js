@@ -367,7 +367,9 @@ async function returnPO(no) {
       + (recvd <= 0 ? ';opacity:.4' : '') + '"></td>'
       + '</tr>';
   }).join('');
-  const itsJson = JSON.stringify(its);
+  // 2026-10 修正：原本把整包 JSON.stringify(its) 塞進「確認退貨」按鈕的 onclick 屬性，JSON 裡的雙引號會把
+  // HTML 屬性提前截斷，一按就是 SyntaxError: Unexpected end of input，退貨完全做不了。
+  // doReturnPO() 本來就會讀下面存好的 window._retPONo / window._retPOIts，按鈕不用再傳任何參數。
   OM('進貨退回：' + no,
     '<div class="al al-w" style="font-size:12px">退回的數量會從庫存中扣除，並建立退貨記錄。</div>'
     + '<div class="fl" style="margin-bottom:12px"><label>退貨原因 *</label>'
@@ -377,7 +379,7 @@ async function returnPO(no) {
     + '<table class="itb"><tr><th>商品</th><th>進貨數</th><th>已收</th><th>退回數量</th></tr>'
     + rows + '</table>',
     '<button class="btn" onclick="CM()">取消</button>'
-    + '<button class="btn btn-r" onclick="doReturnPO(\'' + no + '\',' + itsJson + ')">確認退貨</button>'
+    + '<button class="btn btn-r" onclick="doReturnPO()">確認退貨</button>'
   );
   window._retPONo = no;
   window._retPOIts = its;

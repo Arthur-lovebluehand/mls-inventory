@@ -336,6 +336,13 @@ async function doSplitBag() {
   CM();
   products(); // 刷新商品頁
 }
+// 2026-10 修正：拆袋作業畫面用到的這五個函式原本完全沒有定義（core.js 的註解寫「moved to module」，
+// 但這個檔案裡其實沒有），導致「＋ 加品項」按了沒反應、選不了拆出品項，整個拆袋功能無法使用。
+window.addSplitItem = () => { _splitItems.push({ id: Date.now(), pno: '', name: '', qty: 1 }); renderSplitItems(); };
+window.rmSplitItem = id => { _splitItems = _splitItems.filter(x => x.id !== id); renderSplitItems(); };
+window.setSplitIQ = (id, val) => { const it = _splitItems.find(x => x.id === id); if (it) it.qty = Math.max(1, parseInt(val) || 1); };
+window.pickSplitItem = (id, pno, name) => { const it = _splitItems.find(x => x.id === id); if (it) { it.pno = pno; it.name = name; } renderSplitItems(); };
+window.closeSplitDrop = id => { const d = $('sdrop-' + id); if (d) d.style.display = 'none'; };
 window.openSplitBag = openSplitBag;
 window.doSplitBag = doSplitBag;
 async function auditLogs() {
