@@ -30,6 +30,7 @@ async function recordReceipt(no){
 }
 async function doReceipt(no,its){
   no=no||window._recvNo; its=its||window._recvIts;
+  const rdt=v('rdt2')||today();
   for(const i of its){
     const recvQty=parseFloat($('f-recv-'+i.id)?.value)||0;
     if(recvQty<=0) continue;
@@ -43,7 +44,11 @@ async function doReceipt(no,its){
   const allDone=(updIts||[]).every(i=>(i.received_qty||0)>=(i.qty||0)+(i.gift_qty||0));
   const partDone=(updIts||[]).some(i=>(i.received_qty||0)>0);
   const status=allDone?'全部收貨':partDone?'部分收貨':'待收貨';
-  await sb.from('purchase_orders').update({receipt_status:status,done:allDone}).eq('po_no',no);
+  // 到貨日一律記錄「這次實際操作收貨記錄當下填的日期」，不管是全部收貨還是部分收貨——
+  // 跟出貨單 actual_ship_date 同一個道理（見 orders.js doShipment 的註解），分批收貨時後面每次
+  // 都會覆蓋成最新一次的到貨日，這樣查詢時看到的永遠是「最近一次真正到貨」的日期
+  // （2026-09：使用者反映收貨記錄點完之後，完全看不到哪天真正到貨，原本表單上有日期欄位卻沒存進資料庫）。
+  await sb.from('purchase_orders').update({receipt_status:status,done:allDone,actual_arrival_date:rdt}).eq('po_no',no);
   toast('收貨記錄已更新！庫存已增加');CM();purchase();
 }
 async function purchase(){
@@ -56,7 +61,7 @@ async function purchase(){
     let puVendOrd={};
     try{const{data:pvo}=await sb.from('settings').select('value').eq('key','pu_vendor_order').single();if(pvo?.value)puVendOrd=JSON.parse(pvo.value);}catch(e){}
     window._puSortedVendors=['全部',...puVendors.filter(v=>v!=='全部').sort((a,b)=>(puVendOrd[a]||99)-(puVendOrd[b]||99)||a.localeCompare(b))];
-    let pq=sb.from('purchase_orders').select('po_no,po_date,vendor_name,products_summary,total,done,receipt_status',{count:'exact'}).order('po_date',{ascending:false}).order('po_no',{ascending:false});
+    let pq=sb.from('purchase_orders').select('po_no,po_date,vendor_name,products_summary,total,done,receipt_status,actual_arrival_date',{count:'exact'}).order('po_date',{ascending:false}).order('po_no',{ascending:false});
     if(window.puVendor) pq=pq.eq('vendor_name',window.puVendor);
     if(window.puYM) pq=pq.like('po_date',window.puYM+'%');
     const{data,count}=await pq.range((puP-1)*25,puP*25-1);
@@ -89,7 +94,7 @@ async function purchase(){
           <td style="font-size:12px;color:var(--tx2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.products_summary||'—'}</td>
           <td class="num" style="font-weight:600">${fM(p.total)}</td>
           <td><span class="badge ${p.done?'bg':'ba'}">${p.done?'完成':'進行中'}</span></td>
-          <td><span class="badge ${p.receipt_status==='全部收貨'?'bg':p.receipt_status==='部分收貨'?'ba':'br2'}">${p.receipt_status||'待收貨'}</span></td>
+          <td><span class="badge ${p.receipt_status==='全部收貨'?'bg':p.receipt_status==='部分收貨'?'ba':'br2'}">${p.receipt_status||'待收貨'}</span>${p.actual_arrival_date?`<div style="font-size:10px;color:var(--tx3);margin-top:2px">到貨 ${fD(p.actual_arrival_date)}</div>`:''}</td>
           <td><div style="display:flex;gap:3px">
             <button class="btn btn-s" onclick="showPO('${p.po_no}')">明細</button>
             <button class="btn btn-s" onclick="editPO('${p.po_no}')">修改</button>
@@ -116,7 +121,7 @@ async function purchase(){
 }
 async function showPO(no){
   const[{data:po},{data:its}]=await Promise.all([
-    sb.from('purchase_orders').select('po_no,po_date,vendor_name,payment_method,invoice_no,done,receipt_status,note,subtotal,tax,total').eq('po_no',no).single(),
+    sb.from('purchase_orders').select('po_no,po_date,vendor_name,payment_method,invoice_no,done,receipt_status,actual_arrival_date,note,subtotal,tax,total').eq('po_no',no).single(),
     sb.from('purchase_order_items').select('*').eq('po_no',no),
   ]);
   OM(`進貨單：${no}`,`
@@ -125,6 +130,8 @@ async function showPO(no){
     <div class="dr"><span class="dlb">廠商</span><span class="dv">${po?.vendor_name||'—'}</span></div>
     <div class="dr"><span class="dlb">付款方式</span><span class="dv">${po?.payment_method||'—'}</span></div>
     <div class="dr"><span class="dlb">狀態</span><span class="dv"><span class="badge ${po?.done?'bg':'ba'}">${po?.done?'完成':'進行中'}</span></span></div>
+    <div class="dr"><span class="dlb">收貨狀態</span><span class="dv"><span class="badge ${po?.receipt_status==='全部收貨'?'bg':po?.receipt_status==='部分收貨'?'ba':'br2'}">${po?.receipt_status||'待收貨'}</span></span></div>
+    <div class="dr"><span class="dlb">到貨日</span><span class="dv">${po?.actual_arrival_date?fD(po.actual_arrival_date):'—'}</span></div>
     <div class="dr"><span class="dlb">發票號碼</span><span class="dv" style="font-family:monospace">${po?.invoice_no||'—'}</span></div>
     ${po?.note?`<div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv" style="white-space:pre-wrap">${po.note}</span></div>`:''}
   </div>
@@ -228,7 +235,7 @@ async function addPO(){
 }
 async function editPO(no){
   const[{data:po},{data:its}]=await Promise.all([
-    sb.from('purchase_orders').select('po_no,po_date,vendor_name,payment_method,invoice_no,done,receipt_status,note,subtotal,tax,total').eq('po_no',no).single(),
+    sb.from('purchase_orders').select('po_no,po_date,vendor_name,payment_method,invoice_no,done,receipt_status,actual_arrival_date,note,subtotal,tax,total').eq('po_no',no).single(),
     sb.from('purchase_order_items').select('*').eq('po_no',no),
   ]);
   const html=await loadPOForm(po,its);
