@@ -629,10 +629,16 @@ async function recordShipment(no){
       '<button class="btn" onclick="CM()">關閉</button>');
     return;
   }
+  // 品項表只存商品名稱沒存規格，同名但不同大小/色號的商品在這裡會分不出來、容易點錯，
+  // 所以額外查商品表把規格補在名稱下面（2026-10 使用者反映）。
+  const _pn=[...new Set((its||[]).map(i=>i.product_no).filter(Boolean))];
+  const _specMap={};
+  if(_pn.length){ const{data:_pr}=await sb.from('products').select('product_no,spec').in('product_no',_pn); (_pr||[]).forEach(x=>{_specMap[x.product_no]=x.spec;}); }
   const rows=(its||[]).map(i=>{
     const total=(i.qty||0)+(i.gift_qty||0), shipped=i.shipped_qty||0, pending=total-shipped;
+    const _spec=i.spec||_specMap[i.product_no]||'';
     return '<tr>'
-      +'<td style="font-size:12px">'+( i.product_name||'—')+'</td>'
+      +'<td style="font-size:12px">'+( i.product_name||'—')+(_spec?'<div style="font-size:11px;color:var(--tx3)">'+_spec+'</div>':'')+'</td>'
       +'<td class="num">'+fN(i.qty)+'</td>'
       +'<td class="num" style="color:var(--am)">'+(i.gift_qty?fN(i.gift_qty):'—')+'</td>'
       +'<td class="num" style="font-weight:700">'+fN(total)+'</td>'

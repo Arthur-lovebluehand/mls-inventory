@@ -517,6 +517,7 @@ function dataImport(){
             : imp.type==='serviceOrders'
             ? '每一列是「一張服務單裡的一個服務項目」，同一張服務單的多個項目請填相同的「原始服務單編號」，系統會自動合併成一張單，並改用我們自己的編號規則。技師如果在系統裡找不到會自動新建（預設抽成50%，之後可以自己去技師名單調整）。歷史服務單匯入<b>不會</b>異動目前的耗材庫存數字，也不含耗材明細，只記服務項目本身。'
             : '第一列請是欄位標題（例如：商品名稱、售價、庫存…），下面每一列是一筆資料。'}
+          ${['orders','purchaseOrders','serviceOrders'].includes(imp.type)?'<div style="margin-top:6px">📅 日期不用先整理：2026/5/5、2026-05-05、20260505、2026年5月5日、民國115/5/5、Excel 日期都會自動轉成統一格式（2026-05-05）。轉不出來的日期（例如空白、或 05/06/2026 這種分不出月跟日的）那張單會被跳過並在結果裡告訴你原因，不會默默填成今天。</div>':''}
         </div>
         <input type="file" id="impFile" accept=".csv,.txt,.tsv" onchange="impFileLoad(this)" style="margin-bottom:10px">
         <div style="font-size:12px;color:var(--tx3);margin-bottom:6px">或直接貼上：</div>
@@ -744,14 +745,75 @@ async function impNextSVNo(dateStr, cache){
   }
   const no=prefix+String(cache[prefix]).padStart(3,'0'); cache[prefix]++; return no;
 }
-function impNormDate(s){
-  if(!s) return today();
-  s=s.trim();
-  let m=s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
-  if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
-  m=s.match(/^(\d{2,3})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/); // 民國年
-  if(m) return (parseInt(m[1])+1911)+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
-  return today();
+// 把各種寫法的日期統一轉成系統標準的 YYYY-MM-DD（橫線、補零）。
+// 用途：別的系統匯出的日期寫法五花八門，匯入時一律在這裡轉好，資料庫裡才不會又出現斜線／民國年混用。
+// 支援：2026/5/5、2026-05-05、2026.5.5、2026 5 5、2026年5月5日、20260505、
+//      民國 115/5/5、115年5月5日、民國115年5月5日、1150505、
+//      帶時間的（2026-05-05 14:30、2026-05-05T14:30:00Z、2026/5/5 下午 2:30）、
+//      英文月份（May 5, 2026、5 May 2026、5-May-26）、Excel 日期序號（46147）、
+//      月/日/年 或 日/月/年（只有在能判斷出哪個是月時才轉；像 05/06/2026 這種月日分不出來的會報錯，避免默默轉錯）。
+// 轉不出來（空白、看不懂、不存在的日期如 2/30）一律丟出錯誤，由呼叫端把該張單列入「失敗」並顯示原因，
+// 不再像以前那樣默默改成「今天」——轉系統時日期被悄悄寫成今天，事後幾乎沒辦法發現。
+function impNormDate(raw){
+  const orig=(raw==null?'':String(raw)).trim();
+  if(!orig) throw new Error('缺少日期');
+  const MONTHS={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+  const fail=()=>{ throw new Error(`日期「${orig}」無法辨識，請改成 YYYY-MM-DD（例如 2026-05-05）`); };
+  const fmt=(y,m,d)=>{
+    y=+y; m=+m; d=+d;
+    const dt=new Date(Date.UTC(y,m-1,d));
+    if(dt.getUTCFullYear()!==y || dt.getUTCMonth()!==m-1 || dt.getUTCDate()!==d) throw new Error(`日期「${orig}」不是真的存在的日期`);
+    if(y<1990 || y>2100) throw new Error(`日期「${orig}」的年份看起來不合理（${y}年），請確認`);
+    return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  };
+  const roc=y=>+y+1911;   // 民國年轉西元
+  let s=orig.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/　/g,' ').replace(/／/g,'/').replace(/－|—|–/g,'-').replace(/．|。/g,'.').replace(/：/g,':');   // 全形數字/符號先轉半形
+
+  // Excel 日期序號（純數字，大約 1982～2090 年）
+  if(/^\d{5}(\.\d+)?$/.test(s) && +s>=30000 && +s<=70000){
+    const dt=new Date(Date.UTC(1899,11,30)+Math.floor(+s)*86400000);
+    return fmt(dt.getUTCFullYear(),dt.getUTCMonth()+1,dt.getUTCDate());
+  }
+
+  // 去掉時間部分（只保留日期）
+  s=s.replace(/^民國\s*/,'民國')
+     .replace(/[T\s]+(上午|下午|AM|PM|am|pm)?\s*\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*(上午|下午|AM|PM|am|pm)?\s*(Z|[+-]\d{2}:?\d{2})?$/,'')
+     .replace(/\s+(上午|下午)$/,'')
+     .trim();
+
+  let m;
+  // 民國xxx年x月x日 / 民國xxx/x/x
+  if((m=s.match(/^民國(\d{2,3})\s*[年\/\-.]\s*(\d{1,2})\s*[月\/\-.]\s*(\d{1,2})\s*日?$/))) return fmt(roc(m[1]),m[2],m[3]);
+  // 2026年5月5日
+  if((m=s.match(/^(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?$/))) return fmt(m[1],m[2],m[3]);
+  // 115年5月5日（三碼年＝民國）
+  if((m=s.match(/^(\d{3})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?$/))) return fmt(roc(m[1]),m[2],m[3]);
+  // 2026/5/5、2026-05-05、2026.5.5、2026 5 5
+  if((m=s.match(/^(\d{4})[\/\-.\s](\d{1,2})[\/\-.\s](\d{1,2})$/))) return fmt(m[1],m[2],m[3]);
+  // 115/5/5（三碼年＝民國）
+  if((m=s.match(/^(\d{3})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/))) return fmt(roc(m[1]),m[2],m[3]);
+  // 20260505
+  if((m=s.match(/^(\d{4})(\d{2})(\d{2})$/))) return fmt(m[1],m[2],m[3]);
+  // 1150505（七碼＝民國）
+  if((m=s.match(/^(\d{3})(\d{2})(\d{2})$/))) return fmt(roc(m[1]),m[2],m[3]);
+  // 英文月份：May 5, 2026 / 5 May 2026 / 5-May-26
+  if((m=s.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{2,4})$/))){
+    const mo=MONTHS[m[1].toLowerCase().slice(0,4)]||MONTHS[m[1].toLowerCase().slice(0,3)]; if(!mo) fail();
+    return fmt(m[3].length===2?2000+(+m[3]):m[3],mo,m[2]);
+  }
+  if((m=s.match(/^(\d{1,2})[\s\-\/.]([A-Za-z]{3,9})\.?[\s\-\/.,]+(\d{2,4})$/))){
+    const mo=MONTHS[m[2].toLowerCase().slice(0,4)]||MONTHS[m[2].toLowerCase().slice(0,3)]; if(!mo) fail();
+    return fmt(m[3].length===2?2000+(+m[3]):m[3],mo,m[1]);
+  }
+  // 月/日/年 或 日/月/年（年在最後面）：只在能判斷出哪個是月時才轉
+  if((m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/))){
+    const a=+m[1], b=+m[2];
+    if(a>12 && b<=12) return fmt(m[3],b,a);          // 日/月/年
+    if(b>12 && a<=12) return fmt(m[3],a,b);          // 月/日/年
+    if(a===b) return fmt(m[3],a,b);                  // 兩個一樣，不會搞混
+    throw new Error(`日期「${orig}」的月跟日分不出來（可能是 月/日 也可能是 日/月），請改成 YYYY-MM-DD（例如 2026-05-06）`);
+  }
+  fail();
 }
 
 async function impRun(){

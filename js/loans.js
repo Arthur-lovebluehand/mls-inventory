@@ -264,13 +264,17 @@ async function returnLoan(no){
   ]);
   const td=today();
   window._returnItems = its||[];
+  // 同名但不同大小/色號的商品會分不出來，把規格補在名稱下面（借貨品項有存規格的直接用，沒存的去商品表補）
+  const _pn=[...new Set((its||[]).filter(i=>!i.spec).map(i=>i.product_no).filter(Boolean))];
+  const _specMap={};
+  if(_pn.length){ const{data:_pr}=await sb.from('products').select('product_no,spec').in('product_no',_pn); (_pr||[]).forEach(x=>{_specMap[x.product_no]=x.spec;}); }
   OM(`記錄歸還：${no}`,`
   <div style="margin-bottom:12px">
     <div class="fl"><label>歸還日期</label><input id="f-rdt" type="date" value="${td}" style="width:200px;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></div>
   </div>
   <table class="itb"><tr><th>商品</th><th>借出數</th><th>已歸還</th><th>本次歸還數</th></tr>
   ${(its||[]).map(i=>`<tr>
-    <td>${i.product_name||'—'}</td>
+    <td>${i.product_name||'—'}${(i.spec||_specMap[i.product_no])?`<div style="font-size:11px;color:var(--tx3)">${i.spec||_specMap[i.product_no]}</div>`:''}</td>
     <td class="num">${fN(i.qty)}</td>
     <td class="num">${fN(i.returned_qty||0)}</td>
     <td><input type="number" id="f-ret-${i.id}" value="${i.qty-(i.returned_qty||0)}" min="0" max="${i.qty-(i.returned_qty||0)}" style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></td>

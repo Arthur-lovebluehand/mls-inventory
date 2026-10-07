@@ -5,10 +5,16 @@
 async function recordReceipt(no){
   const{data:its}=await sb.from('purchase_order_items').select('*').eq('po_no',no);
   const td=today();
+  // 同名但不同大小/色號的商品在收貨表會分不出來、容易點錯，把規格補在名稱下面
+  // （進貨品項有存規格的直接用，舊資料沒存的再去商品表補；2026-10 使用者反映）。
+  const _pn=[...new Set((its||[]).filter(i=>!i.spec).map(i=>i.product_no).filter(Boolean))];
+  const _specMap={};
+  if(_pn.length){ const{data:_pr}=await sb.from('products').select('product_no,spec').in('product_no',_pn); (_pr||[]).forEach(x=>{_specMap[x.product_no]=x.spec;}); }
   const rows=(its||[]).map(i=>{
     const total=(i.qty||0)+(i.gift_qty||0), recv=i.received_qty||0, pending=total-recv;
+    const _spec=i.spec||_specMap[i.product_no]||'';
     return '<tr>'
-      +'<td style="font-size:12px">'+(i.product_name||'—')+'</td>'
+      +'<td style="font-size:12px">'+(i.product_name||'—')+(_spec?'<div style="font-size:11px;color:var(--tx3)">'+_spec+'</div>':'')+'</td>'
       +'<td class="num">'+fN(i.qty)+'</td>'
       +'<td class="num" style="color:var(--am)">'+(i.gift_qty?fN(i.gift_qty):'—')+'</td>'
       +'<td class="num" style="font-weight:700">'+fN(total)+'</td>'
