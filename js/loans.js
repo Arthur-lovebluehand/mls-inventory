@@ -274,7 +274,7 @@ async function returnLoan(no){
   </div>
   <table class="itb"><tr><th>商品</th><th>借出數</th><th>已歸還</th><th>本次歸還數</th></tr>
   ${(its||[]).map(i=>`<tr>
-    <td>${i.product_name||'—'}${(i.spec||_specMap[i.product_no])?`<div style="font-size:11px;color:var(--tx3)">${i.spec||_specMap[i.product_no]}</div>`:''}</td>
+    <td>${i.product_name||'—'}${i.is_gift?'<span class="badge ba" style="margin-left:4px;font-size:10px">贈品</span>':''}${(i.spec||_specMap[i.product_no])?`<div style="font-size:11px;color:var(--tx3)">${i.spec||_specMap[i.product_no]}</div>`:''}</td>
     <td class="num">${fN(i.qty)}</td>
     <td class="num">${fN(i.returned_qty||0)}</td>
     <td><input type="number" id="f-ret-${i.id}" value="${i.qty-(i.returned_qty||0)}" min="0" max="${i.qty-(i.returned_qty||0)}" style="width:70px;padding:4px 6px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;outline:none"></td>

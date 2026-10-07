@@ -638,7 +638,7 @@ async function recordShipment(no){
     const total=(i.qty||0)+(i.gift_qty||0), shipped=i.shipped_qty||0, pending=total-shipped;
     const _spec=i.spec||_specMap[i.product_no]||'';
     return '<tr>'
-      +'<td style="font-size:12px">'+( i.product_name||'—')+(_spec?'<div style="font-size:11px;color:var(--tx3)">'+_spec+'</div>':'')+'</td>'
+      +'<td style="font-size:12px">'+( i.product_name||'—')+((i.gift_qty>0&&!i.qty)?'<span class="badge ba" style="margin-left:4px;font-size:10px">贈品</span>':'')+(_spec?'<div style="font-size:11px;color:var(--tx3)">'+_spec+'</div>':'')+'</td>'
       +'<td class="num">'+fN(i.qty)+'</td>'
       +'<td class="num" style="color:var(--am)">'+(i.gift_qty?fN(i.gift_qty):'—')+'</td>'
       +'<td class="num" style="font-weight:700">'+fN(total)+'</td>'
