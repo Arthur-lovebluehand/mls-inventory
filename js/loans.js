@@ -2,42 +2,72 @@
 // loans.js
 // ═══════════════════════════════════════
 
+var lP=1;
+const LOAN_PAGE_SIZE=100;
 async function loans(){
   try{
-    // 用兩段 query：未歸還排前面，同類再依日期倒序
-    let q=sb.from('loan_orders')
-      .select('loan_no,loan_date,direction,customer_name,agent_level,products_summary,total,return_status,returned,bad_debt,bad_debt_note',{count:'exact'});
-    if(lFilter==='pending') q=q.eq('returned',false).eq('bad_debt',false);
-    if(lFilter==='done') q=q.eq('returned',true);
-    if(lFilter==='bad') q=q.eq('bad_debt',true);
-    // 先抓全部，在前端自己排序（未歸還置頂，再依日期倒序）
-    const{data:raw,count}=await q.limit(200);
-
-    // 排序：未歸還/部分歸還在前，全部歸還在後；同狀態內依日期倒序
-    const statusOrder=s=>{
-      if(!s||s==='未歸還') return 0;
-      if(s==='部分歸還') return 1;
-      return 2;
+    // 分頁做法：排序規則（未歸還置頂→日期新到舊）要套用在「全部」資料上，換頁才不會亂，
+    // 但日期欄位是文字且新舊寫法混用（2026/05/05 與 2026-07-23），資料庫端沒辦法直接排對。
+    // 所以先只抓排序需要的幾個小欄位（全部筆數），在前端排好、切出這一頁的單號，
+    // 再只把這一頁（最多100張）的完整資料抓回來顯示（2026-10 使用者要求改分頁，不要放寬讀取上限）。
+    const applyFilter=q=>{
+      if(lFilter==='pending') q=q.eq('returned',false).eq('bad_debt',false);
+      if(lFilter==='done') q=q.eq('returned',true);
+      if(lFilter==='bad') q=q.eq('bad_debt',true);
+      return q;
     };
-    const data=(raw||[]).sort((a,b)=>{
-      const sd=statusOrder(a.return_status)-statusOrder(b.return_status);
-      if(sd!==0) return sd;
-      return (b.loan_date||'').localeCompare(a.loan_date||'');
+    let keys=[];
+    for(let from=0;;from+=1000){
+      const{data:chunk,error}=await applyFilter(sb.from('loan_orders').select('loan_no,loan_date,return_status,returned,bad_debt')).range(from,from+999);
+      if(error) throw error;
+      keys=keys.concat(chunk||[]);
+      if(!chunk||chunk.length<1000) break;
+    }
+    const count=keys.length;
+
+    // 排序：未歸還／部分歸還（沒核銷呆帳的）固定置頂，其餘在後；同一組內日期新→舊。
+    // 日期先把 "/" 統一成 "-" 再比；同一天的再用單號尾碼新→舊。
+    const normDate=d=>(d||'').replace(/\//g,'-');
+    const noKey=n=>(n||'').replace(/^[A-Za-z]+-/,'');
+    const isPending=l=>!l.returned&&l.return_status!=='全部歸還'&&l.bad_debt!==true;
+    keys.sort((a,b)=>{
+      const pd=(isPending(a)?0:1)-(isPending(b)?0:1);
+      if(pd!==0) return pd;
+      const dd=normDate(b.loan_date).localeCompare(normDate(a.loan_date));
+      if(dd!==0) return dd;
+      return noKey(b.loan_no).localeCompare(noKey(a.loan_no));
     });
 
-    const pendingCount=(raw||[]).filter(l=>!l.returned&&l.return_status!=='全部歸還').length;
+    const tp=Math.max(1,Math.ceil(count/LOAN_PAGE_SIZE));
+    if(lP>tp) lP=tp;
+    if(lP<1) lP=1;
+    const pageNos=keys.slice((lP-1)*LOAN_PAGE_SIZE,lP*LOAN_PAGE_SIZE).map(k=>k.loan_no);
+    let rows=[];
+    if(pageNos.length){
+      const{data:pageRows,error}=await sb.from('loan_orders')
+        .select('loan_no,loan_date,direction,customer_name,agent_level,products_summary,total,return_status,returned,bad_debt,bad_debt_note')
+        .in('loan_no',pageNos);
+      if(error) throw error;
+      rows=pageRows||[];
+    }
+    const byNo={}; rows.forEach(r=>{byNo[r.loan_no]=r;});
+    const data=pageNos.map(n=>byNo[n]).filter(Boolean);
+
+    // 「未歸還」數字不受目前分頁／篩選影響，一律算全部（排除已核銷呆帳的，跟「未歸還」分頁的內容一致）
+    const{count:pendingCountRaw}=await sb.from('loan_orders').select('loan_no',{count:'exact',head:true}).eq('returned',false).eq('bad_debt',false).neq('return_status','全部歸還');
+    const pendingCount=pendingCountRaw||0;
 
     $('main').innerHTML=`
     <div class="ph"><div><div class="pt">借貨管理</div><div class="ps">${count||0} 張${pendingCount>0?` · <span style="color:var(--rd);font-weight:600">${pendingCount} 筆未歸還</span>`:''}</div></div>
       <div class="ha"><button class="btn btn-p btn-s" onclick="addLoan()">＋ 新增借貨單</button></div></div>
     <div class="pc">
       <div class="tab-bar">
-        <div class="tab ${lFilter==='all'?'on':''}" onclick="lFilter='all';loans()">全部</div>
-        <div class="tab ${lFilter==='pending'?'on':''}" onclick="lFilter='pending';loans()" style="${lFilter!=='pending'&&pendingCount>0?'color:var(--rd)':''}">
+        <div class="tab ${lFilter==='all'?'on':''}" onclick="lFilter='all';lP=1;loans()">全部</div>
+        <div class="tab ${lFilter==='pending'?'on':''}" onclick="lFilter='pending';lP=1;loans()" style="${lFilter!=='pending'&&pendingCount>0?'color:var(--rd)':''}">
           未歸還 ${pendingCount>0?`<span style="background:var(--rd);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:3px">${pendingCount}</span>`:''}
         </div>
-        <div class="tab ${lFilter==='done'?'on':''}" onclick="lFilter='done';loans()">已歸還</div>
-        <div class="tab ${lFilter==='bad'?'on':''}" onclick="lFilter='bad';loans()" style="color:var(--tx3)">呆帳</div>
+        <div class="tab ${lFilter==='done'?'on':''}" onclick="lFilter='done';lP=1;loans()">已歸還</div>
+        <div class="tab ${lFilter==='bad'?'on':''}" onclick="lFilter='bad';lP=1;loans()" style="color:var(--tx3)">呆帳</div>
       </div>
       <div class="tc">
         <div class="tb"><span class="tt">借貨單列表</span>
@@ -75,6 +105,11 @@ async function loans(){
             </tr>`;
           }).join('')}
         </table></div>
+        <div class="pg"><span class="pi">第${lP}/${tp}頁</span>
+          <div style="display:flex;gap:5px">
+            ${lP>1?`<button class="btn btn-s" onclick="lP--;loans()">上一頁</button>`:''}
+            ${lP<tp?`<button class="btn btn-s" onclick="lP++;loans()">下一頁</button>`:''}${pageJump('lP',tp,'loans')}
+          </div></div>
       </div>
     </div>`;
   }catch(e){$('main').innerHTML=`<div class="ld" style="color:var(--rd)">載入失敗：${e.message}</div>`;}
