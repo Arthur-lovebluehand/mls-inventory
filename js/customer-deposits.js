@@ -80,6 +80,8 @@ window.customerDeposits = customerDeposits;
 // ── 新增寄放記錄（從銷售單建立 / 手動登記）──
 function addDepositModal() {
   window._cdManualProdNo = null;
+  // 每次打開都清掉上一次選過的銷售單，避免沒重選就按「建立」時，用到上次那張單
+  window._cdOrder = null; window._cdOrderItems = []; window._cdOrderMeta = {}; window._cdLastResultsHtml = '';
   OM('新增寄放記錄', `
   <div class="tab-bar" style="margin-bottom:14px">
     <div class="tab on" id="cd-tab-order" onclick="cdSwitchMode('order')">從銷售單建立</div>
@@ -139,6 +141,8 @@ window.cdSwitchMode = cdSwitchMode;
 let cdSearchTimer;
 function cdSearchOrders(kw) {
   clearTimeout(cdSearchTimer);
+  // 重新打字搜尋＝要重選，先把已選的單跟下面的商品明細清掉
+  if(window._cdOrder) { window._cdOrder = null; window._cdOrderItems = []; window._cdOrderMeta = {}; if($('cd-order-items')) $('cd-order-items').innerHTML=''; }
   if(!kw || !kw.trim()) { $('cd-order-results').innerHTML=''; return; } // 中文姓氏常常一個字就有意義（吳/楊/廖…），不能要求至少打2個字才開始搜尋
   $('cd-order-results').innerHTML = '<div style="font-size:12px;color:var(--tx3)">搜尋中…</div>';
   cdSearchTimer = setTimeout(async ()=>{
@@ -166,6 +170,9 @@ async function cdPickOrder(orderNo) {
     if(cm?.customer_no) o.customer_no = cm.customer_no;
   }
   window._cdOrder = o;
+  // 記住目前的搜尋結果清單和捲動位置，按「已選」旁邊的 × 可以直接回到清單重選，不用重打搜尋字
+  const resBox = $('cd-order-results');
+  if(resBox && !resBox.querySelector('[data-cd-picked]')) { window._cdLastResultsHtml = resBox.innerHTML; window._cdLastResultsScroll = resBox.scrollTop; }
 
   const productNos = [...new Set((its||[]).map(i=>i.product_no).filter(Boolean))];
   let prodMap = {};
@@ -174,7 +181,10 @@ async function cdPickOrder(orderNo) {
     (prods||[]).forEach(p=>prodMap[p.product_no]=p);
   }
 
-  $('cd-order-results').innerHTML = `<div class="al al-w" style="font-size:12px">已選：<b>${o.order_no}</b>（${o.customer_name}）</div>`;
+  $('cd-order-results').innerHTML = `<div class="al al-w" data-cd-picked style="font-size:12px;display:flex;align-items:center;gap:8px">
+    <span style="flex:1">已選：<b>${o.order_no}</b>（${o.customer_name}）</span>
+    <button type="button" onclick="cdClearOrder()" title="取消這張，回到搜尋結果重選" style="border:1px solid var(--bd);background:var(--sf);border-radius:var(--r);width:24px;height:24px;line-height:20px;padding:0;cursor:pointer;font-size:14px;color:var(--tx2)">×</button>
+  </div>`;
   window._cdOrderMeta = {};
   $('cd-order-items').innerHTML = `
   <div class="fl" style="margin-bottom:6px"><label>這張單裡要寄放的商品</label></div>
@@ -199,6 +209,20 @@ async function cdPickOrder(orderNo) {
   window._cdOrderItems = its||[];
 }
 window.cdPickOrder = cdPickOrder;
+
+// 取消已選的銷售單：回到剛剛的搜尋結果清單（保留搜尋字跟捲動位置），直接點另一張重選
+function cdClearOrder() {
+  window._cdOrder = null; window._cdOrderItems = []; window._cdOrderMeta = {};
+  $('cd-order-items').innerHTML = '';
+  const resBox = $('cd-order-results');
+  if(window._cdLastResultsHtml) {
+    resBox.innerHTML = window._cdLastResultsHtml;
+    resBox.scrollTop = window._cdLastResultsScroll||0;
+  } else {
+    cdSearchOrders(v('cd-ordersearch'));
+  }
+}
+window.cdClearOrder = cdClearOrder;
 
 function cdFilterCust(kw) {
   const drop = $('cd-cust-drop');
