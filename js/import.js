@@ -369,13 +369,14 @@ const CUSTOM_EXPORTERS = {
     const [{ data:orders },{ data:transfers },{ data:items }] = await Promise.all([
       sb.from('service_orders').select('order_date,total,consumable_cost'),
       sb.from('service_transfers').select('transfer_date,total_cost'),
-      sb.from('service_order_items').select('order_date:service_orders(order_date),technician_pay').eq('item_type','service'),
+      sb.from('service_order_items').select('order_date:service_orders(order_date),technician_pay,pay_settled_by_credit,settled_pay_amount').eq('item_type','service'),
     ]);
     const mMap = {};
     const addM = (ym,key,val) => { if(!ym) return; if(!mMap[ym]) mMap[ym]={rev:0,cost:0,trCost:0,techPay:0}; mMap[ym][key]+=val||0; };
     (orders||[]).forEach(o=>{ const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'rev',o.total); addM(ym,'cost',o.consumable_cost); }});
     (transfers||[]).forEach(t=>{ const ym=(t.transfer_date||'').slice(0,7); if(ym) addM(ym,'trCost',t.total_cost); });
-    (items||[]).forEach(i=>{ const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',i.technician_pay); });
+    const rp = window.svcReportPay || (i=>i.technician_pay||0);
+    (items||[]).forEach(i=>{ const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',rp(i)); });
     return Object.keys(mMap).sort().reverse().map(ym=>{
       const d=mMap[ym];
       const costSub=d.cost+d.techPay;
@@ -400,9 +401,11 @@ const CUSTOM_EXPORTERS = {
     const orderNos = [...new Set(svcItems.map(i=>i.order_no))];
     const { data:orders } = await sb.from('service_orders').select('order_no,order_date').in('order_no',orderNos.length?orderNos:['__none__']);
     const dateMap = {}; (orders||[]).forEach(o=>dateMap[o.order_no]=o.order_date);
+    // 儲值分成算在儲值那個月的技師薪資（次數不加）
+    const splitItems = await (window.fetchCreditSplitPayItems?.() || Promise.resolve([]));
     const techMap = {};
-    svcItems.forEach(i=>{
-      const ym=(dateMap[i.order_no]||'').slice(0,7);
+    [...svcItems, ...splitItems].forEach(i=>{
+      const ym=(i.is_credit_split ? (i.order_date?.order_date||'') : (dateMap[i.order_no]||'')).slice(0,7);
       if(!ym) return;
       const key=`${i.technician_name}_${ym}`;
       if(!techMap[key]) techMap[key]={ 月份:ym, 技師:i.technician_name, 服務時數次數:0, 應付薪資:0 };
@@ -421,11 +424,12 @@ const CUSTOM_EXPORTERS = {
     let ownerPayByMonth = {};
     if(ownerName) {
       const { data:items } = await sb.from('service_order_items')
-        .select('order_date:service_orders(order_date),technician_name,technician_pay')
+        .select('order_date:service_orders(order_date),technician_name,technician_pay,pay_settled_by_credit,settled_pay_amount')
         .eq('item_type','service').eq('technician_name',ownerName);
+      const rp = window.svcReportPay || (i=>i.technician_pay||0);
       (items||[]).forEach(i=>{
         const ym=(i.order_date?.order_date||'').slice(0,7);
-        if(ym) ownerPayByMonth[ym]=(ownerPayByMonth[ym]||0)+(i.technician_pay||0);
+        if(ym) ownerPayByMonth[ym]=(ownerPayByMonth[ym]||0)+rp(i);
       });
     }
     return months.map(ym=>{

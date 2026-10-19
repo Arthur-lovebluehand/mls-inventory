@@ -926,13 +926,35 @@ function normYM(ym){
   s=s.replace(/^(\d{4})-(\d)$/,'$1-0$2');
   return s;
 }
+// 儲值分成：客人儲值時分給技師的金額，當成技師在「儲值那個月」的薪資。
+// 轉成跟 service_order_items 一樣的形狀，各財報/薪資彙整直接接在服務品項後面一起加總。
+async function fetchCreditSplitPayItems(techName) {
+  let q = sb.from('store_credit_records').select('customer_no,record_date,tech_split_name,tech_split_amount').not('tech_split_amount','is',null).gt('tech_split_amount',0);
+  if(techName) q = q.eq('tech_split_name',techName);
+  const { data } = await q;
+  return (data||[]).map(r=>({
+    order_no:null, item_name:'儲值分成', item_type:'service', is_credit_split:true, customer_no:r.customer_no,
+    order_date:{order_date:r.record_date}, technician_id:null, technician_name:r.tech_split_name,
+    technician_pay:parseFloat(r.tech_split_amount)||0, qty:0, unit_price:0, subtotal:0
+  }));
+}
+window.fetchCreditSplitPayItems = fetchCreditSplitPayItems;
+
+// 財報用的技師成本：每次服務「實際該抽多少」。
+// 儲值時已分成的品項，technician_pay 記 0（現金早就給了），原本的抽成存在 settled_pay_amount——
+// 財報要的是每次服務真正的成本，所以用原本的抽成；「技師月薪表／應付薪資」才用 technician_pay＋儲值分成（實際發錢）。
+function svcReportPay(i) {
+  return i.pay_settled_by_credit ? (parseFloat(i.settled_pay_amount)||0) : (parseFloat(i.technician_pay)||0);
+}
+window.svcReportPay = svcReportPay;
+
 async function computeTotalFinanceData(includeSelfUse) {
   const [{ data:sOrders },{ data:pOrders },{ data:bnRecs },{ data:svOrders },{ data:svItems },{ data:opexRecs }] = await Promise.all([
     sb.from('sales_orders').select('order_date,year_month,total,payment_done,payment_date,order_type'),
     sb.from('purchase_orders').select('year_month,total'),
     sb.from('bonus_records').select('year_month,amount,direction'),
     sb.from('service_orders').select('order_date,total,consumable_cost'),
-    sb.from('service_order_items').select('order_date:service_orders(order_date),technician_pay').eq('item_type','service'),
+    sb.from('service_order_items').select('order_date:service_orders(order_date),technician_pay,pay_settled_by_credit,settled_pay_amount').eq('item_type','service'),
     sb.from('operating_expenses').select('expense_date,amount'),
   ]);
 
@@ -955,7 +977,7 @@ async function computeTotalFinanceData(includeSelfUse) {
     else addM(normYM(b.year_month),'bonusOut',b.amount);
   });
   (svOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'svcRev',o.total); addM(ym,'svcCost',o.consumable_cost); }});
-  (svItems||[]).forEach(i => { const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',i.technician_pay); });
+  (svItems||[]).forEach(i => { const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',svcReportPay(i)); });
   // 營運成本（房租/水電/網路等固定成本）
   (opexRecs||[]).forEach(r => { const ym=(r.expense_date||'').slice(0,7); if(ym) addM(ym,'opCost',r.amount); });
 
@@ -1087,11 +1109,11 @@ async function showOwnerProfit() {
   let ownerPayByMonth = {};
   if(ownerTechName) {
     const { data:items } = await sb.from('service_order_items')
-      .select('order_date:service_orders(order_date),technician_name,technician_pay')
+      .select('order_date:service_orders(order_date),technician_name,technician_pay,pay_settled_by_credit,settled_pay_amount')
       .eq('item_type','service').eq('technician_name',ownerTechName);
     (items||[]).forEach(i=>{
       const ym=(i.order_date?.order_date||'').slice(0,7);
-      if(ym) ownerPayByMonth[ym]=(ownerPayByMonth[ym]||0)+(i.technician_pay||0);
+      if(ym) ownerPayByMonth[ym]=(ownerPayByMonth[ym]||0)+svcReportPay(i);
     });
   }
 
@@ -1214,20 +1236,23 @@ window.showOwnerProfit = showOwnerProfit;
 //  服務財報（含技師薪資）
 // ════════════════════════════════════
 async function showSvcFinance() {
-  const [{ data:orders },{ data:transfers },{ data:items }] = await Promise.all([
+  const [{ data:orders },{ data:transfers },{ data:items0 },splitItems] = await Promise.all([
     sb.from('service_orders').select('order_date,total,consumable_cost'),
     sb.from('service_transfers').select('transfer_date,total_cost'),
-    sb.from('service_order_items').select('order_no,item_name,order_date:service_orders(order_date),technician_id,technician_name,technician_pay,item_type,qty,unit_price,subtotal').eq('item_type','service'),
+    sb.from('service_order_items').select('order_no,item_name,order_date:service_orders(order_date),technician_id,technician_name,technician_pay,pay_settled_by_credit,settled_pay_amount,item_type,qty,unit_price,subtotal').eq('item_type','service'),
+    fetchCreditSplitPayItems(),
   ]);
+  const items = [...(items0||[]), ...(splitItems||[])];
 
   // 月度彙整
   const mMap = {};
   const addM = (ym,key,val) => { if(!mMap[ym]) mMap[ym]={rev:0,cost:0,trCost:0,techPay:0}; mMap[ym][key]+=val||0; };
   (orders||[]).forEach(o=>{ const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'rev',o.total); addM(ym,'cost',o.consumable_cost); }});
   (transfers||[]).forEach(t=>{ const ym=(t.transfer_date||'').slice(0,7); if(ym) addM(ym,'trCost',t.total_cost); });
-  (items||[]).forEach(i=>{ const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',i.technician_pay); });
+  // 財報：每次服務實際的技師成本（儲值時已分成的服務也照原本抽成算），儲值分成不重複算進財報
+  (items0||[]).forEach(i=>{ const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',svcReportPay(i)); });
 
-  // 技師月薪彙整（用姓名合併，避免同一人因為技師資料重複ID分成好幾行）
+  // 技師月薪彙整（實際要發的錢：服務抽成＋儲值當下分成，儲值時已分的服務記 0）（用姓名合併，避免同一人因為技師資料重複ID分成好幾行）
   const techMap = {};
   window._svcTechDetail = {};
   (items||[]).forEach(i=>{
@@ -1313,7 +1338,7 @@ async function showSvcFinance() {
     <div class="tc">
       <div class="tb"><span class="tt">${yr} 年技師月薪表</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>技師</th><th>服務時數/次</th><th>應付薪資</th></tr>
+        <tr><th>月份</th><th>技師</th><th>服務時數/次</th><th>應付薪資（實際發放）</th></tr>
         ${yearTechEntries.map(([key,t])=>`<tr style="cursor:pointer" onclick="techMonthDetail('${key}')" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
           <td style="color:var(--ac);font-weight:600">${t.ym}</td>
           <td style="font-weight:500">${t.name}</td>
@@ -1372,23 +1397,36 @@ async function techMonthDetail(key) {
   const rows = window._svcTechDetail?.[key]||[];
   if(!rows.length){ toast('無資料','w'); return; }
   const [name,ym] = [rows[0].technician_name, (rows[0].order_date?.order_date||'').slice(0,7)];
-  const orderNos = [...new Set(rows.map(r=>r.order_no))];
-  const { data:ords } = await sb.from('service_orders').select('order_no,order_date,customer_name').in('order_no',orderNos);
+  const orderNos = [...new Set(rows.map(r=>r.order_no).filter(Boolean))];
+  const splitCustNos = [...new Set(rows.filter(r=>r.is_credit_split).map(r=>r.customer_no).filter(Boolean))];
+  const [{ data:ords },{ data:splitCusts }] = await Promise.all([
+    orderNos.length ? sb.from('service_orders').select('order_no,order_date,customer_name').in('order_no',orderNos) : Promise.resolve({data:[]}),
+    splitCustNos.length ? sb.from('customers').select('customer_no,name').in('customer_no',splitCustNos) : Promise.resolve({data:[]}),
+  ]);
   const ordMap = {}; (ords||[]).forEach(o=>ordMap[o.order_no]=o);
+  const custNameMap = {}; (splitCusts||[]).forEach(c=>custNameMap[c.customer_no]=c.name);
+  const rowDate = r => r.is_credit_split ? (r.order_date?.order_date||'') : (ordMap[r.order_no]?.order_date||'');
   const totalPay = rows.reduce((s,r)=>s+(r.technician_pay||0),0);
   // 照服務單當初登記的日期排序（不是資料庫查詢回來的隨機順序）
-  rows.sort((a,b)=> (ordMap[a.order_no]?.order_date||'').localeCompare(ordMap[b.order_no]?.order_date||'') || (a.order_no||'').localeCompare(b.order_no||''));
+  rows.sort((a,b)=> rowDate(a).localeCompare(rowDate(b)) || (a.order_no||'').localeCompare(b.order_no||''));
 
   OM(`${ym} ${name} 薪資明細`, `
   <div style="font-size:16px;font-weight:700;margin-bottom:14px;color:var(--bl)">應付薪資合計：${fM(totalPay)}</div>
   <table class="itb"><tr><th>服務單</th><th>日期</th><th>客戶</th><th>項目</th><th>數量</th><th>抽成</th></tr>
-    ${rows.map(r=>`<tr>
+    ${rows.map(r=>r.is_credit_split?`<tr style="background:var(--acl)">
+      <td style="font-size:11px;color:var(--tx3)">儲值</td>
+      <td style="font-size:11px">${fD(rowDate(r))}</td>
+      <td style="font-size:12px">${custNameMap[r.customer_no]||r.customer_no||'—'}</td>
+      <td style="font-size:12px">儲值分成</td>
+      <td class="num">—</td>
+      <td class="num" style="color:var(--bl)">${fM(r.technician_pay)}</td>
+    </tr>`:`<tr>
       <td><a href="#" onclick="event.preventDefault();CM();setTimeout(()=>svcShowOrder('${r.order_no}'),80)" style="color:var(--ac);font-size:11px;font-family:monospace">${r.order_no}</a></td>
       <td style="font-size:11px">${fD(ordMap[r.order_no]?.order_date)}</td>
       <td style="font-size:12px">${ordMap[r.order_no]?.customer_name||'—'}</td>
       <td style="font-size:12px">${r.item_name||'—'}</td>
       <td class="num">${r.qty}</td>
-      <td class="num" style="color:var(--bl)">${fM(r.technician_pay)}</td>
+      <td class="num" style="color:var(--bl)">${fM(r.technician_pay)}${r.pay_settled_by_credit?`<div style="font-size:10px;color:var(--tx3)">已於儲值時分（原 ${fM(r.settled_pay_amount||0)}）</div>`:''}</td>
     </tr>`).join('')}
   </table>`,
   `<button class="btn" onclick="CM()">關閉</button>`);

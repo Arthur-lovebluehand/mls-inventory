@@ -104,12 +104,13 @@ window.doConvertWallet = doConvertWallet;
 
 async function svcAddCredit(custNo, custName, walletType) {
   const [{ data:custs },{ data:allProds }] = await Promise.all([
-    sb.from('customers').select('customer_no,name,phone,wallet_mode').order('name'),
+    sb.from('customers').select('customer_no,name,phone,wallet_mode,credit_split_tech_name').order('name'),
     sb.from('products').select('product_no,name,spec,stock,source,category').eq('is_active',true).order('product_no'),
   ]);
   window._crCusts = custs||[];
   window._crAllProds = allProds||[];
   window._crGifts = [];
+  window._crSplitTech = null;
   const initialCust = custNo ? window._crCusts.find(c=>c.customer_no===custNo) : null;
   const knownShared = !!initialCust && initialCust.wallet_mode!=='separate';
   const knownSeparate = !!initialCust && initialCust.wallet_mode==='separate';
@@ -138,7 +139,14 @@ async function svcAddCredit(custNo, custName, walletType) {
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('cr-date','日期','date',today())}
-    ${fi('cr-amount','儲值金額 *','number','')}
+    <div class="fl"><label>儲值金額 *</label><input id="f-cr-amount" type="number" value="" autocomplete="off" oninput="crSyncSplit()"></div>
+  </div>
+  <div id="cr-split-box" style="display:none;margin-bottom:10px;padding:10px 12px;background:var(--acl);border-radius:var(--r)">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">
+      <div class="fl"><label>分給技師 <b id="cr-split-name"></b> 的金額</label>
+        <input id="f-cr-split" type="number" value="" autocomplete="off" oninput="this.dataset.manual='1'"></div>
+      <div style="font-size:11px;color:var(--tx3);padding-bottom:8px">預設是儲值金額的一半，可以改。這筆會算進技師當月薪資，之後這位技師幫她服務不再另算抽成。</div>
+    </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
     ${fi('cr-bonus','贈送金額（選填）','number','0')}
@@ -163,6 +171,7 @@ async function svcAddCredit(custNo, custName, walletType) {
   </div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveCredit()">確認儲值</button>`);
+  if(initialCust) crShowSplit(initialCust);
 
   window.crFilterCust = q=>{
     const fil = q ? window._crCusts.filter(c=>c.name.includes(q)||(c.phone||'').includes(q)) : window._crCusts;
@@ -176,6 +185,7 @@ async function svcAddCredit(custNo, custName, walletType) {
     $('ss-val-crcust').value = cno;
     $('ss-drop-crcust')?.classList.remove('open');
     const c = window._crCusts.find(x=>x.customer_no===cno);
+    crShowSplit(c);
     const isShared = !c || c.wallet_mode!=='separate';
     const sel = $('f-cr-wallet'), hint = $('cr-wallet-hint');
     if(sel) {
@@ -199,6 +209,24 @@ async function svcAddCredit(custNo, custName, walletType) {
 }
 
 window.svcAddCredit    = svcAddCredit;
+
+// 儲值分成：客戶有設定「儲值分成技師」才顯示，金額預設＝儲值金額的一半（手動改過就不再自動帶）
+function crShowSplit(c) {
+  const box = $('cr-split-box'); if(!box) return;
+  const tech = c?.credit_split_tech_name || '';
+  window._crSplitTech = tech || null;
+  box.style.display = tech ? 'block' : 'none';
+  if($('cr-split-name')) $('cr-split-name').textContent = tech;
+  const inp = $('f-cr-split'); if(inp){ inp.dataset.manual=''; }
+  crSyncSplit();
+}
+window.crShowSplit = crShowSplit;
+function crSyncSplit() {
+  const inp = $('f-cr-split'); if(!inp || inp.dataset.manual==='1') return;
+  const amt = parseFloat($('f-cr-amount')?.value)||0;
+  inp.value = amt>0 ? Math.round(amt/2) : '';
+}
+window.crSyncSplit = crSyncSplit;
 
 function crAddGift() {
   const pno = $('cr-giftpno')?.value;
@@ -231,6 +259,8 @@ async function saveCredit() {
   const bonus = parseFloat(v('cr-bonus'))||0;
   const note = v('cr-note');
   const gifts = window._crGifts||[];
+  const splitTech = window._crSplitTech || null;
+  const splitAmt = splitTech ? (parseFloat(v('cr-split'))||0) : 0;
   if(!custNo||!date||(amount<=0 && !gifts.length)){ toast('請填寫客戶、日期，並至少填儲值金額或贈送商品其中一項','e'); return; }
 
   const { data:cr } = await sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle();
@@ -244,10 +274,12 @@ async function saveCredit() {
   }
 
   if(amount>0) {
-    await sb.from('store_credit_records').insert({
+    const { error:depErr } = await sb.from('store_credit_records').insert({
       customer_no:custNo, wallet_type:walletType, record_date:date, type:'deposit',
-      amount, balance_after:oldBal+amount, note:note||null
+      amount, balance_after:oldBal+amount, note:note||null,
+      tech_split_name: splitAmt>0 ? splitTech : null, tech_split_amount: splitAmt>0 ? splitAmt : null
     });
+    if(depErr){ toast('儲值記錄寫入失敗：'+depErr.message,'e'); return; }
   }
   if(bonus>0) {
     await sb.from('store_credit_records').insert({
@@ -309,7 +341,7 @@ async function svcCreditHistory(custNo, walletType) {
       <td><span class="badge ${r.type==='deduct'?'br2':r.type==='gift'?'ba':r.type==='adjust'?'bb':'bg'}">${typeLabel[r.type]||r.type}</span></td>
       <td class="num" style="color:${r.amount<0?'var(--rd)':'var(--ac)'}">${fM(r.amount)}</td>
       <td class="num">${fM(r.balance_after)}</td>
-      <td style="font-size:12px;color:var(--tx3)">${r.note||''}</td>
+      <td style="font-size:12px;color:var(--tx3)">${r.note||''}${r.tech_split_amount?`<div style="color:var(--bl)">分給技師 ${r.tech_split_name}：${fM(r.tech_split_amount)}</div>`:''}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-s" onclick="editCreditRecord(${r.id},'${custNo}','${walletType}')">編輯</button>
         <button class="btn btn-s btn-r" onclick="deleteCreditRecord(${r.id},'${custNo}','${walletType}')">刪除</button>
@@ -398,6 +430,13 @@ async function editCreditRecord(id, custNo, walletType) {
   // 不會回頭同步改到那張訂單，兩邊就會對不上——所以鎖定金額，只能改日期/備註。
   const isOrderLinked = r.type==='deduct' && r.order_no;
   const lockAmount = isProduct || isOrderLinked;
+  // 儲值分成：已經有分成的記錄，或這位客人有設定「儲值分成技師」的儲值記錄（補登以前的儲值）都可以填
+  let splitTech = r.tech_split_name || null;
+  if(!splitTech && r.type==='deposit') {
+    const { data:cs } = await sb.from('customers').select('credit_split_tech_name').eq('customer_no',r.customer_no).maybeSingle();
+    splitTech = cs?.credit_split_tech_name || null;
+  }
+  window._ecrSplitTech = splitTech;
   OM('編輯儲值記錄', `
   ${isProduct?`<div class="al al-w" style="font-size:12px;margin-bottom:10px">這是贈品記錄（${r.product_name} × ${r.product_qty}），這裡只能改日期/備註；商品數量不會重新調整庫存，如果數量填錯建議直接刪除這筆重新登記。</div>`:''}
   ${isOrderLinked?`<div class="al al-w" style="font-size:12px;margin-bottom:10px">這是訂單 <b>${r.order_no}</b> 自動產生的扣款記錄，這裡只能改日期/備註。金額是跟著那張訂單的金額連動的，如果金額算錯，要去那張訂單本身修改（改訂單金額，或取消收款再重新標記收款），這裡直接改金額只會動到儲值帳本，訂單那邊不會跟著變，兩邊會對不上。</div>`:''}
@@ -405,7 +444,8 @@ async function editCreditRecord(id, custNo, walletType) {
     ${fi('ecr-date','日期','date',r.record_date)}
     ${lockAmount?'':fi('ecr-amount','金額','number',r.amount)}
   </div>
-  ${fi('ecr-note','備註','text',r.note)}`,
+  ${fi('ecr-note','備註','text',r.note)}
+  ${splitTech?`<div style="margin-top:10px">${fi('ecr-split',`分給技師 ${splitTech} 的金額（填 0 代表沒有分成）`,'number',r.tech_split_amount??'')}</div>`:''}`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveEditCreditRecord(${id},'${custNo}','${walletType}',${lockAmount})">儲存</button>`);
 }
@@ -414,7 +454,13 @@ window.editCreditRecord = editCreditRecord;
 async function saveEditCreditRecord(id, custNo, walletType, lockAmount) {
   const payload = { record_date:v('ecr-date'), note:v('ecr-note')||null };
   if(!lockAmount) payload.amount = parseFloat(v('ecr-amount'))||0;
-  await sb.from('store_credit_records').update(payload).eq('id',id);
+  if($('f-ecr-split')) {
+    const amt = parseFloat(v('ecr-split'))||0;
+    payload.tech_split_amount = amt>0 ? amt : null;
+    payload.tech_split_name = amt>0 ? window._ecrSplitTech : null;
+  }
+  const { error } = await sb.from('store_credit_records').update(payload).eq('id',id);
+  if(error){ toast('更新失敗：'+error.message,'e'); return; }
   await recomputeCreditChain(custNo, walletType);
   toast('✅ 已更新');
   CM();
@@ -432,7 +478,9 @@ async function deleteCreditRecord(id, custNo, walletType) {
   } else if(r.type==='deduct' && r.order_no) {
     if(!confirm(`這筆是訂單 ${r.order_no} 自動產生的扣款記錄。直接刪除只會動到儲值帳本，不會改到那張訂單本身的付款狀態，之後如果那張訂單被取消收款或刪除，自動退款會找不到這筆記錄可能出錯。\n\n建議去那張訂單本身操作（例如取消收款會自動退款）。真的要在這裡直接刪除嗎？`)) return;
   } else {
-    if(!confirm('確定刪除這筆儲值記錄？')) return;
+    if(!confirm(r.tech_split_amount
+      ? `確定刪除這筆儲值記錄？\n\n這筆儲值有分給技師 ${r.tech_split_name} ${fM(r.tech_split_amount)}，刪除後這筆分成也會從技師薪資裡一起消失。`
+      : '確定刪除這筆儲值記錄？')) return;
   }
   if(restoreStock) {
     const { data:p } = await sb.from('products').select('stock').eq('product_no',r.product_no).single();

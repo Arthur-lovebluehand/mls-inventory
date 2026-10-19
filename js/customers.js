@@ -108,6 +108,7 @@ async function showCust(no){
     <div class="dr"><span class="dlb">愛閃耀會員編號</span><span class="dv" style="font-family:monospace">${c?.member_no||'—'}</span></div>
     <div class="dr"><span class="dlb">儲值餘額</span><span class="dv ok" style="font-weight:600">${creditDisplay}</span></div>
     <div class="dr"><span class="dlb">付款方式</span><span class="dv">${c?.payment_method||'—'}</span></div>
+    ${c?.credit_split_tech_name?`<div class="dr" style="grid-column:1/-1"><span class="dlb">儲值分成技師</span><span class="dv">${c.credit_split_tech_name}（儲值時分成，之後服務不再另算抽成）</span></div>`:''}
     ${benName?`<div class="dr" style="grid-column:1/-1"><span class="dlb">📋 分潤受益人</span><span class="dv" style="color:#8d6e00">同階代理，訂單出貨完成後分潤轉給：<b>${benName}</b>（${c.passthrough_beneficiary_no}）</span></div>`:''}
     <div class="dr" style="grid-column:1/-1"><span class="dlb">送貨地址</span><span class="dv">${c?.ship_full_address||c?.ship_address||'—'}</span></div>
     <div class="dr" style="grid-column:1/-1"><span class="dlb">備註</span><span class="dv">${c?.note||'—'}</span></div>
@@ -132,6 +133,11 @@ async function delCust(no, name){
   await logAction('delete','customers',no,'刪除客戶 '+name+' ('+no+')');
   toast('客戶已刪除');customers();
 }
+// 技師姓名清單（同一人可能有多個職位，用姓名去重複），給「儲值分成技師」下拉用
+async function loadCustTechNames(){
+  const{data}=await sb.from('technicians').select('name').eq('is_active',true).order('name');
+  window._custTechNames=[...new Set((data||[]).map(t=>t.name).filter(Boolean))];
+}
 function custForm(c,benList){
   c=c||{};
   benList=benList||[];
@@ -148,6 +154,9 @@ function custForm(c,benList){
       <option value="separate" ${c.wallet_mode==='separate'?'selected':''}>服務、產品分開算</option>
     </select></div>
     <div class="fl fw">${fi('caddr','送貨地址','text',c.ship_full_address||c.ship_address)}</div>
+    <div class="fl fw"><label>儲值分成技師（選填——這位客人儲值時就把抽成分給技師，之後這位技師幫她服務不再另算抽成）</label>
+      <select id="f-csplit" autocomplete="off"><option value="">（無）</option>${[...new Set([...(window._custTechNames||[]),...(c.credit_split_tech_name?[c.credit_split_tech_name]:[])])].map(n=>`<option value="${n}" ${n===c.credit_split_tech_name?'selected':''}>${n}</option>`).join('')}</select>
+    </div>
     <div class="fl fw" style="background:var(--acl);border-radius:var(--r);padding:8px 10px">
       <label>分潤受益人（選填——此客戶與上家同階、改由我方出貨時，分潤要轉給的對象；輸入姓名或編號搜尋，零售客戶不會列入）</label>
       <div class="ss-wrap" id="ss-cben">
@@ -171,6 +180,7 @@ async function addCust(){
   }
   // 分潤受益人候選名單排除「零售」——零售是位階最底層，本來就不會有自己的下家跟她同階，不可能是誰的分潤受益人
   const{data:benList}=await sb.from('customers').select('customer_no,name,agent_level').neq('agent_level','零售').order('customer_no');
+  await loadCustTechNames();
   OM('新增客戶',custForm({customer_no:nextNo},benList),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveCust(false)">新增</button>`);
   initBenPicker(benList,null);
 }
@@ -178,6 +188,7 @@ async function eCust(no){
   const[{data:c},{data:benList}]=await Promise.all([
     sb.from('customers').select('*').eq('customer_no',no).single(),
     sb.from('customers').select('customer_no,name,agent_level').neq('customer_no',no).neq('agent_level','零售').order('customer_no'),
+    loadCustTechNames(),
   ]);
   OM('編輯客戶',custForm(c,benList),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveCust('${no}')">儲存</button>`);
   initBenPicker(benList,c.passthrough_beneficiary_no);
@@ -212,7 +223,7 @@ async function saveCust(existingNo){
   const nm=v('cname');if(!nm){toast('請填寫姓名','e');return;}
   const newBenNo=v('cben')||null;
   const newLevel=v('clv');
-  const obj={name:nm,agent_level:newLevel,member_no:v('cmno')||null,phone:v('cph'),email:v('ceml'),birthday:v('cbday')||null,lunar_mark:v('clmk')||null,payment_method:v('cpay'),shipping_method:v('cshp')||null,wallet_mode:v('cwallet')||'shared',ship_address:v('caddr'),ship_full_address:v('caddr'),note:v('cnote')||null,passthrough_beneficiary_no:newBenNo};
+  const obj={name:nm,agent_level:newLevel,member_no:v('cmno')||null,phone:v('cph'),email:v('ceml'),birthday:v('cbday')||null,lunar_mark:v('clmk')||null,payment_method:v('cpay'),shipping_method:v('cshp')||null,wallet_mode:v('cwallet')||'shared',ship_address:v('caddr'),ship_full_address:v('caddr'),note:v('cnote')||null,passthrough_beneficiary_no:newBenNo,credit_split_tech_name:v('csplit')||null};
   if(existingNo){
     // 第一次把「分潤受益人」從無設定成有：這位客戶過去的舊訂單不該一次全部跳出來要建分潤（不知道同階狀態是何時開始的），
     // 所以先把她目前所有「已收款」的舊訂單標記成「已處理」（略過），之後只有新確認收款的訂單才會出現在待處理清單

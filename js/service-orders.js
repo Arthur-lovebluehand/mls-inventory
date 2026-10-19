@@ -81,7 +81,7 @@ async function svcShowOrder(no) {
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
     <tr><th>#</th><th>項目</th><th>數量</th><th>單價</th><th>小計</th><th>技師</th></tr>
     ${services.map((i,idx)=>`<tr><td style="color:var(--tx3);font-size:12px">${idx+1}</td><td>${i.item_name}${i.is_gift?' <span class="badge ba" style="font-size:10px">贈</span>':''}</td><td>${i.qty}${i.unit||''}</td>
-      <td class="num">${fM(i.unit_price)}</td><td class="num">${fM(i.subtotal)}</td><td style="font-size:12px">${i.technician_name||'—'}</td></tr>`).join('')}
+      <td class="num">${fM(i.unit_price)}</td><td class="num">${fM(i.subtotal)}</td><td style="font-size:12px">${i.technician_name||'—'}${i.pay_settled_by_credit?'<div style="font-size:11px;color:var(--bl)">抽成已於儲值時分</div>':''}</td></tr>`).join('')}
   </table></div></div>`:''}
   ${consumables.length?`<div style="font-weight:600;margin-bottom:6px;font-size:13px">耗材</div>
   <div class="tc" style="margin-bottom:12px"><div class="tw"><table style="width:100%">
@@ -168,8 +168,12 @@ async function svcNewOrder(editNo) {
     id: Date.now()+Math.random(), item_type:i.item_type, item_name:i.item_name,
     product_no:i.product_no||null, consumable_id:i.consumable_id||null, deposit_id:i.deposit_id||null,
     qty:i.qty, unit:i.unit, unit_price:i.unit_price, cost:i.cost, subtotal:i.subtotal, is_gift:i.is_gift||false,
-    technician_id:i.technician_id||null, technician_name:i.technician_name||null, technician_pay:i.technician_pay||0
+    technician_id:i.technician_id||null, technician_name:i.technician_name||null,
+    // 儲值時已分成的品項，資料庫存的 technician_pay 是 0，原本該抽的金額存在 settled_pay_amount；
+    // 編輯時先還原成原本的抽成，存檔時再依客戶設定重新判斷一次
+    technician_pay: i.pay_settled_by_credit ? (i.settled_pay_amount||0) : (i.technician_pay||0)
   }));
+  window._svcSplitTech = null;
 
   const catGroups = {};
   (sitems||[]).forEach(s=>{ const c=s.category||'其他項目'; if(!catGroups[c]) catGroups[c]=[]; catGroups[c].push(s); });
@@ -371,6 +375,9 @@ async function svcPickCust(custNo, custName) {
     $('ss-inp-svcust').value = custName;
     $('f-sv-cname').value = custName;
     $('ss-drop-svcust')?.classList.remove('open');
+    // 這位客人如果有「儲值分成技師」，該技師幫她服務時抽成已經在儲值時分過了
+    sb.from('customers').select('credit_split_tech_name').eq('customer_no',custNo).maybeSingle()
+      .then(({data})=>{ window._svcSplitTech = data?.credit_split_tech_name||null; renderSvcItems(); });
     // 查儲值餘額（依客戶模式抓服務或共用帳戶）
     getSvcWalletType(custNo).then(walletType=>{
       sb.from('store_credits').select('balance').eq('customer_no',custNo).eq('wallet_type',walletType).maybeSingle()
@@ -567,7 +574,7 @@ function renderSvcItems() {
         <td class="num">${fM(i.unit_price)}</td>
         <td class="num" style="color:${(i.item_type==='consumable'||i.item_type==='gift_product')?'var(--rd)':'var(--tx3)'}">${(i.item_type==='consumable'||i.item_type==='gift_product')?fM(i.cost):'—'}</td>
         <td class="num"><b>${fM(i.subtotal)}</b></td>
-        <td style="font-size:11px;color:var(--tx3)">${i.technician_name||'—'}</td>
+        <td style="font-size:11px;color:var(--tx3)">${i.technician_name||'—'}${i.item_type==='service'&&i.technician_name&&i.technician_name===window._svcSplitTech?'<div style="color:var(--bl)">抽成已於儲值時分</div>':''}</td>
         <td><button onclick="rmSvcItem(${i.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:16px">×</button></td>
       </tr>`).join('')}
     </table></div>
@@ -639,15 +646,25 @@ async function saveSvcOrder() {
   if(e1){ toast((editNo?'更新失敗：':'建立失敗：')+e1.message,'e'); return; }
 
   // 2. 建品項
+  // 儲值分成：這位客人的「儲值分成技師」幫她做的服務，抽成在儲值時已經分過，這裡記 0，原本的抽成另外存起來備查
+  let splitTech = null;
+  if(custNo) {
+    const { data:cs } = await sb.from('customers').select('credit_split_tech_name').eq('customer_no',custNo).maybeSingle();
+    splitTech = cs?.credit_split_tech_name || null;
+  }
+  const isSettled = i => i.item_type==='service' && !!splitTech && i.technician_name===splitTech;
   const items = window._svcItems.map(i=>({
     order_no:no, item_type:i.item_type, item_name:i.item_name,
     product_no:i.product_no||null, consumable_id:i.consumable_id||null, deposit_id:i.deposit_id||null, is_gift:i.is_gift||false,
     qty:i.qty, unit:i.unit,
     unit_price:i.unit_price, cost:i.cost, subtotal:i.subtotal,
     technician_id:i.technician_id||null, technician_name:i.technician_name||null,
-    technician_pay:i.technician_pay||0
+    technician_pay: isSettled(i) ? 0 : (i.technician_pay||0),
+    pay_settled_by_credit: isSettled(i),
+    settled_pay_amount: isSettled(i) ? (i.technician_pay||0) : null
   }));
-  await sb.from('service_order_items').insert(items);
+  const { error:itemErr } = await sb.from('service_order_items').insert(items);
+  if(itemErr){ toast('品項寫入失敗：'+itemErr.message,'e'); return; }
 
   // 3. 扣服務庫存（商品撥轉耗材 → service_inventory；服務專屬耗材 → service_consumables；客戶寄放商品 → customer_deposits，並留使用記錄）— 平行處理加快速度
   await Promise.all(window._svcItems.filter(i=>i.item_type==='consumable'&&i.product_no).map(async item=>{
