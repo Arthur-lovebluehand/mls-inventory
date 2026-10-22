@@ -20,18 +20,33 @@ function addMonthsYm(ym, n){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 }
 
+// 「費用所屬起始月」：這筆錢是哪幾個月用掉的（例如 10 月收到的水電帳單，其實是 8、9 月的用量）。
+// 沒填就跟付款日期同一個月（舊資料都是這樣，行為不變）。
+// 成本報表依這個月份攤提；「實際支出」則照付款日期（expense_date）那個月整筆算，兩個數字分開看。
+function opexPeriodStart(r){
+  return (r.period_start_ym && /^\d{4}-\d{2}$/.test(r.period_start_ym)) ? r.period_start_ym : (r.expense_date||'').slice(0,7);
+}
+function opexPeriodLabel(r){
+  const months = Math.max(1, r.amortize_months||1);
+  const st = opexPeriodStart(r);
+  return months>1 ? `${st} ~ ${addMonthsYm(st,months-1)}` : st;
+}
+window.opexPeriodStart = opexPeriodStart;
+
 // 把一筆支出依照「攤提月數」展開成它涵蓋的每一個月＋每月分攤到的金額（用整數金額分攤，
 // 餘數放在起始月，確保展開後加總還是等於原始金額，不會因為除不盡而兜不起來）。
 function expandOpexToMonths(r){
   const months = Math.max(1, r.amortize_months||1);
-  const startYm = (r.expense_date||'').slice(0,7);
+  const startYm = opexPeriodStart(r);
   if(!startYm) return [];
   const total = r.amount||0;
   const base = Math.floor(total/months);
   const first = total - base*(months-1);
   const out = [];
   for(let i=0;i<months;i++){
-    out.push({ ym:addMonthsYm(startYm,i), amount:i===0?first:base, src:r, isAttributed:i>0, totalMonths:months });
+    const segYm = addMonthsYm(startYm,i);
+    // isAttributed＝這一段不是在付款那個月（是攤過來的），畫面上只能「查看原始」
+    out.push({ ym:segYm, amount:i===0?first:base, src:r, isAttributed:segYm!==(r.expense_date||'').slice(0,7), totalMonths:months });
   }
   return out;
 }
@@ -54,7 +69,7 @@ async function autoCarryForwardOpex(){
   if(_opexCarryChecked) return;
   _opexCarryChecked = true;
   const thisMonth = ym();
-  const { data:all } = await sb.from('operating_expenses').select('id,expense_date,category,amount,recur_freq,amortize_months,note');
+  const { data:all } = await sb.from('operating_expenses').select('*');
   if(!all || !all.length) return;
   const keyOf = r => `${r.category}::${stripOpexAutoMark(r.note)}`;
   const latestByKey = {};
@@ -83,18 +98,22 @@ async function autoCarryForwardOpex(){
     const day = Math.min(parseInt((src.expense_date||'').slice(8,10))||1, daysInThisMonth);
     const newDate = `${thisMonth}-${String(day).padStart(2,'0')}`;
     const baseNote = stripOpexAutoMark(src.note);
-    toInsert.push({
+    const rec = {
       expense_no: 'OX-'+thisMonth.replace('-','')+'-A'+idx+Date.now().toString().slice(-4),
       expense_date:newDate, category:src.category, amount:src.amount,
       recur_freq:src.recur_freq, amortize_months:src.amortize_months||1, is_recurring:true,
       note: (baseNote?baseNote+'　':'')+OPEX_AUTO_MARK
-    });
+    };
+    // 上一期有設定「費用所屬起始月」（帳單晚到的那種），新的一期也往後推同樣的間隔，維持一樣的時間差
+    if(src.period_start_ym) rec.period_start_ym = addMonthsYm(src.period_start_ym, interval);
+    toInsert.push(rec);
   });
   if(!toInsert.length) return;
   const { error } = await sb.from('operating_expenses').insert(toInsert);
   if(!error) toast(`✅ 已自動補上 ${toInsert.length} 筆到期的固定支出，記得檢查金額是否需要調整`);
 }
 window.autoCarryForwardOpex = autoCarryForwardOpex;
+window.expandOpexToMonths = expandOpexToMonths;
 
 async function opex(){
   await autoCarryForwardOpex();
@@ -105,34 +124,44 @@ async function opex(){
   // 依「攤提月數」把每一筆記錄展開到它涵蓋的月份，年度/月份彙整都用展開後的金額，
   // 這樣像保費、借址登記費這種一次繳一年的支出，才會平均反映在每個月的營運成本裡，
   // 而不是只有繳費那個月看起來爆增、其他月份看起來很低。
+  // total＝分攤後的每月成本（依費用所屬月份攤提）；paid＝實際支出（付款日期那個月整筆算）
   const yearMap = {}, monthMap = {};
+  const ensureY = yr => (yearMap[yr] = yearMap[yr] || {count:0,total:0,paid:0});
+  const ensureM = m => (monthMap[m] = monthMap[m] || {count:0,total:0,paid:0,items:[],paidItems:[]});
   (allRecs||[]).forEach(r=>{
     expandOpexToMonths(r).forEach(seg=>{
       const yr = seg.ym.slice(0,4);
       if(!yr) return;
-      if(!yearMap[yr]) yearMap[yr]={count:0,total:0};
-      yearMap[yr].count++; yearMap[yr].total+=seg.amount;
-      if(!monthMap[seg.ym]) monthMap[seg.ym]={count:0,total:0,items:[]};
-      monthMap[seg.ym].count++; monthMap[seg.ym].total+=seg.amount;
-      monthMap[seg.ym].items.push(seg);
+      const y=ensureY(yr); y.count++; y.total+=seg.amount;
+      const m=ensureM(seg.ym); m.count++; m.total+=seg.amount; m.items.push(seg);
     });
+    const payYm = (r.expense_date||'').slice(0,7);
+    if(payYm){
+      ensureY(payYm.slice(0,4)).paid += r.amount||0;
+      const m=ensureM(payYm); m.paid += r.amount||0; m.paidItems.push(r);
+    }
   });
   const years = Object.keys(yearMap).sort().reverse();
   const monthTotal = monthMap[thisMonth]?.total || 0;
   const yearTotal = yearMap[thisMonth.slice(0,4)]?.total || 0;
+  const monthPaid = monthMap[thisMonth]?.paid || 0;
+  const yearPaid = yearMap[thisMonth.slice(0,4)]?.paid || 0;
 
   $('main').innerHTML=`
   <div class="ph"><div><div class="pt">營運成本</div><div class="ps">共 ${count||0} 筆</div></div>
     <div class="ha"><button class="btn btn-p btn-s" onclick="addOpex()">＋ 新增記錄</button></div></div>
   <div class="pc">
     <div class="mg">
-      <div class="mc"><div class="ml">本月合計（含攤提）</div><div class="mv cr">${fM(monthTotal)}</div></div>
-      <div class="mc"><div class="ml">今年累計（含攤提）</div><div class="mv cr">${fM(yearTotal)}</div></div>
+      <div class="mc"><div class="ml">本月成本（分攤後）</div><div class="mv cr">${fM(monthTotal)}</div></div>
+      <div class="mc"><div class="ml">本月實際支出</div><div class="mv">${fM(monthPaid)}</div></div>
+      <div class="mc"><div class="ml">今年成本（分攤後）</div><div class="mv cr">${fM(yearTotal)}</div></div>
+      <div class="mc"><div class="ml">今年實際支出</div><div class="mv">${fM(yearPaid)}</div></div>
     </div>
     <div class="al al-w" style="font-size:12px">
-      記錄房租、水電、網路等跟商品/服務無關、但公司經營一定會花的錢。像保費、借址登記費這種一次繳一年的支出，
-      或會計師、水電瓦斯這種兩個月繳一次的支出，新增時選對應的「支出頻率」，系統會自動平均攤提到它涵蓋的每個月，
-      月報表看到的才是真實的每月成本。
+      記錄房租、水電、網路等跟商品/服務無關、但公司經營一定會花的錢。像保費這種一年繳一次、或水電瓦斯這種兩個月繳一次的支出，
+      選對應的「支出頻率」，系統會平均攤提到它涵蓋的月份。<br>
+      <b>分攤後成本</b>＝每個月真正用掉多少（依「費用所屬起始月」攤提，例如 10 月收到的 8~9 月水電帳單，就算在 8、9 月）；
+      <b>實際支出</b>＝那個月實際付出去多少錢（照付款日期整筆算）。
     </div>`;
 
   // ── 第一層：年度總覽 ──
@@ -141,15 +170,16 @@ async function opex(){
     <div class="tc">
       <div class="tb"><span class="tt">年度總覽（點年份看該年每月彙整，金額已含攤提）</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>年份</th><th>項目數</th><th style="font-weight:700">金額合計</th></tr>
+        <tr><th>年份</th><th>項目數</th><th style="font-weight:700">分攤後成本</th><th>實際支出</th></tr>
         ${years.map(yr=>{
           const y=yearMap[yr];
           return `<tr style="cursor:pointer" onclick="_opexYear='${yr}';opex()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
             <td style="font-weight:700;color:var(--ac);font-size:15px">${yr} ›</td>
             <td>${y.count} 項</td>
             <td class="num" style="font-weight:700;color:var(--rd)">${fM(y.total)}</td>
+            <td class="num">${fM(y.paid)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;
@@ -166,15 +196,17 @@ async function opex(){
     <div class="tc">
       <div class="tb"><span class="tt">${_opexYear} 年月度彙整（點月份看逐筆明細，金額已含攤提）</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>項目數</th><th style="font-weight:700">金額合計</th></tr>
+        <tr><th>月份</th><th>項目數</th><th style="font-weight:700">分攤後成本</th><th>實際支出</th><th>差額</th></tr>
         ${yearMonths.map(ym=>{
-          const m=monthMap[ym];
+          const m=monthMap[ym]; const diff=m.paid-m.total;
           return `<tr style="cursor:pointer" onclick="_opexMonth='${ym}';opex()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
             <td style="font-weight:600;color:var(--ac)">${ym} ›</td>
             <td>${m.count} 項</td>
             <td class="num" style="font-weight:700;color:var(--rd)">${fM(m.total)}</td>
+            <td class="num">${fM(m.paid)}</td>
+            <td class="num" style="font-size:12px;color:var(--tx3)">${diff===0?'—':(diff>0?'多付 ':'少付 ')+fM(Math.abs(diff))}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">本年度尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">本年度尚無記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;
@@ -191,7 +223,7 @@ async function opex(){
       <button class="btn btn-s" onclick="_opexMonth=null;opex()">‹ 返回 ${_opexYear} 年月度彙整</button>
     </div>
     <div class="tc">
-      <div class="tb"><span class="tt">${_opexMonth} 營運成本明細</span></div>
+      <div class="tb"><span class="tt">${_opexMonth} 分攤後成本明細（合計 ${fM(monthMap[_opexMonth]?.total||0)}）</span></div>
       <div class="tw"><table style="width:100%">
         <tr><th>日期</th><th>類別</th><th>本月金額</th><th>頻率</th><th>備註</th><th>操作</th></tr>
         ${monthItems.map(seg=>{
@@ -202,7 +234,7 @@ async function opex(){
           <td><span class="badge bgr">${r.category}</span></td>
           <td class="num" style="font-weight:600;color:var(--rd)">${fM(seg.amount)}${amtSub}</td>
           <td>${r.recur_freq?`<span class="badge bg">${freqLabel[r.recur_freq]||r.recur_freq}</span>`:'—'}</td>
-          <td style="font-size:12px;color:var(--tx3)">${seg.isAttributed?`分攤自 ${fD(r.expense_date)} 那筆`:(r.note||'—')}</td>
+          <td style="font-size:12px;color:var(--tx3)">${seg.isAttributed?`分攤自 ${fD(r.expense_date)} 付款那筆（涵蓋 ${opexPeriodLabel(r)}）`:(r.note||'—')}</td>
           <td style="white-space:nowrap">
             ${seg.isAttributed
               ? `<button class="btn btn-s" onclick="editOpex(${r.id})">查看原始</button>`
@@ -210,21 +242,55 @@ async function opex(){
                  <button class="btn btn-s btn-r" onclick="deleteOpex(${r.id})">刪除</button>`}
           </td>
         </tr>`;
-        }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">本月尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">本月沒有分攤到的成本</td></tr>'}
+      </table></div>
+    </div>
+    <div class="tc">
+      <div class="tb"><span class="tt">${_opexMonth} 實際付款（合計 ${fM(monthMap[_opexMonth]?.paid||0)}）</span></div>
+      <div class="tw"><table style="width:100%">
+        <tr><th>付款日期</th><th>類別</th><th>付款金額</th><th>費用涵蓋月份</th><th>備註</th><th>操作</th></tr>
+        ${(monthMap[_opexMonth]?.paidItems||[]).slice().sort((a,b)=>(a.expense_date||'').localeCompare(b.expense_date||'')).map(r=>`<tr>
+          <td style="font-size:12px">${fD(r.expense_date)}</td>
+          <td><span class="badge bgr">${r.category}</span></td>
+          <td class="num" style="font-weight:600">${fM(r.amount)}</td>
+          <td style="font-size:12px">${opexPeriodLabel(r)}</td>
+          <td style="font-size:12px;color:var(--tx3)">${r.note||'—'}</td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-s" onclick="editOpex(${r.id})">編輯</button>
+            <button class="btn btn-s btn-r" onclick="deleteOpex(${r.id})">刪除</button>
+          </td>
+        </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">本月沒有實際付款</td></tr>'}
       </table></div>
     </div>
   </div>`;
 }
 window.opex = opex;
 
+// 費用所屬起始月：預設跟著付款日期走；手動改過就不再自動跟。下方即時顯示這筆會算在哪幾個月。
+function oxPeriodHint(){
+  const dateEl=$('f-oxdate'), pEl=$('f-oxperiod'), hint=$('ox-period-hint');
+  if(!pEl) return;
+  const payYm=(dateEl?.value||'').slice(0,7);
+  if(pEl.dataset.manual!=='1' && payYm) pEl.value=payYm;
+  const months = OPEX_FREQ_MONTHS[$('f-oxfreq')?.value] || 1;
+  const st = pEl.value || payYm;
+  if(!hint || !st) return;
+  const range = months>1 ? `${st} ~ ${addMonthsYm(st,months-1)}` : st;
+  hint.textContent = `成本會算在：${range}` + (payYm && st!==payYm ? `（實際支出仍算在 ${payYm}）` : '');
+}
+window.oxPeriodHint = oxPeriodHint;
 function addOpex() {
   OM('新增營運成本', `
   <div class="fg">
-    ${fi('oxdate','日期','date',today())}
+    <div class="fl"><label>付款日期</label><input id="f-oxdate" type="date" value="${today()}" autocomplete="off" oninput="oxPeriodHint()"></div>
+    <div class="fl"><label>費用所屬起始月</label>
+      <input id="f-oxperiod" type="month" value="${today().slice(0,7)}" data-manual="" autocomplete="off" oninput="this.dataset.manual='1';oxPeriodHint()">
+      <div id="ox-period-hint" style="font-size:11px;color:var(--tx3);margin-top:3px"></div>
+    </div>
     <div class="fl"><label>類別</label><select id="f-oxcat">${_opexCategories.map(c=>`<option>${c}</option>`).join('')}</select></div>
     ${fi('oxamt','金額 *','number')}
     <div class="fl"><label>支出頻率</label>
-      <select id="f-oxfreq">
+      <select id="f-oxfreq" onchange="oxPeriodHint()">
         <option value="">一般支出（不循環，只算這一筆）</option>
         <option value="monthly">每月固定（每月都要繳）</option>
         <option value="bimonthly">每兩月一次（自動攤提到2個月）</option>
@@ -235,6 +301,7 @@ function addOpex() {
   </div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveOpex()">新增</button>`);
+  oxPeriodHint();
 }
 window.addOpex = addOpex;
 async function editOpex(id) {
@@ -242,11 +309,15 @@ async function editOpex(id) {
   if(!r) return;
   OM('編輯營運成本', `
   <div class="fg">
-    ${fi('oxdate','日期','date',r.expense_date)}
+    <div class="fl"><label>付款日期</label><input id="f-oxdate" type="date" value="${r.expense_date||''}" autocomplete="off" oninput="oxPeriodHint()"></div>
+    <div class="fl"><label>費用所屬起始月</label>
+      <input id="f-oxperiod" type="month" value="${opexPeriodStart(r)}" data-manual="${r.period_start_ym?'1':''}" autocomplete="off" oninput="this.dataset.manual='1';oxPeriodHint()">
+      <div id="ox-period-hint" style="font-size:11px;color:var(--tx3);margin-top:3px"></div>
+    </div>
     <div class="fl"><label>類別</label><select id="f-oxcat">${_opexCategories.map(c=>`<option ${c===r.category?'selected':''}>${c}</option>`).join('')}</select></div>
     ${fi('oxamt','金額 *','number',r.amount)}
     <div class="fl"><label>支出頻率</label>
-      <select id="f-oxfreq">
+      <select id="f-oxfreq" onchange="oxPeriodHint()">
         <option value="" ${!r.recur_freq?'selected':''}>一般支出（不循環，只算這一筆）</option>
         <option value="monthly" ${r.recur_freq==='monthly'?'selected':''}>每月固定（每月都要繳）</option>
         <option value="bimonthly" ${r.recur_freq==='bimonthly'?'selected':''}>每兩月一次（自動攤提到2個月）</option>
@@ -257,6 +328,7 @@ async function editOpex(id) {
   </div>`,
   `<button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveOpex(${id})">儲存</button>`);
+  oxPeriodHint();
 }
 window.editOpex = editOpex;
 async function saveOpex(id) {
@@ -270,12 +342,21 @@ async function saveOpex(id) {
     is_recurring: !!freq,
     note:v('oxnote')||null
   };
-  if(id) {
-    await sb.from('operating_expenses').update(payload).eq('id',id);
-  } else {
-    payload.expense_no = 'OX-'+v('oxdate').replace(/-/g,'')+'-'+Date.now().toString().slice(-4);
-    await sb.from('operating_expenses').insert(payload);
+  // 費用所屬月跟付款月份一樣就存 null（＝照付款月份），不一樣才存，避免舊資料跟新資料混兩種寫法
+  const period = v('oxperiod');
+  payload.period_start_ym = (period && period!==(payload.expense_date||'').slice(0,7)) ? period : null;
+  if(!id) payload.expense_no = 'OX-'+v('oxdate').replace(/-/g,'')+'-'+Date.now().toString().slice(-4);
+  const write = p => id ? sb.from('operating_expenses').update(p).eq('id',id) : sb.from('operating_expenses').insert(p);
+  let { error } = await write(payload);
+  // 資料庫還沒加 period_start_ym 欄位時（要先在 Supabase 執行加欄位的 SQL），先不帶這個欄位存，
+  // 這筆就照付款月份算，其他功能照常；有填不同的起始月才提醒一下
+  if(error && /period_start_ym/.test(error.message||'')) {
+    const hadPeriod = !!payload.period_start_ym;
+    delete payload.period_start_ym;
+    ({ error } = await write(payload));
+    if(!error && hadPeriod) toast('已儲存，但資料庫還沒加「費用所屬起始月」欄位，這筆先照付款月份算','w');
   }
+  if(error) { toast('儲存失敗：'+error.message,'e'); return; }
   toast('✅ 已儲存');
   CM();
   opex();
@@ -955,12 +1036,12 @@ async function computeTotalFinanceData(includeSelfUse) {
     sb.from('bonus_records').select('year_month,amount,direction'),
     sb.from('service_orders').select('order_date,total,consumable_cost'),
     sb.from('service_order_items').select('order_date:service_orders(order_date),technician_pay,pay_settled_by_credit,settled_pay_amount').eq('item_type','service'),
-    sb.from('operating_expenses').select('expense_date,amount'),
+    sb.from('operating_expenses').select('*'),
   ]);
 
   // 月度彙整
   const mMap = {};
-  const addM = (ym, key, val) => { if(!ym) return; if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0,opCost:0}; mMap[ym][key]+=val||0; };
+  const addM = (ym, key, val) => { if(!ym) return; if(!mMap[ym]) mMap[ym]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0,opCost:0,opPaid:0}; mMap[ym][key]+=val||0; };
   // 銷售：已收款算在收款月份、未收款算在訂單原本的年月（跟銷售財報同一套規則，只有已收款才真的算收入）
   (sOrders||[]).forEach(o => {
     if(o.order_type==='自用' && !includeSelfUse) return; // 預設不把自用訂單算進真實營收
@@ -979,13 +1060,18 @@ async function computeTotalFinanceData(includeSelfUse) {
   (svOrders||[]).forEach(o => { const ym=(o.order_date||'').slice(0,7); if(ym){ addM(ym,'svcRev',o.total); addM(ym,'svcCost',o.consumable_cost); }});
   (svItems||[]).forEach(i => { const ym=(i.order_date?.order_date||'').slice(0,7); if(ym) addM(ym,'techPay',svcReportPay(i)); });
   // 營運成本（房租/水電/網路等固定成本）
-  (opexRecs||[]).forEach(r => { const ym=(r.expense_date||'').slice(0,7); if(ym) addM(ym,'opCost',r.amount); });
+  // opCost＝依費用所屬月份攤提後的成本（算進淨利，跟「營運成本」頁的分攤後成本一致）；
+  // opPaid＝實際付款月份整筆算，只列出來參考，不算進淨利，避免重複扣
+  (opexRecs||[]).forEach(r => {
+    expandOpexToMonths(r).forEach(seg => addM(seg.ym,'opCost',seg.amount));
+    const ym=(r.expense_date||'').slice(0,7); if(ym) addM(ym,'opPaid',r.amount);
+  });
 
   // 年度彙整
   const yMap = {};
   Object.entries(mMap).forEach(([ym, d]) => {
     const yr = ym.slice(0,4);
-    if(!yMap[yr]) yMap[yr]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0,opCost:0};
+    if(!yMap[yr]) yMap[yr]={salesRev:0,purchCost:0,svcRev:0,svcCost:0,techPay:0,bonusIn:0,bonusOut:0,opCost:0,opPaid:0};
     Object.keys(d).forEach(k => yMap[yr][k]+=d[k]);
   });
 
@@ -1036,9 +1122,9 @@ async function showTotalFinance() {
       ${controlsHtml}
       <div class="tc">
         <div class="tb"><span class="tt">年度總覽（點年份看該年每月明細）</span></div>
-        <div class="al al-w" style="font-size:12px;margin:0 16px 10px">月份分類規則跟「銷售財報」一致：銷售訂單已收款算在收款月份、未收款算在訂單月份；服務成本＝耗材成本＋技師薪資（不含撥轉成本，那只是搬庫存不是真花費）；有把獎金/分潤、營運成本（房租水電網路等）也算進來。取消勾選的項目會用刪除線標示，代表沒有被扣進總淨利。</div>
+        <div class="al al-w" style="font-size:12px;margin:0 16px 10px">月份分類規則跟「銷售財報」一致：銷售訂單已收款算在收款月份、未收款算在訂單月份；服務成本＝耗材成本＋技師薪資（不含撥轉成本，那只是搬庫存不是真花費）；有把獎金/分潤、營運成本（房租水電網路等）也算進來；營運成本是分攤後的每月成本，「營運實付」是那個月實際付出去的錢，只列出來參考、不算進淨利。取消勾選的項目會用刪除線標示，代表沒有被扣進總淨利。</div>
         <div class="tw"><table style="width:100%">
-          <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>營運成本</th><th style="font-weight:700">總淨利</th></tr>
+          <tr><th>年份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>營運成本</th><th>營運實付（參考）</th><th style="font-weight:700">總淨利</th></tr>
           ${years.map(yr=>{
             const d=yMap[yr]; const net=netRow(d);
             return `<tr style="cursor:pointer" onclick="window._totalFinanceYear='${yr}';accounts()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
@@ -1051,9 +1137,10 @@ async function showTotalFinance() {
               <td class="num" style="${cellStyle('techPay','var(--bl)')}">${fM(d.techPay)}</td>
               <td class="num" style="${cellStyle('bonusOut','var(--rd)')}">${fM(d.bonusOut)}</td>
               <td class="num" style="${cellStyle('opCost','var(--rd)')}">${fM(d.opCost)}</td>
+              <td class="num" style="color:var(--tx3);font-size:12px">${fM(d.opPaid)}</td>
               <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
             </tr>`;
-          }).join('')||'<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+          }).join('')||'<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
         </table></div>
       </div>
     </div>`;
@@ -1072,7 +1159,7 @@ async function showTotalFinance() {
     <div class="tc">
       <div class="tb"><span class="tt">${yr} 年月度總財報</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>營運成本</th><th style="font-weight:700">總淨利</th></tr>
+        <tr><th>月份</th><th>銷售收入</th><th>服務收入</th><th>獎金收入</th><th>進貨支出</th><th>耗材成本</th><th>技師薪資</th><th>獎金支出</th><th>營運成本</th><th>營運實付（參考）</th><th style="font-weight:700">總淨利</th></tr>
         ${yearMonths.map(ym=>{
           const d=mMap[ym]; const net=netRow(d);
           return `<tr>
@@ -1085,9 +1172,10 @@ async function showTotalFinance() {
             <td class="num" style="${cellStyle('techPay','var(--bl)')}">${fM(d.techPay)}</td>
             <td class="num" style="${cellStyle('bonusOut','var(--rd)')}">${fM(d.bonusOut)}</td>
             <td class="num" style="${cellStyle('opCost','var(--rd)')}">${fM(d.opCost)}</td>
+              <td class="num" style="color:var(--tx3);font-size:12px">${fM(d.opPaid)}</td>
             <td class="num" style="font-weight:700;color:${net>=0?'var(--ac)':'var(--rd)'}">${fM(net)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="11" style="text-align:center;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;

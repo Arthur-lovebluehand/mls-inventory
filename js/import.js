@@ -390,7 +390,7 @@ const CUSTOM_EXPORTERS = {
       const d=mMap[ym];
       return {
         月份:ym, 銷售收入:d.salesRev, 服務收入:d.svcRev, 獎金收入:d.bonusIn,
-        進貨支出:d.purchCost, 耗材成本:d.svcCost, 技師薪資:d.techPay, 獎金支出:d.bonusOut, 營運成本:d.opCost,
+        進貨支出:d.purchCost, 耗材成本:d.svcCost, 技師薪資:d.techPay, 獎金支出:d.bonusOut, 營運成本:d.opCost, '營運實付(參考)':d.opPaid||0,
         總淨利:window.netRow(d)
       };
     });
