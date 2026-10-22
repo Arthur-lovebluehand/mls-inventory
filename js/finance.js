@@ -20,35 +20,74 @@ function addMonthsYm(ym, n){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 }
 
-// 「費用所屬起始月」：這筆錢是哪幾個月用掉的（例如 10 月收到的水電帳單，其實是 8、9 月的用量）。
-// 沒填就跟付款日期同一個月（舊資料都是這樣，行為不變）。
-// 成本報表依這個月份攤提；「實際支出」則照付款日期（expense_date）那個月整筆算，兩個數字分開看。
-function opexPeriodStart(r){
-  return (r.period_start_ym && /^\d{4}-\d{2}$/.test(r.period_start_ym)) ? r.period_start_ym : (r.expense_date||'').slice(0,7);
+// ── 計費期間（帳單上的起訖日，例如水費 6/10~8/6）──
+// 有填計費期間：依「天數」比例攤到涵蓋的每個月（6/10~8/6 共58天 → 6月21天、7月31天、8月6天）。
+// 沒填：照舊，從付款日期那個月開始，依攤提月數平均分攤（舊資料行為不變）。
+// 「實際支出」永遠照付款日期（expense_date）那個月整筆算，跟成本分開看。
+const _ymd = s => { const [y,m,d]=(s||'').split('-').map(Number); return (y&&m&&d)?new Date(Date.UTC(y,m-1,d)):null; };
+const _ymOf = dt => `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}`;
+const _DAY = 86400000;
+function opexHasPeriod(r){
+  const a=_ymd(r.period_start), b=_ymd(r.period_end);
+  return !!(a && b && b>=a);
 }
+// 計費期間每個月分到幾天（含頭含尾）
+function opexPeriodDays(startStr, endStr){
+  const a=_ymd(startStr), b=_ymd(endStr);
+  if(!a || !b || b<a) return [];
+  const out=[]; let cur=a;
+  while(cur<=b){
+    const monthEnd=new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth()+1, 0));
+    const segEnd = monthEnd<b ? monthEnd : b;
+    out.push({ ym:_ymOf(cur), days:Math.round((segEnd-cur)/_DAY)+1 });
+    cur=new Date(segEnd.getTime()+_DAY);
+  }
+  return out;
+}
+// 按天數比例分金額（整數，最後一個月吃餘數，確保加總＝原始金額）
+function opexSplitByDays(total, parts){
+  const totalDays = parts.reduce((s,p)=>s+p.days,0) || 1;
+  let used=0;
+  return parts.map((p,i)=>{
+    const amt = i===parts.length-1 ? total-used : Math.round(total*p.days/totalDays);
+    used+=amt; return { ...p, amount:amt };
+  });
+}
+const _md = s => { const d=_ymd(s); return d?`${d.getUTCMonth()+1}/${d.getUTCDate()}`:''; };
 function opexPeriodLabel(r){
+  if(opexHasPeriod(r)) return `${_md(r.period_start)}~${_md(r.period_end)}（${opexPeriodDays(r.period_start,r.period_end).reduce((s,p)=>s+p.days,0)}天）`;
   const months = Math.max(1, r.amortize_months||1);
-  const st = opexPeriodStart(r);
+  const st = (r.expense_date||'').slice(0,7);
   return months>1 ? `${st} ~ ${addMonthsYm(st,months-1)}` : st;
 }
-window.opexPeriodStart = opexPeriodStart;
 
-// 把一筆支出依照「攤提月數」展開成它涵蓋的每一個月＋每月分攤到的金額（用整數金額分攤，
-// 餘數放在起始月，確保展開後加總還是等於原始金額，不會因為除不盡而兜不起來）。
+// 把一筆支出展開成它涵蓋的每一個月＋每月分攤到的金額
 function expandOpexToMonths(r){
-  const months = Math.max(1, r.amortize_months||1);
-  const startYm = opexPeriodStart(r);
-  if(!startYm) return [];
+  const payYm = (r.expense_date||'').slice(0,7);
   const total = r.amount||0;
+  if(opexHasPeriod(r)){
+    const parts = opexSplitByDays(total, opexPeriodDays(r.period_start, r.period_end));
+    return parts.map(p=>({ ym:p.ym, amount:p.amount, days:p.days, src:r, isAttributed:p.ym!==payYm, totalMonths:parts.length }));
+  }
+  const months = Math.max(1, r.amortize_months||1);
+  if(!payYm) return [];
   const base = Math.floor(total/months);
   const first = total - base*(months-1);
   const out = [];
   for(let i=0;i<months;i++){
-    const segYm = addMonthsYm(startYm,i);
-    // isAttributed＝這一段不是在付款那個月（是攤過來的），畫面上只能「查看原始」
-    out.push({ ym:segYm, amount:i===0?first:base, src:r, isAttributed:segYm!==(r.expense_date||'').slice(0,7), totalMonths:months });
+    const segYm = addMonthsYm(payYm,i);
+    out.push({ ym:segYm, amount:i===0?first:base, src:r, isAttributed:segYm!==payYm, totalMonths:months });
   }
   return out;
+}
+
+// 日期往後推 n 個月（日超過該月天數就取月底），給自動延續的計費期間用
+function addMonthsDate(str, n){
+  const d=_ymd(str); if(!d) return null;
+  const y=d.getUTCFullYear(), m=d.getUTCMonth()+n, day=d.getUTCDate();
+  const last=new Date(Date.UTC(y, m+1, 0)).getUTCDate();
+  const nd=new Date(Date.UTC(y, m, Math.min(day,last)));
+  return nd.toISOString().slice(0,10);
 }
 
 // 自動延續「固定支出」：勾了頻率（每月/每兩月/每年）的項目，不用自己每次到期都手動再登記一次，
@@ -104,8 +143,8 @@ async function autoCarryForwardOpex(){
       recur_freq:src.recur_freq, amortize_months:src.amortize_months||1, is_recurring:true,
       note: (baseNote?baseNote+'　':'')+OPEX_AUTO_MARK
     };
-    // 上一期有設定「費用所屬起始月」（帳單晚到的那種），新的一期也往後推同樣的間隔，維持一樣的時間差
-    if(src.period_start_ym) rec.period_start_ym = addMonthsYm(src.period_start_ym, interval);
+    // 上一期有填計費期間，新的一期也往後推同樣的月數（只是預估，收到帳單後記得照帳單改）
+    if(opexHasPeriod(src)) { rec.period_start = addMonthsDate(src.period_start, interval); rec.period_end = addMonthsDate(src.period_end, interval); }
     toInsert.push(rec);
   });
   if(!toInsert.length) return;
@@ -160,7 +199,7 @@ async function opex(){
     <div class="al al-w" style="font-size:12px">
       記錄房租、水電、網路等跟商品/服務無關、但公司經營一定會花的錢。像保費這種一年繳一次、或水電瓦斯這種兩個月繳一次的支出，
       選對應的「支出頻率」，系統會平均攤提到它涵蓋的月份。<br>
-      <b>分攤後成本</b>＝每個月真正用掉多少（依「費用所屬起始月」攤提，例如 10 月收到的 8~9 月水電帳單，就算在 8、9 月）；
+      <b>分攤後成本</b>＝每個月真正用掉多少（水電瓦斯填了帳單上的「計費期間」，就照天數攤到那幾個月，例如 6/10~8/6 的水費會分到 6、7、8 月）；
       <b>實際支出</b>＝那個月實際付出去多少錢（照付款日期整筆算）。
     </div>`;
 
@@ -228,7 +267,8 @@ async function opex(){
         <tr><th>日期</th><th>類別</th><th>本月金額</th><th>頻率</th><th>備註</th><th>操作</th></tr>
         ${monthItems.map(seg=>{
           const r=seg.src;
-          const amtSub = seg.totalMonths>1 ? `<div style="font-size:11px;font-weight:400;color:var(--tx3)">原始 ${fM(r.amount)}，分攤${seg.totalMonths}個月</div>` : '';
+          const amtSub = seg.days ? `<div style="font-size:11px;font-weight:400;color:var(--tx3)">原始 ${fM(r.amount)}，本月 ${seg.days} 天</div>`
+            : seg.totalMonths>1 ? `<div style="font-size:11px;font-weight:400;color:var(--tx3)">原始 ${fM(r.amount)}，分攤${seg.totalMonths}個月</div>` : '';
           return `<tr ${seg.isAttributed?'style="opacity:.65"':''}>
           <td style="font-size:12px">${seg.isAttributed?_opexMonth:fD(r.expense_date)}</td>
           <td><span class="badge bgr">${r.category}</span></td>
@@ -248,7 +288,7 @@ async function opex(){
     <div class="tc">
       <div class="tb"><span class="tt">${_opexMonth} 實際付款（合計 ${fM(monthMap[_opexMonth]?.paid||0)}）</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>付款日期</th><th>類別</th><th>付款金額</th><th>費用涵蓋月份</th><th>備註</th><th>操作</th></tr>
+        <tr><th>付款日期</th><th>類別</th><th>付款金額</th><th>計費期間</th><th>備註</th><th>操作</th></tr>
         ${(monthMap[_opexMonth]?.paidItems||[]).slice().sort((a,b)=>(a.expense_date||'').localeCompare(b.expense_date||'')).map(r=>`<tr>
           <td style="font-size:12px">${fD(r.expense_date)}</td>
           <td><span class="badge bgr">${r.category}</span></td>
@@ -266,29 +306,35 @@ async function opex(){
 }
 window.opex = opex;
 
-// 費用所屬起始月：預設跟著付款日期走；手動改過就不再自動跟。下方即時顯示這筆會算在哪幾個月。
+// 計費期間：選填，填了起訖日就照天數攤，下方即時顯示每個月分到多少
 function oxPeriodHint(){
-  const dateEl=$('f-oxdate'), pEl=$('f-oxperiod'), hint=$('ox-period-hint');
-  if(!pEl) return;
-  const payYm=(dateEl?.value||'').slice(0,7);
-  if(pEl.dataset.manual!=='1' && payYm) pEl.value=payYm;
-  const months = OPEX_FREQ_MONTHS[$('f-oxfreq')?.value] || 1;
-  const st = pEl.value || payYm;
-  if(!hint || !st) return;
-  const range = months>1 ? `${st} ~ ${addMonthsYm(st,months-1)}` : st;
-  hint.textContent = `成本會算在：${range}` + (payYm && st!==payYm ? `（實際支出仍算在 ${payYm}）` : '');
+  const hint=$('ox-period-hint'); if(!hint) return;
+  const a=$('f-oxps')?.value, b=$('f-oxpe')?.value, amt=parseFloat($('f-oxamt')?.value)||0;
+  const payYm=($('f-oxdate')?.value||'').slice(0,7);
+  if(!a && !b){ hint.textContent='沒填計費期間：照付款月份＋支出頻率平均攤（一般月繳的支出不用填）'; return; }
+  if(!a || !b){ hint.textContent='起日、迄日都要填'; return; }
+  const parts=opexPeriodDays(a,b);
+  if(!parts.length){ hint.textContent='迄日不能早於起日'; return; }
+  const totalDays=parts.reduce((s,p)=>s+p.days,0);
+  const split=opexSplitByDays(amt,parts);
+  hint.innerHTML=`共 ${totalDays} 天：`+split.map(p=>`${p.ym.slice(5)}月 ${p.days}天${amt?` ${fM(p.amount)}`:''}`).join('、')
+    + (payYm?`<br>實際支出算在付款月份 ${payYm}`:'');
 }
 window.oxPeriodHint = oxPeriodHint;
 function addOpex() {
   OM('新增營運成本', `
   <div class="fg">
     <div class="fl"><label>付款日期</label><input id="f-oxdate" type="date" value="${today()}" autocomplete="off" oninput="oxPeriodHint()"></div>
-    <div class="fl"><label>費用所屬起始月</label>
-      <input id="f-oxperiod" type="month" value="${today().slice(0,7)}" data-manual="" autocomplete="off" oninput="this.dataset.manual='1';oxPeriodHint()">
+    <div class="fl fw"><label>計費期間（選填，照帳單上的起訖日填，水電瓦斯用）</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="f-oxps" type="date" value="" autocomplete="off" oninput="oxPeriodHint()" style="flex:1">
+        <span>~</span>
+        <input id="f-oxpe" type="date" value="" autocomplete="off" oninput="oxPeriodHint()" style="flex:1">
+      </div>
       <div id="ox-period-hint" style="font-size:11px;color:var(--tx3);margin-top:3px"></div>
     </div>
     <div class="fl"><label>類別</label><select id="f-oxcat">${_opexCategories.map(c=>`<option>${c}</option>`).join('')}</select></div>
-    ${fi('oxamt','金額 *','number')}
+    <div class="fl"><label>金額 *</label><input id="f-oxamt" type="number" value="" autocomplete="off" oninput="oxPeriodHint()"></div>
     <div class="fl"><label>支出頻率</label>
       <select id="f-oxfreq" onchange="oxPeriodHint()">
         <option value="">一般支出（不循環，只算這一筆）</option>
@@ -310,12 +356,16 @@ async function editOpex(id) {
   OM('編輯營運成本', `
   <div class="fg">
     <div class="fl"><label>付款日期</label><input id="f-oxdate" type="date" value="${r.expense_date||''}" autocomplete="off" oninput="oxPeriodHint()"></div>
-    <div class="fl"><label>費用所屬起始月</label>
-      <input id="f-oxperiod" type="month" value="${opexPeriodStart(r)}" data-manual="${r.period_start_ym?'1':''}" autocomplete="off" oninput="this.dataset.manual='1';oxPeriodHint()">
+    <div class="fl fw"><label>計費期間（選填，照帳單上的起訖日填，水電瓦斯用）</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="f-oxps" type="date" value="${r.period_start||''}" autocomplete="off" oninput="oxPeriodHint()" style="flex:1">
+        <span>~</span>
+        <input id="f-oxpe" type="date" value="${r.period_end||''}" autocomplete="off" oninput="oxPeriodHint()" style="flex:1">
+      </div>
       <div id="ox-period-hint" style="font-size:11px;color:var(--tx3);margin-top:3px"></div>
     </div>
     <div class="fl"><label>類別</label><select id="f-oxcat">${_opexCategories.map(c=>`<option ${c===r.category?'selected':''}>${c}</option>`).join('')}</select></div>
-    ${fi('oxamt','金額 *','number',r.amount)}
+    <div class="fl"><label>金額 *</label><input id="f-oxamt" type="number" value="${r.amount??''}" autocomplete="off" oninput="oxPeriodHint()"></div>
     <div class="fl"><label>支出頻率</label>
       <select id="f-oxfreq" onchange="oxPeriodHint()">
         <option value="" ${!r.recur_freq?'selected':''}>一般支出（不循環，只算這一筆）</option>
@@ -342,19 +392,19 @@ async function saveOpex(id) {
     is_recurring: !!freq,
     note:v('oxnote')||null
   };
-  // 費用所屬月跟付款月份一樣就存 null（＝照付款月份），不一樣才存，避免舊資料跟新資料混兩種寫法
-  const period = v('oxperiod');
-  payload.period_start_ym = (period && period!==(payload.expense_date||'').slice(0,7)) ? period : null;
+  const ps=v('oxps')||null, pe=v('oxpe')||null;
+  if((ps && !pe) || (!ps && pe)) { toast('計費期間起日、迄日都要填（或都不填）','e'); return; }
+  if(ps && pe && pe<ps) { toast('計費期間迄日不能早於起日','e'); return; }
+  payload.period_start = ps; payload.period_end = pe;
   if(!id) payload.expense_no = 'OX-'+v('oxdate').replace(/-/g,'')+'-'+Date.now().toString().slice(-4);
   const write = p => id ? sb.from('operating_expenses').update(p).eq('id',id) : sb.from('operating_expenses').insert(p);
   let { error } = await write(payload);
-  // 資料庫還沒加 period_start_ym 欄位時（要先在 Supabase 執行加欄位的 SQL），先不帶這個欄位存，
-  // 這筆就照付款月份算，其他功能照常；有填不同的起始月才提醒一下
-  if(error && /period_start_ym/.test(error.message||'')) {
-    const hadPeriod = !!payload.period_start_ym;
-    delete payload.period_start_ym;
+  // 保險：資料庫萬一還沒有計費期間欄位，就先不帶這兩個欄位存，這筆照付款月份算
+  if(error && /period_(start|end)/.test(error.message||'')) {
+    const hadPeriod = !!payload.period_start;
+    delete payload.period_start; delete payload.period_end;
     ({ error } = await write(payload));
-    if(!error && hadPeriod) toast('已儲存，但資料庫還沒加「費用所屬起始月」欄位，這筆先照付款月份算','w');
+    if(!error && hadPeriod) toast('已儲存，但資料庫還沒有計費期間欄位，這筆先照付款月份算','w');
   }
   if(error) { toast('儲存失敗：'+error.message,'e'); return; }
   toast('✅ 已儲存');
