@@ -128,6 +128,9 @@ async function autoCarryForwardOpex(){
   const toInsert = [];
   Object.values(latestByKey).forEach((src,idx)=>{
     if(!src.recur_freq) return; // 沒設定頻率＝一般支出，不自動延續
+    // 有填計費期間的（水電瓦斯這類帳單常晚到、金額每期都不同），不自動補，避免跟之後登記的真帳單重複；
+    // 改成在營運成本頁提醒「該登記下一期了」（見 opexDueReminders）
+    if(opexHasPeriod(src)) return;
     const interval = Math.max(1, src.amortize_months || OPEX_FREQ_MONTHS[src.recur_freq] || 1);
     const srcYm = (src.expense_date||'').slice(0,7);
     if(!srcYm) return;
@@ -153,6 +156,23 @@ async function autoCarryForwardOpex(){
 }
 window.autoCarryForwardOpex = autoCarryForwardOpex;
 window.expandOpexToMonths = expandOpexToMonths;
+
+// 提醒：有填計費期間＋有設頻率的帳單，上一期結束後再過一個週期（下一期也該結束了）還沒登記新的一期，就提醒一下
+function opexDueReminders(all){
+  const keyOf = r => `${r.category}::${stripOpexAutoMark(r.note).replace(/[\d\/\-~：:\s]+$/,'')}`;
+  const latest = {};
+  (all||[]).filter(opexHasPeriod).forEach(r=>{
+    const k = r.category; // 同類別（例如 天然氣）看最新那一期就好；水電再用備註區分水費/電費
+    const kk = r.category==='水電' ? keyOf(r) : k;
+    if(!latest[kk] || r.period_end > latest[kk].period_end) latest[kk] = r;
+  });
+  const td = today();
+  return Object.values(latest).filter(r=>r.recur_freq).map(r=>{
+    const interval = Math.max(1, OPEX_FREQ_MONTHS[r.recur_freq] || r.amortize_months || 1);
+    const nextEnd = addMonthsDate(r.period_end, interval);
+    return nextEnd && td >= nextEnd ? { r, nextStart: addMonthsDate(r.period_end, 0), nextEnd } : null;
+  }).filter(Boolean);
+}
 
 async function opex(){
   await autoCarryForwardOpex();
@@ -197,28 +217,27 @@ async function opex(){
       <div class="mc"><div class="ml">今年實際支出</div><div class="mv">${fM(yearPaid)}</div></div>
     </div>
     <div class="al al-w" style="font-size:12px">
-      記錄房租、水電、網路等跟商品/服務無關、但公司經營一定會花的錢。像保費這種一年繳一次、或水電瓦斯這種兩個月繳一次的支出，
-      選對應的「支出頻率」，系統會平均攤提到它涵蓋的月份。<br>
-      <b>分攤後成本</b>＝每個月真正用掉多少（水電瓦斯填了帳單上的「計費期間」，就照天數攤到那幾個月，例如 6/10~8/6 的水費會分到 6、7、8 月）；
-      <b>實際支出</b>＝那個月實際付出去多少錢（照付款日期整筆算）。
-    </div>`;
+      <b>分攤後成本</b>＝這個月真正用掉多少（水電瓦斯照帳單計費期間按天數攤）；<b>實際支出</b>＝這個月實際付出去多少錢。
+    </div>
+    ${(()=>{ const due = opexDueReminders(allRecs); return due.length ? `<div class="al" style="font-size:12px;background:var(--acl);border-radius:var(--r);padding:8px 12px;margin-bottom:12px">
+      📮 這些帳單的下一期應該已經出來了，收到後記得登記：${due.map(d=>`<b>${d.r.category}${stripOpexAutoMark(d.r.note)&&d.r.category==='水電'?'（'+stripOpexAutoMark(d.r.note).split('：')[0]+'）':''}</b>（上一期到 ${_md(d.r.period_end)}）`).join('、')}
+    </div>` : ''; })()}`;
 
   // ── 第一層：年度總覽 ──
   if(!_opexYear) {
     $('main').innerHTML += `
     <div class="tc">
-      <div class="tb"><span class="tt">年度總覽（點年份看該年每月彙整，金額已含攤提）</span></div>
+      <div class="tb"><span class="tt">年度總覽（點年份看每月）</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>年份</th><th>項目數</th><th style="font-weight:700">分攤後成本</th><th>實際支出</th></tr>
+        <tr><th>年份</th><th class="num" style="font-weight:700">分攤後成本</th><th class="num">實際支出</th></tr>
         ${years.map(yr=>{
           const y=yearMap[yr];
           return `<tr style="cursor:pointer" onclick="_opexYear='${yr}';opex()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
             <td style="font-weight:700;color:var(--ac);font-size:15px">${yr} ›</td>
-            <td>${y.count} 項</td>
             <td class="num" style="font-weight:700;color:var(--rd)">${fM(y.total)}</td>
-            <td class="num">${fM(y.paid)}</td>
+            <td class="num" style="color:var(--tx2)">${fM(y.paid)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">尚無記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;
@@ -233,73 +252,64 @@ async function opex(){
       <button class="btn btn-s" onclick="_opexYear=null;opex()">‹ 返回年度總覽</button>
     </div>
     <div class="tc">
-      <div class="tb"><span class="tt">${_opexYear} 年月度彙整（點月份看逐筆明細，金額已含攤提）</span></div>
+      <div class="tb"><span class="tt">${_opexYear} 年每月（點月份看明細）</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>月份</th><th>項目數</th><th style="font-weight:700">分攤後成本</th><th>實際支出</th><th>差額</th></tr>
+        <tr><th>月份</th><th class="num" style="font-weight:700">分攤後成本</th><th class="num">實際支出</th></tr>
         ${yearMonths.map(ym=>{
-          const m=monthMap[ym]; const diff=m.paid-m.total;
+          const m=monthMap[ym];
           return `<tr style="cursor:pointer" onclick="_opexMonth='${ym}';opex()" onmouseover="this.style.background='var(--acl)'" onmouseout="this.style.background=''">
             <td style="font-weight:600;color:var(--ac)">${ym} ›</td>
-            <td>${m.count} 項</td>
             <td class="num" style="font-weight:700;color:var(--rd)">${fM(m.total)}</td>
-            <td class="num">${fM(m.paid)}</td>
-            <td class="num" style="font-size:12px;color:var(--tx3)">${diff===0?'—':(diff>0?'多付 ':'少付 ')+fM(Math.abs(diff))}</td>
+            <td class="num" style="color:var(--tx2)">${fM(m.paid)}</td>
           </tr>`;
-        }).join('')||'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--tx3)">本年度尚無記錄</td></tr>'}
+        }).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--tx3)">本年度尚無記錄</td></tr>'}
       </table></div>
     </div>
   </div>`;
     return;
   }
 
-  // ── 第三層：該月逐筆明細 ──
-  // 每一列可能是「原始登記的那一筆」，也可能是「從別的月份攤提過來的一部分」（isAttributed），
-  // 攤提過來的不能直接編輯/刪除，要回到原始那筆去改，避免改亂攤提關係。
-  const monthItems = (monthMap[_opexMonth]?.items || []).slice().sort((a,b)=>(a.src.expense_date||'').localeCompare(b.src.expense_date||''));
+  // ── 第三層：該月明細 ──
+  // 一筆支出一列，「本月成本」跟「本月付款」並排：
+  // 例如 8/5 付的天然氣帳單（5/18~7/17），在 8 月這一頁只會出現在「本月付款」那欄，本月成本是空的。
   const freqLabel = { monthly:'每月固定', bimonthly:'每兩月', yearly:'每年' };
+  const mm = monthMap[_opexMonth] || { items:[], paidItems:[], total:0, paid:0 };
+  const rowsById = {};
+  mm.items.forEach(seg=>{ const r=seg.src; rowsById[r.id]=rowsById[r.id]||{r}; rowsById[r.id].cost=(rowsById[r.id].cost||0)+seg.amount; rowsById[r.id].days=seg.days; });
+  mm.paidItems.forEach(r=>{ rowsById[r.id]=rowsById[r.id]||{r}; rowsById[r.id].paid=r.amount||0; });
+  const rows = Object.values(rowsById).sort((x,y)=>(x.r.category||'').localeCompare(y.r.category||'') || (x.r.expense_date||'').localeCompare(y.r.expense_date||''));
+  const periodCell = r => {
+    if(opexHasPeriod(r)) return `${_md(r.period_start)}~${_md(r.period_end)}`;
+    const f = r.recur_freq ? (freqLabel[r.recur_freq]||r.recur_freq) : '一次性';
+    const m = Math.max(1, r.amortize_months||1);
+    return m>1 ? `${f}（攤${m}個月）` : f;
+  };
   $('main').innerHTML += `
     <div style="margin-bottom:14px">
-      <button class="btn btn-s" onclick="_opexMonth=null;opex()">‹ 返回 ${_opexYear} 年月度彙整</button>
+      <button class="btn btn-s" onclick="_opexMonth=null;opex()">‹ 返回 ${_opexYear} 年</button>
     </div>
     <div class="tc">
-      <div class="tb"><span class="tt">${_opexMonth} 分攤後成本明細（合計 ${fM(monthMap[_opexMonth]?.total||0)}）</span></div>
+      <div class="tb"><span class="tt">${_opexMonth} 明細</span></div>
       <div class="tw"><table style="width:100%">
-        <tr><th>日期</th><th>類別</th><th>本月金額</th><th>頻率</th><th>備註</th><th>操作</th></tr>
-        ${monthItems.map(seg=>{
-          const r=seg.src;
-          const amtSub = seg.days ? `<div style="font-size:11px;font-weight:400;color:var(--tx3)">原始 ${fM(r.amount)}，本月 ${seg.days} 天</div>`
-            : seg.totalMonths>1 ? `<div style="font-size:11px;font-weight:400;color:var(--tx3)">原始 ${fM(r.amount)}，分攤${seg.totalMonths}個月</div>` : '';
-          return `<tr ${seg.isAttributed?'style="opacity:.65"':''}>
-          <td style="font-size:12px">${seg.isAttributed?_opexMonth:fD(r.expense_date)}</td>
-          <td><span class="badge bgr">${r.category}</span></td>
-          <td class="num" style="font-weight:600;color:var(--rd)">${fM(seg.amount)}${amtSub}</td>
-          <td>${r.recur_freq?`<span class="badge bg">${freqLabel[r.recur_freq]||r.recur_freq}</span>`:'—'}</td>
-          <td style="font-size:12px;color:var(--tx3)">${seg.isAttributed?`分攤自 ${fD(r.expense_date)} 付款那筆（涵蓋 ${opexPeriodLabel(r)}）`:(r.note||'—')}</td>
-          <td style="white-space:nowrap">
-            ${seg.isAttributed
-              ? `<button class="btn btn-s" onclick="editOpex(${r.id})">查看原始</button>`
-              : `<button class="btn btn-s" onclick="editOpex(${r.id})">編輯</button>
-                 <button class="btn btn-s btn-r" onclick="deleteOpex(${r.id})">刪除</button>`}
-          </td>
+        <tr><th>類別</th><th class="num">本月成本</th><th class="num">本月付款</th><th>計費期間／頻率</th><th>付款日</th><th></th></tr>
+        ${rows.map(({r,cost,paid,days})=>{
+          const note = stripOpexAutoMark(r.note);
+          const isAuto = (r.note||'').includes(OPEX_AUTO_MARK);
+          return `<tr>
+          <td><span class="badge bgr">${r.category}</span>${note?`<div style="font-size:11px;color:var(--tx3);margin-top:2px">${note}</div>`:''}${isAuto?`<div style="font-size:11px;color:var(--am);margin-top:2px">系統自動延續，待確認</div>`:''}</td>
+          <td class="num" style="font-weight:600;color:var(--rd)">${cost!=null?fM(cost):'<span style="color:var(--tx3);font-weight:400">—</span>'}${days&&cost!=null?`<div style="font-size:11px;font-weight:400;color:var(--tx3)">${days} 天</div>`:''}</td>
+          <td class="num">${paid!=null?fM(paid):'<span style="color:var(--tx3)">—</span>'}</td>
+          <td style="font-size:12px;color:var(--tx2)">${periodCell(r)}</td>
+          <td style="font-size:12px;color:var(--tx2)">${fD(r.expense_date)}</td>
+          <td><button class="btn btn-s" onclick="editOpex(${r.id})">編輯</button></td>
         </tr>`;
-        }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">本月沒有分攤到的成本</td></tr>'}
-      </table></div>
-    </div>
-    <div class="tc">
-      <div class="tb"><span class="tt">${_opexMonth} 實際付款（合計 ${fM(monthMap[_opexMonth]?.paid||0)}）</span></div>
-      <div class="tw"><table style="width:100%">
-        <tr><th>付款日期</th><th>類別</th><th>付款金額</th><th>計費期間</th><th>備註</th><th>操作</th></tr>
-        ${(monthMap[_opexMonth]?.paidItems||[]).slice().sort((a,b)=>(a.expense_date||'').localeCompare(b.expense_date||'')).map(r=>`<tr>
-          <td style="font-size:12px">${fD(r.expense_date)}</td>
-          <td><span class="badge bgr">${r.category}</span></td>
-          <td class="num" style="font-weight:600">${fM(r.amount)}</td>
-          <td style="font-size:12px">${opexPeriodLabel(r)}</td>
-          <td style="font-size:12px;color:var(--tx3)">${r.note||'—'}</td>
-          <td style="white-space:nowrap">
-            <button class="btn btn-s" onclick="editOpex(${r.id})">編輯</button>
-            <button class="btn btn-s btn-r" onclick="deleteOpex(${r.id})">刪除</button>
-          </td>
-        </tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">本月沒有實際付款</td></tr>'}
+        }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--tx3)">本月沒有記錄</td></tr>'}
+        <tr style="background:var(--sf2);font-weight:700">
+          <td>合計</td>
+          <td class="num" style="color:var(--rd)">${fM(mm.total)}</td>
+          <td class="num">${fM(mm.paid)}</td>
+          <td colspan="3"></td>
+        </tr>
       </table></div>
     </div>
   </div>`;
@@ -376,7 +386,8 @@ async function editOpex(id) {
     </div>
     <div class="fl fw">${fi('oxnote','備註（選填）','text',r.note)}</div>
   </div>`,
-  `<button class="btn" onclick="CM()">取消</button>
+  `<button class="btn btn-r" style="margin-right:auto" onclick="CM();deleteOpex(${id})">刪除</button>
+   <button class="btn" onclick="CM()">取消</button>
    <button class="btn btn-p" onclick="saveOpex(${id})">儲存</button>`);
   oxPeriodHint();
 }
