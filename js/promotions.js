@@ -96,6 +96,7 @@ async function promotions() {
         <button class="btn btn-s" onclick="togglePromo('${p.promo_code}',${p.is_active})">
           ${p.is_active ? '停用' : '啟用'}
         </button>
+        <button class="btn btn-s btn-r" onclick="deletePromo('${p.promo_code}')">刪除</button>
       </div></td>
     </tr>`;
   };
@@ -456,7 +457,7 @@ async function editPromo(code) {
   renderPromoItems();
 }
 function promoFoot(editCode) {
-  return `<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="savePromo(${editCode ? "'" + editCode + "'" : 'false'})">儲存</button>`;
+  return `${editCode ? `<button class="btn btn-r" style="margin-right:auto" onclick="deletePromo('${editCode}')">刪除這個套組</button>` : ''}<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="savePromo(${editCode ? "'" + editCode + "'" : 'false'})">儲存</button>`;
 }
 function promoForm(p) {
   p = p || {};
@@ -674,8 +675,21 @@ window.editPromo = editPromo;
 window.savePromo = savePromo;
 window.showPromo = showPromo;
 window.togglePromo = togglePromo;
+// 刪除套組：連同它的品項（promotion_items）一起刪，資料庫沒有設定連動刪除，不刪會留下孤兒資料。
+// 已經用過這個套組的訂單/進貨/借貨不受影響——那些單子在建立時就已經把品項展開存在自己的明細裡了。
 async function deletePromo(code) {
-  if (!confirm(`確定刪除活動「${code}」？此操作無法復原。`)) return;
+  const [{ data:p }, so, po, lo] = await Promise.all([
+    sb.from('promotions').select('name').eq('promo_code', code).maybeSingle(),
+    sb.from('sales_order_items').select('id',{count:'exact',head:true}).eq('promo_code', code),
+    sb.from('purchase_order_items').select('id',{count:'exact',head:true}).eq('promo_code', code),
+    sb.from('loan_order_items').select('id',{count:'exact',head:true}).eq('promo_code', code),
+  ]);
+  const used = (so.count||0)+(po.count||0)+(lo.count||0);
+  const msg = `確定刪除套組「${p?.name||code}」（${code}）？此操作無法復原。`
+    + (used ? `\n\n這個套組已經被 ${used} 筆訂單/進貨/借貨品項用過。刪除後那些單子不受影響（品項都已經存在單子裡），只是之後不能再選這個套組。\n如果只是不想再用，也可以改按「停用」。` : '');
+  if (!confirm(msg)) return;
+  const { error: itemErr } = await sb.from('promotion_items').delete().eq('promo_code', code);
+  if (itemErr) { toast('刪除品項失敗：' + itemErr.message, 'e'); return; }
   const { error } = await sb.from('promotions').delete().eq('promo_code', code);
   if (error) { toast('刪除失敗：' + error.message, 'e'); return; }
   await logAction('delete', 'promotions', code, `刪除活動 ${code}`, null, null);
