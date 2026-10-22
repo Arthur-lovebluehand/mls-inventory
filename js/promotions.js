@@ -15,6 +15,64 @@ function isPromoNotStarted(p) {
   return new Date(startStr).getTime() > Date.now();
 }
 
+// ── 限量組數／售完為止／商品效期 ──
+// limit_sets：限量幾組（空白＝不限）。已售組數從銷售訂單即時算：同一次加入的套組（bundle_group）
+//   把所有品項的「銷售數＋贈品數」加起來，除以「一組有幾個」＝這次賣了幾組。訂單刪掉就自動不算。
+// until_sold_out：「售完為止」標示，沒填到期日時顯示「～售完為止」；真的賣完了自己按停用（或有填限量就自動下架）。
+// promotion_items.expiry_date：每個商品各自的到期日（即期品用），同一個套組裡不同商品可以不同效期。
+async function getPromoUsedSets(codes) {
+  const out = {};
+  codes = [...new Set((codes||[]).filter(Boolean))];
+  if (!codes.length) return out;
+  const [{ data: its }, { data: defs }] = await Promise.all([
+    sb.from('sales_order_items').select('promo_code,bundle_group,product_no,qty,gift_qty').in('promo_code', codes),
+    sb.from('promotion_items').select('promo_code,qty').in('promo_code', codes),
+  ]);
+  const unitsPerSet = {};
+  (defs||[]).forEach(d => { unitsPerSet[d.promo_code] = (unitsPerSet[d.promo_code]||0) + (parseFloat(d.qty)||1); });
+  const groups = {};
+  (its||[]).forEach(i => {
+    if (i.product_no === 'DISCOUNT') return;
+    const k = i.promo_code + '|' + (i.bundle_group || 'x');
+    groups[k] = groups[k] || { code: i.promo_code, units: 0 };
+    groups[k].units += (parseFloat(i.qty)||0) + (parseFloat(i.gift_qty)||0);
+  });
+  Object.values(groups).forEach(g => {
+    const per = unitsPerSet[g.code] || 1;
+    out[g.code] = (out[g.code]||0) + Math.round(g.units / per);
+  });
+  return out;
+}
+function promoRemain(p, used) {
+  if (!(p?.limit_sets > 0)) return null;
+  return Math.max(0, p.limit_sets - (used?.[p.promo_code] || 0));
+}
+function isPromoSoldOut(p, used) { const r = promoRemain(p, used); return r !== null && r <= 0; }
+// 期間文字：沒填到期日時，有勾售完為止就顯示「售完為止」，不然「永久」
+function promoEndLabel(p) { return p?.end_date || (p?.until_sold_out ? '售完為止' : '永久'); }
+// 商品效期（每個商品最早的那個到期日）
+async function getPromoExpiryMap(codes) {
+  const out = {};
+  codes = [...new Set((codes||[]).filter(Boolean))];
+  if (!codes.length) return out;
+  const { data } = await sb.from('promotion_items').select('promo_code,product_no,product_name,expiry_date').in('promo_code', codes).not('expiry_date', 'is', null);
+  (data||[]).forEach(i => {
+    const m = (out[i.promo_code] = out[i.promo_code] || {});
+    if (!m[i.product_no] || i.expiry_date < m[i.product_no].date) m[i.product_no] = { name: i.product_name, date: i.expiry_date };
+  });
+  return out;
+}
+function promoExpiryHtml(map, code) {
+  const m = map?.[code]; if (!m) return '';
+  return Object.values(m).map(x => `<div style="font-size:11px;color:var(--am)">效期：${Object.keys(m).length>1 ? x.name+' ' : ''}${x.date}</div>`).join('');
+}
+function promoLimitHtml(p, used) {
+  const r = promoRemain(p, used);
+  if (r === null) return '';
+  return `<div style="font-size:11px;color:${r<=0?'var(--rd)':'var(--bl)'}">限量 ${p.limit_sets} 組・已售 ${used?.[p.promo_code]||0}・${r<=0?'已售完':'剩 '+r+' 組'}</div>`;
+}
+window.getPromoUsedSets = getPromoUsedSets;
+
 var _promoTab = 'all';
 var _promoSearch = '';
 var _promoPage = 1;
@@ -25,7 +83,10 @@ async function promotions() {
 
   // 先把全部抓回來，在前端依頁籤篩選（活動/套組通常數量不多，這樣篩選跟排序邏輯比較單純）
   const { data: allData } = await sb.from('promotions').select('*');
-  const withStatus = (allData||[]).map(p=>({...p, _expired: isPromoExpired(p)}));
+  const _used = await getPromoUsedSets((allData||[]).filter(p=>p.limit_sets>0).map(p=>p.promo_code));
+  const _expiryMap = await getPromoExpiryMap((allData||[]).map(p=>p.promo_code));
+  // 限量賣完的，跟過期一樣歸到「已結束」
+  const withStatus = (allData||[]).map(p=>({...p, _soldOut: isPromoSoldOut(p,_used), _expired: isPromoExpired(p) || isPromoSoldOut(p,_used)}));
 
   let filtered;
   if(_promoTab==='active') filtered = withStatus.filter(p=>!p._expired);
@@ -87,9 +148,9 @@ async function promotions() {
     return `<tr>
       <td style="font-size:11px;font-family:monospace;color:var(--tx2)">${p.promo_code}</td>
       <td style="font-weight:500">${p.name}</td>
-      <td style="font-size:12px">${fmt_date(p.start_date)} ～ ${fmt_date(p.end_date)}${(p.start_time||p.end_time)?`<div style="color:var(--am);font-weight:600">⚡ ${p.start_time||'00:00'}～${p.end_time||'23:59'}</div>`:''}</td>
-      <td style="font-size:12px;color:var(--tx2)">${p.description || '—'}</td>
-      <td><span class="badge ${active ? 'bg' : 'br2'}">${expired ? '已過期' : p.is_active ? '使用中' : '停用'}</span></td>
+      <td style="font-size:12px">${fmt_date(p.start_date)} ～ ${promoEndLabel(p)}${(p.start_time||p.end_time)?`<div style="color:var(--am);font-weight:600">⚡ ${p.start_time||'00:00'}～${p.end_time||'23:59'}</div>`:''}</td>
+      <td style="font-size:12px;color:var(--tx2)">${p.description || (_expiryMap[p.promo_code]||p.limit_sets ? '' : '—')}${promoExpiryHtml(_expiryMap,p.promo_code)}${promoLimitHtml(p,_used)}</td>
+      <td><span class="badge ${active ? 'bg' : 'br2'}">${p._soldOut ? '已售完' : expired ? '已過期' : p.is_active ? '使用中' : '停用'}</span></td>
       <td><div style="display:flex;gap:3px">
         <button class="btn btn-s" onclick="showPromo('${p.promo_code}')">查看</button>
         <button class="btn btn-s" onclick="editPromo('${p.promo_code}')">編輯</button>
@@ -131,7 +192,7 @@ async function promotions() {
     <div class="tab-bar" style="margin-bottom:12px">
       <div class="tab${_promoTab==='all'?' on':''}" onclick="_promoTab='all';promotions()">全部（${allCount}）</div>
       <div class="tab${_promoTab==='active'?' on':''}" onclick="_promoTab='active';promotions()">進行中（${activeCount}）</div>
-      <div class="tab${_promoTab==='expired'?' on':''}" onclick="_promoTab='expired';promotions()">已過期（${expiredCount}）</div>
+      <div class="tab${_promoTab==='expired'?' on':''}" onclick="_promoTab='expired';promotions()">已過期／售完（${expiredCount}）</div>
     </div>
     <div class="tc" style="margin-bottom:12px">
       <div class="tb"><span class="tt">搜尋</span>
@@ -151,7 +212,7 @@ var _batchBGAllProds = [];
 async function batchBuyGetModal() {
   const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('product_no');
   _batchBGAllProds = prods || [];
-  _batchBGRows = [{ id: Date.now(), pno: '', name: '', buy: 5, get: 1 }];
+  _batchBGRows = [{ id: Date.now(), pno: '', name: '', buy: 5, get: 1, expiry: '', limit: '' }];
   const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
 
   OM('批次新增「' + buyGetTypeName + '」套組', `
@@ -161,14 +222,15 @@ async function batchBuyGetModal() {
   <div class="fg" style="margin-bottom:12px">
     <div class="fl fw"><label>活動名稱前綴（選填，例如「8週年慶」，會自動加在每個套組名稱前面）</label><input id="f-bbgprefix" placeholder="例如：8週年慶"></div>
     <div class="fl"><label>生效日期</label><input id="f-bbgstart" type="date" value="${today()}"></div>
-    <div class="fl"><label>到期日（空白=永久）</label><input id="f-bbgend" type="date"></div>
+    <div class="fl"><label>活動到期日（空白=永久）</label><input id="f-bbgend" type="date"></div>
+    <div class="fl"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400"><input type="checkbox" id="f-bbgsold" style="width:16px;height:16px"> 售完為止（即期品、限量品）</label></div>
     <div class="fl"><label>限時開始（選填）</label><input id="f-bbgstime" type="time"></div>
     <div class="fl"><label>限時結束（選填）</label><input id="f-bbgetime" type="time"></div>
     <div class="fl fw"><label>說明（選填，會存到每個套組的說明欄）</label><input id="f-bbgdesc" placeholder="例如：8週年慶"></div>
   </div>
   <div class="sh">商品清單（每一行＝一個獨立套組）<span id="batchBGCount" style="font-weight:400;color:var(--tx3);font-size:12px;margin-left:8px">共 ${_batchBGRows.length} 行</span></div>
-  <div style="display:grid;grid-template-columns:26px 2.5fr 70px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase">
-    <span>#</span><span>商品</span><span>買幾</span><span>送幾</span><span></span>
+  <div style="display:grid;grid-template-columns:26px 2.5fr 60px 60px 130px 70px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase">
+    <span>#</span><span>商品</span><span>買幾</span><span>送幾</span><span style="color:var(--am)">商品到期日</span><span>限量組數</span><span></span>
   </div>
   <div id="batchBGArea"></div>
   <button class="btn btn-s" onclick="addBatchBGRow()" style="margin-top:6px">＋ 加一行</button>
@@ -182,7 +244,7 @@ window.batchBuyGetModal = batchBuyGetModal;
 function renderBatchBGRows() {
   const area = $('batchBGArea'); if (!area) return;
   area.innerHTML = _batchBGRows.map((row,idx) => `
-  <div style="display:grid;grid-template-columns:26px 2.5fr 70px 70px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+  <div style="display:grid;grid-template-columns:26px 2.5fr 60px 60px 130px 70px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
     <span style="font-size:12px;color:var(--tx3);text-align:center">${idx+1}</span>
     <div style="position:relative">
       <input type="text" value="${row.pno ? (row.name || row.pno) : ''}" placeholder="輸入關鍵字搜尋商品…"
@@ -194,6 +256,10 @@ function renderBatchBGRows() {
     <input type="number" value="${row.buy}" min="1" onchange="setBatchBGVal(${row.id},'buy',this.value)"
       style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
     <input type="number" value="${row.get}" min="1" onchange="setBatchBGVal(${row.id},'get',this.value)"
+      style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="date" value="${row.expiry||''}" title="這批商品的到期日（選填，即期品用）" onchange="setBatchRowRaw(_batchBGRows,${row.id},'expiry',this.value)"
+      style="font-size:12px;padding:4px 5px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="number" value="${row.limit||''}" min="1" placeholder="不限" title="限量幾組（選填，賣完自動下架）" onchange="setBatchRowRaw(_batchBGRows,${row.id},'limit',this.value)"
       style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
     <button onclick="rmBatchBGRow(${row.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
   </div>`).join('');
@@ -232,7 +298,9 @@ window.pickBatchBGProd = (id, pno, name) => {
   const d = $('bbgdrop-' + id); if (d) d.style.display = 'none';
 };
 window.setBatchBGVal = (id, key, val) => { const row = _batchBGRows.find(x => x.id === id); if (row) row[key] = Math.max(1, parseInt(val) || 1); };
-window.addBatchBGRow = () => { _batchBGRows.push({ id: Date.now() + Math.random(), pno: '', name: '', buy: 5, get: 1 }); renderBatchBGRows(); };
+window.addBatchBGRow = () => { _batchBGRows.push({ id: Date.now() + Math.random(), pno: '', name: '', buy: 5, get: 1, expiry: '', limit: '' }); renderBatchBGRows(); };
+// 到期日／限量組數這種「可以空白」的欄位直接存原值，不套買幾送幾那個「最少1」的規則
+window.setBatchRowRaw = (rows, id, key, val) => { const row = rows.find(x => x.id === id); if (row) row[key] = val; };
 window.rmBatchBGRow = id => { _batchBGRows = _batchBGRows.filter(x => x.id !== id); renderBatchBGRows(); };
 
 async function saveBatchBuyGet() {
@@ -244,6 +312,7 @@ async function saveBatchBuyGet() {
   const start_time = v('bbgstime') || null;
   const end_time = v('bbgetime') || null;
   const description = v('bbgdesc') || null;
+  const until_sold_out = !!$('f-bbgsold')?.checked;
   const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
 
   let ok = 0, fail = 0;
@@ -251,15 +320,18 @@ async function saveBatchBuyGet() {
     try {
       const code = await genPromoNo();
       const name = (prefix ? prefix + '_' : '') + row.name + ` 買${row.buy}送${row.get}`;
+      const limit_sets = parseInt(row.limit) > 0 ? parseInt(row.limit) : null;
+      const expiry_date = row.expiry || null;
       const { error: pErr } = await sb.from('promotions').insert({
         promo_code: code, name, type: buyGetTypeName,
         start_date, end_date, start_time, end_time, description,
         buy_qty: row.buy, get_qty: row.get, is_active: true,
+        until_sold_out: until_sold_out || !!limit_sets, limit_sets,
       });
       if (pErr) throw pErr;
       const { error: iErr } = await sb.from('promotion_items').insert([
-        { promo_code: code, product_no: row.pno, product_name: row.name, qty: row.buy, is_gift: false },
-        { promo_code: code, product_no: row.pno, product_name: row.name, qty: row.get, is_gift: true },
+        { promo_code: code, product_no: row.pno, product_name: row.name, qty: row.buy, is_gift: false, expiry_date },
+        { promo_code: code, product_no: row.pno, product_name: row.name, qty: row.get, is_gift: true, expiry_date },
       ]);
       if (iErr) throw iErr;
       ok++;
@@ -279,7 +351,7 @@ var _batchBSAllProds = [];
 async function batchBigSmallModal() {
   const { data: prods } = await sb.from('products').select('product_no,name,spec,stock,source').eq('is_active',true).order('product_no');
   _batchBSAllProds = prods || [];
-  _batchBSRows = [{ id: Date.now(), bigPno: '', bigName: '', bigQty: 1, sameGift: 0, smallPno: '', smallName: '', smallQty: 1 }];
+  _batchBSRows = [{ id: Date.now(), bigPno: '', bigName: '', bigQty: 1, sameGift: 0, smallPno: '', smallName: '', smallQty: 1, bigExpiry: '', smallExpiry: '', limit: '' }];
   const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
 
   OM('批次新增「買大送小」套組（可疊加同商品加贈）', `
@@ -290,7 +362,8 @@ async function batchBigSmallModal() {
   <div class="fg" style="margin-bottom:12px">
     <div class="fl fw"><label>活動名稱前綴（選填，例如「8週年慶」，會自動加在每個套組名稱前面）</label><input id="f-bbsprefix" placeholder="例如：8週年慶"></div>
     <div class="fl"><label>生效日期</label><input id="f-bbsstart" type="date" value="${today()}"></div>
-    <div class="fl"><label>到期日（空白=永久）</label><input id="f-bbsend" type="date"></div>
+    <div class="fl"><label>活動到期日（空白=永久）</label><input id="f-bbsend" type="date"></div>
+    <div class="fl"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400"><input type="checkbox" id="f-bbssold" style="width:16px;height:16px"> 售完為止（即期品、限量品）</label></div>
     <div class="fl"><label>限時開始（選填）</label><input id="f-bbsstime" type="time"></div>
     <div class="fl"><label>限時結束（選填）</label><input id="f-bbsetime" type="time"></div>
     <div class="fl fw"><label>說明（選填，會存到每個套組的說明欄）</label><input id="f-bbsdesc" placeholder="例如：8週年慶"></div>
@@ -300,6 +373,7 @@ async function batchBigSmallModal() {
     <span>#</span><span>買（收費）</span><span>買幾</span><span>同商品<br>再加贈</span><span style="color:var(--am)">送（不同商品）</span><span>送幾</span><span></span>
   </div>
   <div id="batchBSArea"></div>
+  <div style="font-size:11px;color:var(--tx3);margin-top:2px">每一行下方可以選填「商品到期日」（買的、送的各自填）和「限量組數」。</div>
   <button class="btn btn-s" onclick="addBatchBSRow()" style="margin-top:6px">＋ 加一行</button>
   `,
   `<button class="btn" onclick="CM()">取消</button>
@@ -334,6 +408,11 @@ function renderBatchBSRows() {
     <input type="number" value="${row.smallQty}" min="1" onchange="setBatchBSVal(${row.id},'smallQty',this.value)"
       style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
     <button onclick="rmBatchBSRow(${row.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
+    <div style="grid-column:2/-1;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11px;color:var(--tx3)">
+      <label style="display:flex;align-items:center;gap:4px">買的商品到期日<input type="date" value="${row.bigExpiry||''}" onchange="setBatchRowRaw(_batchBSRows,${row.id},'bigExpiry',this.value)" style="font-size:11px;padding:3px 5px;border:1px solid var(--bd);border-radius:var(--r)"></label>
+      <label style="display:flex;align-items:center;gap:4px">送的商品到期日<input type="date" value="${row.smallExpiry||''}" onchange="setBatchRowRaw(_batchBSRows,${row.id},'smallExpiry',this.value)" style="font-size:11px;padding:3px 5px;border:1px solid var(--bd);border-radius:var(--r)"></label>
+      <label style="display:flex;align-items:center;gap:4px">限量組數<input type="number" min="1" placeholder="不限" value="${row.limit||''}" onchange="setBatchRowRaw(_batchBSRows,${row.id},'limit',this.value)" style="width:60px;font-size:11px;padding:3px 5px;border:1px solid var(--bd);border-radius:var(--r)"></label>
+    </div>
   </div>`).join('');
   const countEl = $('batchBSCount');
   if (countEl) countEl.textContent = `共 ${_batchBSRows.length} 行`;
@@ -372,7 +451,7 @@ window.pickBatchBSProd = (id, side, pno, name) => {
   const d = $('bbsdrop-' + id + '-' + side); if (d) d.style.display = 'none';
 };
 window.setBatchBSVal = (id, key, val) => { const row = _batchBSRows.find(x => x.id === id); if (row) row[key] = key==='sameGift' ? Math.max(0, parseInt(val)||0) : Math.max(1, parseInt(val) || 1); };
-window.addBatchBSRow = () => { _batchBSRows.push({ id: Date.now() + Math.random(), bigPno: '', bigName: '', bigQty: 1, sameGift: 0, smallPno: '', smallName: '', smallQty: 1 }); renderBatchBSRows(); };
+window.addBatchBSRow = () => { _batchBSRows.push({ id: Date.now() + Math.random(), bigPno: '', bigName: '', bigQty: 1, sameGift: 0, smallPno: '', smallName: '', smallQty: 1, bigExpiry: '', smallExpiry: '', limit: '' }); renderBatchBSRows(); };
 window.rmBatchBSRow = id => { _batchBSRows = _batchBSRows.filter(x => x.id !== id); renderBatchBSRows(); };
 
 async function saveBatchBigSmall() {
@@ -384,6 +463,7 @@ async function saveBatchBigSmall() {
   const start_time = v('bbsstime') || null;
   const end_time = v('bbsetime') || null;
   const description = v('bbsdesc') || null;
+  const until_sold_out = !!$('f-bbssold')?.checked;
   const buyGetTypeName = promoTypeNames().find(n => promoTypeCalcMode(n)==='buy_get') || '買X送Y';
 
   let ok = 0, fail = 0;
@@ -391,6 +471,8 @@ async function saveBatchBigSmall() {
     try {
       const code = await genPromoNo();
       const sameGift = row.sameGift || 0;
+      const limit_sets = parseInt(row.limit) > 0 ? parseInt(row.limit) : null;
+      const bigExp = row.bigExpiry || null, smallExp = row.smallExpiry || null;
       // 「買大送小」這個字面意思是「同一個商品、買大size送小size」，只有買的商品跟送的商品
       // 名稱完全相同（規格/spec 是分開存的欄位，名稱相同代表同一條產品線只是尺寸不同）時才適用；
       // 如果送的其實是完全不同的商品，硬套「買大送小」這四個字語意是錯的，要照實際商品名稱命名
@@ -406,13 +488,14 @@ async function saveBatchBigSmall() {
         promo_code: code, name, type: buyGetTypeName,
         start_date, end_date, start_time, end_time, description,
         buy_qty: row.bigQty, get_qty: row.smallPno ? row.smallQty : sameGift, is_active: true,
+        until_sold_out: until_sold_out || !!limit_sets, limit_sets,
       });
       if (pErr) throw pErr;
       const items = [
-        { promo_code: code, product_no: row.bigPno, product_name: row.bigName, qty: row.bigQty, is_gift: false },
+        { promo_code: code, product_no: row.bigPno, product_name: row.bigName, qty: row.bigQty, is_gift: false, expiry_date: bigExp },
       ];
-      if (row.smallPno) items.push({ promo_code: code, product_no: row.smallPno, product_name: row.smallName, qty: row.smallQty, is_gift: true });
-      if (sameGift > 0) items.push({ promo_code: code, product_no: row.bigPno, product_name: row.bigName, qty: sameGift, is_gift: true });
+      if (row.smallPno) items.push({ promo_code: code, product_no: row.smallPno, product_name: row.smallName, qty: row.smallQty, is_gift: true, expiry_date: smallExp });
+      if (sameGift > 0) items.push({ promo_code: code, product_no: row.bigPno, product_name: row.bigName, qty: sameGift, is_gift: true, expiry_date: bigExp });
       const { error: iErr } = await sb.from('promotion_items').insert(items);
       if (iErr) throw iErr;
       ok++;
@@ -452,7 +535,7 @@ async function editPromo(code) {
     sb.from('products').select('product_no,name,spec,stock,source').order('product_no'),
   ]);
   _allProdsForPromo = prods || [];
-  _promoItems = (its || []).map((i, idx) => ({ id: idx + 1, pno: i.product_no, name: i.product_name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override }));
+  _promoItems = (its || []).map((i, idx) => ({ id: idx + 1, pno: i.product_no, name: i.product_name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override, expiry_date: i.expiry_date || '' }));
   OM('編輯活動/套組', promoForm(p), promoFoot(code), true);
   renderPromoItems();
 }
@@ -469,7 +552,9 @@ function promoForm(p) {
         ${promoTypeNames().map(t => `<option ${t === p.type ? 'selected' : ''}>${t}</option>`).join('')}
       </select></div>
     <div class="fl"><label>生效日期</label><input id="f-pstart" type="date" value="${p.start_date || ''}"></div>
-    <div class="fl"><label>到期日（空白=永久）</label><input id="f-pend" type="date" value="${p.end_date || ''}"></div>
+    <div class="fl"><label>活動到期日（空白=永久）</label><input id="f-pend" type="date" value="${p.end_date || ''}"></div>
+    <div class="fl"><label>限量組數（選填，賣完自動下架）</label><input id="f-plimit" type="number" min="1" placeholder="不限" value="${p.limit_sets || ''}"></div>
+    <div class="fl"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400"><input type="checkbox" id="f-psold" ${p.until_sold_out?'checked':''} style="width:16px;height:16px"> 售完為止（即期品、限量品）</label></div>
     <div class="fl"><label>限時開始（選填，快閃活動用，例如10:00）</label><input id="f-pstime" type="time" value="${p.start_time || ''}"></div>
     <div class="fl"><label>限時結束（選填，例如13:00）</label><input id="f-petime" type="time" value="${p.end_time || ''}"></div>
     <div class="fl fw" id="promo-extra-fields">
@@ -479,8 +564,8 @@ function promoForm(p) {
     <div class="fl fw"><label>備註</label><input id="f-pnote" value="${p.note || ''}"></div>
   </div>
   <div class="sh">套組/活動商品<span id="promoItemCount" style="font-weight:400;color:var(--tx3);font-size:12px;margin-left:8px">共 ${_promoItems.length} 項</span></div>
-  <div style="display:grid;grid-template-columns:22px 3fr 60px 80px 60px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
-    <span>#</span><span>商品</span><span>數量</span><span>套組價</span><span style="color:var(--am)">贈品</span><span></span>
+  <div style="display:grid;grid-template-columns:22px 3fr 60px 80px 130px 44px 28px;gap:6px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px">
+    <span>#</span><span>商品</span><span>數量</span><span>套組價</span><span style="color:var(--am)">商品到期日</span><span style="color:var(--am)">贈品</span><span></span>
   </div>
   <div id="promoItemsArea"></div>
   <button class="btn btn-s" onclick="addPromoItem()" style="margin-top:6px">＋ 加商品</button>`;
@@ -496,7 +581,7 @@ function promoExtraFields(p) {
 function renderPromoItems() {
   const area = $('promoItemsArea'); if (!area) return;
   area.innerHTML = _promoItems.map((item,idx) => `
-  <div style="display:grid;grid-template-columns:22px 3fr 60px 80px 60px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
+  <div style="display:grid;grid-template-columns:22px 3fr 60px 80px 130px 44px 28px;gap:6px;align-items:center;background:var(--sf2);border-radius:var(--r);padding:7px;margin-bottom:5px">
     <span style="font-size:12px;color:var(--tx3);text-align:center">${idx+1}</span>
     <div style="position:relative">
       <input type="text" value="${item.pno ? (item.name || item.pno) : ''}" placeholder="輸入關鍵字搜尋商品…"
@@ -509,6 +594,8 @@ function renderPromoItems() {
       style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
     <input type="number" value="${item.price_override || ''}" placeholder="套組價" onchange="setPromoIV(${item.id},this.value)"
       style="font-size:12px;padding:5px 7px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
+    <input type="date" value="${item.expiry_date || ''}" title="這個商品的到期日（選填，即期品用）" onchange="setPromoIE(${item.id},this.value)"
+      style="font-size:12px;padding:4px 5px;border:1px solid var(--bd);border-radius:var(--r);width:100%;outline:none">
     <input type="checkbox" ${item.is_gift ? 'checked' : ''} onchange="setPromoIG(${item.id},this.checked)"
       style="width:16px;height:16px;cursor:pointer" title="勾選=贈品（免費）">
     <button onclick="rmPromoItem(${item.id})" style="background:none;border:none;cursor:pointer;color:var(--rd);font-size:18px;line-height:1">×</button>
@@ -548,11 +635,15 @@ async function openBundlePicker(mode) {
     });
   }
 
+  const used = await getPromoUsedSets((promos||[]).filter(p=>p.limit_sets>0).map(p=>p.promo_code));
+  const expiryMap = await getPromoExpiryMap((promos||[]).map(p=>p.promo_code));
+  // 限量賣完的歸到「已過期／售完」那頁（還是可以選，只是會標示＋加入時提醒）
+  const ended = p => isPromoExpired(p) || isPromoSoldOut(p, used);
   window._bundlePickerData = {
     mode,
-    active: (promos||[]).filter(p=>!isPromoExpired(p)),
-    expired: (promos||[]).filter(p=>isPromoExpired(p)),
-    sameProductCodes,
+    active: (promos||[]).filter(p=>!ended(p)),
+    expired: (promos||[]).filter(p=>ended(p)),
+    sameProductCodes, used, expiryMap,
   };
   _bundlePickerTab = 'active';
   renderBundlePickerBody();
@@ -592,7 +683,7 @@ function renderBundlePickerBody() {
   </div>
   <div class="tab-bar" style="margin-bottom:10px">
     <div class="tab${_bundlePickerTab==='active'?' on':''}" onclick="_bundlePickerTab='active';_bundlePickerGroupFilter='';updateBundlePickerResults()">進行中（${active.length}）</div>
-    <div class="tab${_bundlePickerTab==='expired'?' on':''}" onclick="_bundlePickerTab='expired';_bundlePickerGroupFilter='';updateBundlePickerResults()">已過期（${expired.length}）</div>
+    <div class="tab${_bundlePickerTab==='expired'?' on':''}" onclick="_bundlePickerTab='expired';_bundlePickerGroupFilter='';updateBundlePickerResults()">已過期／售完（${expired.length}）</div>
   </div>
   <div id="bp-group-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
   <div id="bp-results"></div>`, '');
@@ -603,7 +694,7 @@ window.renderBundlePickerBody = renderBundlePickerBody;
 function updateBundlePickerResults() {
   const box = $('bp-results'); if(!box) return;
   const chipsBox = $('bp-group-chips');
-  const { mode, active, expired, sameProductCodes } = window._bundlePickerData||{};
+  const { mode, active, expired, sameProductCodes, used, expiryMap } = window._bundlePickerData||{};
   const tab = _bundlePickerTab;
   let list = tab==='active' ? active : expired;
   // 依代碼排序（最新建立的排最前面），跟活動管理列表一致
@@ -634,12 +725,13 @@ function updateBundlePickerResults() {
     return `
     <div style="border:1px solid ${isExpired?'var(--rd)':'var(--bd)'};border-radius:var(--r);padding:10px 12px;margin-bottom:8px;${isExpired?'opacity:.8':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="font-weight:500">${p.name}${isExpired?' <span class="badge br2" style="font-size:10px">已過期</span>':''}</span>
+        <span style="font-weight:500">${p.name}${isExpired?` <span class="badge br2" style="font-size:10px">${isPromoSoldOut(p,used)?'已售完':'已過期'}</span>`:''}</span>
         <span class="badge ${promoTypeColor(p?.type)}">${p?.type}</span>
       </div>
       <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">
         ${p.description || ''} ${p.bundle_price ? `・套組價 ${fM(p.bundle_price)}` : ''}
-        ${p.end_date ? `・<span style="${isExpired?'color:var(--rd)':''}">有效至 ${p.end_date}${p.end_time?' '+p.end_time:''}</span>` : ''}
+        ${p.end_date ? `・<span style="${isExpired?'color:var(--rd)':''}">有效至 ${p.end_date}${p.end_time?' '+p.end_time:''}</span>` : (p.until_sold_out ? '・售完為止' : '')}
+        ${promoExpiryHtml(expiryMap,p.promo_code)}${promoLimitHtml(p,used)}
       </div>
       ${(p.start_time||p.end_time) ? `<div style="color:var(--am);font-weight:600;margin-bottom:8px">⚡ 限時 ${p.start_time||'00:00'}～${p.end_time||'23:59'}${isPromoNotStarted(p)?'（尚未開始）':''}</div>` : ''}
       <div style="display:flex;align-items:center;gap:8px">
@@ -715,6 +807,8 @@ window.setPromoIQ = (id, val) => { const it = _promoItems.find(x => x.id === id)
 
 window.setPromoIV = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.price_override = +val || null; };
 
+window.setPromoIE = (id, val) => { const it = _promoItems.find(x => x.id === id); if (it) it.expiry_date = val || ''; };
+
 window.setPromoIG = (id, checked) => { const it = _promoItems.find(x => x.id === id); if (it) it.is_gift = checked; };
 
 window.closePromoDrop = id => { const d = $('prodrop-' + id); if (d) d.style.display = 'none'; };
@@ -735,7 +829,10 @@ async function savePromo(editCode) {
     start_time: v('pstime') || null, end_time: v('petime') || null,
     description: v('pdesc') || null, note: v('pnote') || null,
     bundle_price: null, discount_amount: null, discount_pct: null, buy_qty: null, get_qty: null,
+    limit_sets: parseInt(v('plimit')) > 0 ? parseInt(v('plimit')) : null,
+    until_sold_out: !!$('f-psold')?.checked,
   };
+  if (payload.limit_sets) payload.until_sold_out = true;
   const calcMode = promoTypeCalcMode(type);
   if (calcMode === 'fixed_price') payload.bundle_price = parseFloat($('f-pbprice')?.value) || null;
   if (calcMode === 'buy_get') { payload.buy_qty = parseFloat($('f-pbuy')?.value) || null; payload.get_qty = parseFloat($('f-pget')?.value) || null; }
@@ -751,7 +848,7 @@ async function savePromo(editCode) {
     if (error) { toast('新增失敗：' + error.message, 'e'); return; }
   }
   const items = _promoItems.filter(i => i.pno).map(i => ({
-    promo_code: code, product_no: i.pno, product_name: i.name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override || null
+    promo_code: code, product_no: i.pno, product_name: i.name, qty: i.qty, is_gift: i.is_gift, price_override: i.price_override || null, expiry_date: i.expiry_date || null
   }));
   if (items.length) await sb.from('promotion_items').insert(items);
   toast(editCode ? '套組已更新' : '套組新增成功！'); CM(); promotions();
@@ -781,14 +878,17 @@ async function showPromo(code) {
   });
 
   const today_s = today();
+  const _used = p?.limit_sets ? await getPromoUsedSets([code]) : {};
+  const soldOut = isPromoSoldOut(p, _used);
   const expired = isPromoExpired(p);
   OM(`套組：${p?.name}`, `
   <div class="dg" style="margin-bottom:13px">
     <div class="dr"><span class="dlb">代碼</span><span class="dv" style="font-family:monospace">${p?.promo_code}</span></div>
     <div class="dr"><span class="dlb">類型</span><span class="dv">${p?.type}</span></div>
-    <div class="dr"><span class="dlb">有效期間</span><span class="dv">${p?.start_date || '即日起'} ～ ${p?.end_date || '永久'}</span></div>
+    <div class="dr"><span class="dlb">有效期間</span><span class="dv">${p?.start_date || '即日起'} ～ ${promoEndLabel(p)}</span></div>
+    ${p?.limit_sets ? `<div class="dr"><span class="dlb">限量</span><span class="dv">${p.limit_sets} 組・已售 ${_used[code]||0} 組・${soldOut?'<b style="color:var(--rd)">已售完</b>':'剩 '+promoRemain(p,_used)+' 組'}</span></div>` : ''}
     ${(p?.start_time||p?.end_time)?`<div class="dr"><span class="dlb">限時時段</span><span class="dv" style="color:var(--am);font-weight:600">⚡ ${p?.start_time||'00:00'} ～ ${p?.end_time||'23:59'}</span></div>`:''}
-    <div class="dr"><span class="dlb">狀態</span><span class="dv"><span class="badge ${!expired && p?.is_active ? 'bg' : 'br2'}">${expired ? '已過期' : p?.is_active ? '使用中' : '停用'}</span></span></div>
+    <div class="dr"><span class="dlb">狀態</span><span class="dv"><span class="badge ${!expired && !soldOut && p?.is_active ? 'bg' : 'br2'}">${soldOut ? '已售完' : expired ? '已過期' : p?.is_active ? '使用中' : '停用'}</span></span></div>
     ${p?.bundle_price ? `<div class="dr"><span class="dlb">套組售價</span><span class="dv" style="font-weight:600;color:var(--ac)">${fM(p.bundle_price)}</span></div>` : ''}
     ${p?.buy_qty ? `<div class="dr"><span class="dlb">買幾送幾</span><span class="dv">買 ${p.buy_qty} 送 ${p.get_qty}</span></div>` : ''}
     ${p?.discount_amount ? `<div class="dr"><span class="dlb">折扣金額</span><span class="dv">折 ${fM(p.discount_amount)}</span></div>` : ''}
@@ -811,7 +911,8 @@ async function showPromo(code) {
       // 同一個商品的銷售數跟贈品數合併成一列，不同商品才各自一列
       const grouped = {};
       (its||[]).forEach(i=>{
-        if(!grouped[i.product_no]) grouped[i.product_no] = { name:i.product_name, qty:0, giftQty:0, price_override:i.price_override };
+        if(!grouped[i.product_no]) grouped[i.product_no] = { name:i.product_name, qty:0, giftQty:0, price_override:i.price_override, expiry:i.expiry_date||'' };
+        if(i.expiry_date && (!grouped[i.product_no].expiry || i.expiry_date < grouped[i.product_no].expiry)) grouped[i.product_no].expiry = i.expiry_date;
         if(i.is_gift) grouped[i.product_no].giftQty += (i.qty||1);
         else grouped[i.product_no].qty += (i.qty||1);
       });
@@ -820,7 +921,7 @@ async function showPromo(code) {
         const pr = prodPriceMap[pno];
         return `<tr>
           <td style="color:var(--tx3);font-size:12px">${idx+1}</td>
-          <td>${g.name || '—'}</td>
+          <td>${g.name || '—'}${g.expiry?`<div style="font-size:11px;color:var(--am)">效期 ${g.expiry}</div>`:''}</td>
           <td class="num">${g.qty||'—'}</td>
           <td class="num" style="color:var(--am);font-weight:600">${g.giftQty||'—'}</td>
           ${LEVELS.map(lv=>{
@@ -847,6 +948,12 @@ async function applyPromo(code, mode, sets) {
     sb.from('promotion_items').select('*').eq('promo_code', code).order('is_gift'),
   ]);
   if (!its || !its.length) { toast('此套組尚無商品設定', 'w'); return; }
+  // 限量套組：超過剩餘組數時提醒（還是可以硬加，例如補登之前漏記的單）
+  if (mode === 'order' && p?.limit_sets > 0) {
+    const used = await getPromoUsedSets([code]);
+    const remain = promoRemain(p, used);
+    if (sets > remain && !confirm(`「${p.name}」限量 ${p.limit_sets} 組，目前${remain<=0?'已經售完':'只剩 '+remain+' 組'}，這次要加 ${sets} 組。\n\n確定還是要加入嗎？`)) return;
+  }
 
   const bundleGroup = 'BG-' + Date.now();
 
