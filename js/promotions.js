@@ -223,9 +223,9 @@ async function batchBuyGetModal() {
     <div class="fl fw"><label>活動名稱前綴（選填，例如「8週年慶」，會自動加在每個套組名稱前面）</label><input id="f-bbgprefix" placeholder="例如：8週年慶"></div>
     <div class="fl"><label>生效日期</label><input id="f-bbgstart" type="date" value="${today()}"></div>
     <div class="fl"><label>活動到期日（空白=永久）</label><input id="f-bbgend" type="date"></div>
-    <div class="fl"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400"><input type="checkbox" id="f-bbgsold" style="width:16px;height:16px"> 售完為止（即期品、限量品）</label></div>
     <div class="fl"><label>限時開始（選填）</label><input id="f-bbgstime" type="time"></div>
     <div class="fl"><label>限時結束（選填）</label><input id="f-bbgetime" type="time"></div>
+    <div class="fl fw"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;min-height:38px"><input type="checkbox" id="f-bbgsold" style="width:16px;height:16px"> 售完為止（即期品、限量品）</label><div style="font-size:11px;color:var(--tx3)">每一行的「限量組數」填在下面商品清單裡（選填，各套組各自計算）</div></div>
     <div class="fl fw"><label>說明（選填，會存到每個套組的說明欄）</label><input id="f-bbgdesc" placeholder="例如：8週年慶"></div>
   </div>
   <div class="sh">商品清單（每一行＝一個獨立套組）<span id="batchBGCount" style="font-weight:400;color:var(--tx3);font-size:12px;margin-left:8px">共 ${_batchBGRows.length} 行</span></div>
@@ -363,9 +363,9 @@ async function batchBigSmallModal() {
     <div class="fl fw"><label>活動名稱前綴（選填，例如「8週年慶」，會自動加在每個套組名稱前面）</label><input id="f-bbsprefix" placeholder="例如：8週年慶"></div>
     <div class="fl"><label>生效日期</label><input id="f-bbsstart" type="date" value="${today()}"></div>
     <div class="fl"><label>活動到期日（空白=永久）</label><input id="f-bbsend" type="date"></div>
-    <div class="fl"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400"><input type="checkbox" id="f-bbssold" style="width:16px;height:16px"> 售完為止（即期品、限量品）</label></div>
     <div class="fl"><label>限時開始（選填）</label><input id="f-bbsstime" type="time"></div>
     <div class="fl"><label>限時結束（選填）</label><input id="f-bbsetime" type="time"></div>
+    <div class="fl fw"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;min-height:38px"><input type="checkbox" id="f-bbssold" style="width:16px;height:16px"> 售完為止（即期品、限量品）</label><div style="font-size:11px;color:var(--tx3)">每一行的「限量組數」填在下面商品清單裡（選填，各套組各自計算）</div></div>
     <div class="fl fw"><label>說明（選填，會存到每個套組的說明欄）</label><input id="f-bbsdesc" placeholder="例如：8週年慶"></div>
   </div>
   <div class="sh">商品配對清單（每一行＝一個獨立套組）<span id="batchBSCount" style="font-weight:400;color:var(--tx3);font-size:12px;margin-left:8px">共 ${_batchBSRows.length} 行</span></div>
@@ -547,14 +547,14 @@ function promoForm(p) {
   return `<div class="fg" style="margin-bottom:12px">
     <div class="fl"><label>代碼</label><input id="f-pcode" value="${p.promo_code || ''}" ${p.promo_code && !p.promo_code.startsWith('PRO-') ? 'disabled style="opacity:.6"' : ''}></div>
     <div class="fl"><label>名稱 *</label><input id="f-pname" name="promo-activity-name" autocomplete="on" value="${p.name || ''}"></div>
-    <div class="fl"><label>類型</label>
+    <div class="fl fw"><label>類型</label>
       <select id="f-ptype" onchange="updatePromoFields()">
         ${promoTypeNames().map(t => `<option ${t === p.type ? 'selected' : ''}>${t}</option>`).join('')}
       </select></div>
     <div class="fl"><label>生效日期</label><input id="f-pstart" type="date" value="${p.start_date || ''}"></div>
     <div class="fl"><label>活動到期日（空白=永久）</label><input id="f-pend" type="date" value="${p.end_date || ''}"></div>
     <div class="fl"><label>限量組數（選填，賣完自動下架）</label><input id="f-plimit" type="number" min="1" placeholder="不限" value="${p.limit_sets || ''}"></div>
-    <div class="fl"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400"><input type="checkbox" id="f-psold" ${p.until_sold_out?'checked':''} style="width:16px;height:16px"> 售完為止（即期品、限量品）</label></div>
+    <div class="fl"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;min-height:38px"><input type="checkbox" id="f-psold" ${p.until_sold_out?'checked':''} style="width:16px;height:16px"> 售完為止（即期品、限量品）</label></div>
     <div class="fl"><label>限時開始（選填，快閃活動用，例如10:00）</label><input id="f-pstime" type="time" value="${p.start_time || ''}"></div>
     <div class="fl"><label>限時結束（選填，例如13:00）</label><input id="f-petime" type="time" value="${p.end_time || ''}"></div>
     <div class="fl fw" id="promo-extra-fields">
