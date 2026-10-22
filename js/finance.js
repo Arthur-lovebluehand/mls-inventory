@@ -159,11 +159,9 @@ window.expandOpexToMonths = expandOpexToMonths;
 
 // 提醒：有填計費期間＋有設頻率的帳單，上一期結束後再過一個週期（下一期也該結束了）還沒登記新的一期，就提醒一下
 function opexDueReminders(all){
-  const keyOf = r => `${r.category}::${stripOpexAutoMark(r.note).replace(/[\d\/\-~：:\s]+$/,'')}`;
   const latest = {};
   (all||[]).filter(opexHasPeriod).forEach(r=>{
-    const k = r.category; // 同類別（例如 天然氣）看最新那一期就好；水電再用備註區分水費/電費
-    const kk = r.category==='水電' ? keyOf(r) : k;
+    const kk = r.category; // 同類別（水費／電費／天然氣）看最新那一期就好
     if(!latest[kk] || r.period_end > latest[kk].period_end) latest[kk] = r;
   });
   const td = today();
@@ -220,7 +218,7 @@ async function opex(){
       <b>分攤後成本</b>＝這個月真正用掉多少（水電瓦斯照帳單計費期間按天數攤）；<b>實際支出</b>＝這個月實際付出去多少錢。
     </div>
     ${(()=>{ const due = opexDueReminders(allRecs); return due.length ? `<div class="al" style="font-size:12px;background:var(--acl);border-radius:var(--r);padding:8px 12px;margin-bottom:12px">
-      📮 這些帳單的下一期應該已經出來了，收到後記得登記：${due.map(d=>`<b>${d.r.category}${stripOpexAutoMark(d.r.note)&&d.r.category==='水電'?'（'+stripOpexAutoMark(d.r.note).split('：')[0]+'）':''}</b>（上一期到 ${_md(d.r.period_end)}）`).join('、')}
+      📮 這些帳單的下一期應該已經出來了，收到後記得登記：${due.map(d=>`<b>${d.r.category}</b>（上一期到 ${_md(d.r.period_end)}）`).join('、')}
     </div>` : ''; })()}`;
 
   // ── 第一層：年度總覽 ──
