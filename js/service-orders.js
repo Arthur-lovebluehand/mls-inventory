@@ -593,7 +593,7 @@ function rmSvcItem(id) {
 
 window.rmSvcItem       = rmSvcItem;
 async function saveSvcOrder() {
-  const no = v('sv-no');
+  let no = v('sv-no');
   const date = v('sv-date');
   const custSel = document.getElementById('f-sv-cust');
   const custNo = custSel?.value||null;
@@ -640,9 +640,16 @@ async function saveSvcOrder() {
     paid_by_credit:paidByCredit, paid_by_cash:paidByCash,
     payment_method:payMethod, note:note||null
   };
-  const { error:e1 } = editNo
+  let { error:e1 } = editNo
     ? await sb.from('service_orders').update(payload).eq('order_no',editNo)
     : await sb.from('service_orders').insert(payload);
+  // 新建時單號撞號（例如畫面開著期間別人/別的分頁先用掉這個號碼）：依同一天重新取號，自動重試一次
+  if(e1 && !editNo && (e1.code==='23505' || /duplicate key/i.test(e1.message||''))) {
+    no = await genNo('SV','service_orders','order_no',date);
+    payload.order_no = no;
+    const noEl = $('f-sv-no'); if(noEl) noEl.value = no;
+    ({ error:e1 } = await sb.from('service_orders').insert(payload));
+  }
   if(e1){ toast((editNo?'更新失敗：':'建立失敗：')+e1.message,'e'); return; }
 
   // 2. 建品項
@@ -664,7 +671,13 @@ async function saveSvcOrder() {
     settled_pay_amount: isSettled(i) ? (i.technician_pay||0) : null
   }));
   const { error:itemErr } = await sb.from('service_order_items').insert(items);
-  if(itemErr){ toast('品項寫入失敗：'+itemErr.message,'e'); return; }
+  if(itemErr){
+    // 新建時品項寫入失敗：把剛建好、但沒有任何品項的表頭撤回，避免留下空單、也避免再按一次時撞單號
+    // （此時庫存/耗材/寄放/儲值都還沒動，撤回表頭就等於整張單完全沒建過）
+    if(!editNo) await sb.from('service_orders').delete().eq('order_no',no);
+    toast('品項寫入失敗（服務單未建立，可修正後再按一次）：'+itemErr.message,'e');
+    return;
+  }
 
   // 3. 扣服務庫存（商品撥轉耗材 → service_inventory；服務專屬耗材 → service_consumables；客戶寄放商品 → customer_deposits，並留使用記錄）— 平行處理加快速度
   await Promise.all(window._svcItems.filter(i=>i.item_type==='consumable'&&i.product_no).map(async item=>{
