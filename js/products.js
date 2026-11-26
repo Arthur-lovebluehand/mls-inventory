@@ -113,7 +113,13 @@ async function products(){
 function prodForm(p){
   p=p||{};
   return `<div class="fg">
-    ${fi('pno','商品編號 *','text',p.product_no)} ${fi('pname','商品名稱 *','text',p.name)}
+    ${p.product_no ? fi('pno','商品編號 *','text',p.product_no) : `<div class="fl"><label>商品編號 *</label>
+      <div style="display:flex;gap:6px">
+        <input id="f-pno" type="text" value="" placeholder="只打前綴，例如 AR、AS、C" autocomplete="off" style="flex:1" onblur="autoProdNo()" onkeydown="if(event.key==='Enter'){event.preventDefault();autoProdNo();}">
+        <button type="button" class="btn" style="white-space:nowrap" onclick="autoProdNo(true)">取號</button>
+      </div>
+      <div id="pno-hint" style="font-size:11px;color:var(--tx3);margin-top:3px">只打前綴（AR、AS、C…）會自動補上下一個沒用過的號碼；變體編號（如 A0027H）請直接打完整編號</div>
+    </div>`} ${fi('pname','商品名稱 *','text',p.name)}
     ${fi('pspec','規格','text',p.spec)}
     <div class="fl"><label>類別</label>
       <select id="f-pcat" style="width:100%;padding:7px 8px;border:1px solid var(--bd);border-radius:var(--r);font-size:13px;background:var(--sf);outline:none"
@@ -192,6 +198,40 @@ function prodForm(p){
   <div class="sh">其他</div>
   <div class="fg"><div class="fl fw">${fa('pdesc','說明',p.description)}</div></div>`;
 }
+// 依前綴自動取下一個商品編號。
+// 編號規則（2026-11 盤點）：第一碼是品牌（A 愛閃耀、B 安芳、C 德卡、D 元建），愛閃耀再用第二碼分系列
+// （AB 保健、AC 精油、AF 面膜、AH 纖體、AQ 量子、AR 外泌體、ARS 外泌體配件、AS 輔消品…），後面接流水號，
+// 位數沿用該系列現有的位數（A/B/C/D 四碼、AR/AS 等三碼、ARS 兩碼）。
+// 例外：555/666/777/888/999 這類同數字的「特殊號」（獎金、禮券、福袋）不算進流水號；
+// 帶尾碼的變體（A0027H、AR001O、AH004-10day、Aset1）也不算，這類請手動打完整編號。
+async function autoProdNo(force){
+  const el=$('f-pno'), hint=$('pno-hint'); if(!el) return;
+  const raw=el.value.trim();
+  if(!raw){ if(force) toast('請先打編號前綴，例如 AR','e'); return; }
+  if(!/^[A-Za-z]+$/.test(raw)) return; // 已經是完整編號（含數字）就不動它
+  const prefix=raw.toUpperCase();
+  const{data,error}=await sb.from('products').select('product_no').ilike('product_no',prefix+'%');
+  if(error){ toast('取號失敗：'+error.message,'e'); return; }
+  const all=new Set((data||[]).map(r=>r.product_no));
+  const re=new RegExp('^'+prefix+'(\\d+)$');
+  const isRep=s=>s.length>=3 && /^(\d)\1+$/.test(s) && parseInt(s)>=555; // 特殊號
+  let max=0, width=0;
+  for(const no of all){
+    const m=no.match(re); if(!m) continue;
+    if(isRep(m[1])) continue;
+    max=Math.max(max,parseInt(m[1])); width=Math.max(width,m[1].length);
+  }
+  if(!width) width = prefix.length===1 ? 4 : 3; // 全新系列的預設位數
+  let n=max+1, cand;
+  do { cand=prefix+String(n).padStart(width,'0'); n++; } while(all.has(cand));
+  el.value=cand;
+  if(hint){
+    hint.textContent = max ? `已自動取號：${prefix} 系列目前最後是 ${prefix+String(max).padStart(width,'0')}，下一個是 ${cand}`
+                           : `「${prefix}」是新系列，從 ${cand} 開始`;
+    hint.style.color = max ? 'var(--gr, #4a7c59)' : 'var(--or, #c77d1a)';
+  }
+}
+window.autoProdNo = autoProdNo;
 async function addProd(){
   await loadCatList();
   OM('新增商品',prodForm(),`<button class="btn" onclick="CM()">取消</button><button class="btn btn-p" onclick="saveProd(false)">儲存</button>`);
@@ -243,6 +283,8 @@ async function showPriceLog(no,name){
   </table>`}`);
 }
 async function saveProd(existingNo){
+  // 只打了前綴就直接按儲存：先自動取號再存
+  if(!existingNo && /^[A-Za-z]+$/.test(v('pno'))) await autoProdNo();
   const no=existingNo||v('pno'), nm=v('pname');
   if(!nm){toast('請填寫商品名稱','e');return;}
   if(!existingNo && !no){toast('請填寫商品編號','e');return;}
