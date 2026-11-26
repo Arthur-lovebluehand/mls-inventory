@@ -245,6 +245,16 @@ async function showPriceLog(no,name){
 async function saveProd(existingNo){
   const no=existingNo||v('pno'), nm=v('pname');
   if(!nm){toast('請填寫商品名稱','e');return;}
+  if(!existingNo && !no){toast('請填寫商品編號','e');return;}
+  // 防止重複點擊（上傳圖片時較慢，連按兩次會送出兩次）
+  const saveBtn=[...document.querySelectorAll('.btn-p')].find(b=>/saveProd\(/.test(b.getAttribute('onclick')||''));
+  if(saveBtn){ if(saveBtn.disabled) return; saveBtn.disabled=true; saveBtn.dataset.origText=saveBtn.textContent; saveBtn.textContent='儲存中…'; saveBtn.style.opacity='.6'; }
+  try {
+  if(!existingNo){
+    // 新增前先檢查編號是否已被使用，直接告訴使用者是哪個商品佔用，而不是丟出資料庫英文錯誤
+    const{data:dup}=await sb.from('products').select('product_no,name').eq('product_no',no).maybeSingle();
+    if(dup){toast(`商品編號「${no}」已經被「${dup.name}」使用，請換一個編號`,'e');$('f-pno')?.focus();return;}
+  }
   const priceFields={price_founder:n('pf'),price_region:n('prg'),price_city:n('pct'),price_dealer:n('pdr'),price_vip:n('pvp'),price_retail:n('prl'),cost:n('pcost')};
   const officialBonus=n('pobonus');
   // 處理圖片：先上傳檔案（如果有），再存 URL
@@ -286,6 +296,9 @@ async function saveProd(existingNo){
   }
   if(err){toast('儲存失敗：'+err.message,'e');return;}
   toast(existingNo?'商品已更新':'商品新增成功！');CM();products();
+  } finally {
+    if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent=saveBtn.dataset.origText||'儲存'; saveBtn.style.opacity=''; }
+  }
 }
 function adjStk(no,name,cur){
   OM(`調整庫存：${name}`,`
